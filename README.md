@@ -55,6 +55,11 @@ that," it points at something someone actually did, and you can adopt it in an
 afternoon. Someone speeds a workflow tenfold, and next run that pattern is waiting
 for the rest of us. See [frontier/](frontier/).
 
+There is no central service. Like Slack workspaces, everyone runs their own
+leaderboard for their project, team, or company, on web, Slack, or Discord, and
+federates up only if they choose. Third Division Labs runs the public one. See
+[docs/federation.md](docs/federation.md).
+
 ## Quickstart
 
 ```bash

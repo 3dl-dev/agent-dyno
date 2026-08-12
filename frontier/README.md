@@ -1,5 +1,9 @@
 # frontier, a commons of what works
 
+> A frontier is just this JSON file plus something that renders it. Run your own
+> for your team or company, or contribute to the public one. See
+> [../docs/federation.md](../docs/federation.md).
+
 `reference-frontier.json` is where the field gets better together. It isn't a
 scoreboard. It's a living collection of techniques that turn tokens into durable
 work, each carried with the evidence that it worked. When you run `dyno-tune`,

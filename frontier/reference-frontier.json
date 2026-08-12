@@ -1,6 +1,6 @@
 {
   "schema": "agent-dyno/frontier@2",
-  "note": "A living commons of validated leverage. Each entry carries the transferable technique behind a result, not just the number, so setups like yours can adopt what worked. Opt-in, anonymized: technique + numbers travel; identities, repos, and code never do. See frontier/README.md.",
+  "note": "A living commons of validated leverage. Each entry carries the transferable technique behind a result, not just the number, so setups like yours can adopt what worked. Opt-in, anonymized: technique + numbers travel; identities, repos, and code never do. See frontier/README.md. Each entry carries a proof tier (see docs/federation.md): tier-0 sanity, tier-1 self-report, tier-2 git-verifiable, tier-3 reproduced.",
   "axes": {
     "dollars_per_survkb": "USD per surviving KB (lower better)",
     "survkb_per_outmtok": "surviving KB per output-Mtok (higher better)",
@@ -13,39 +13,66 @@
       "harness": "claude-code",
       "engine": "solo",
       "technique": "One strong model does the whole task in-session, no delegation. Simple, low-waste baseline; keeps the most of what it writes.",
-      "model_roles": {"orchestrator": "strong", "worker": null},
+      "model_roles": {
+        "orchestrator": "strong",
+        "worker": null
+      },
       "effort": "high",
       "review_regime": "mixed",
       "horizon": "session",
       "samples": 74,
-      "vector": {"dollars_per_survkb": 1.31, "survkb_per_outmtok": 115, "waste_pct": 9.0, "cache_read_pct": 98.6},
-      "date": "2026-08-12"
+      "vector": {
+        "dollars_per_survkb": 1.31,
+        "survkb_per_outmtok": 115,
+        "waste_pct": 9.0,
+        "cache_read_pct": 98.6
+      },
+      "date": "2026-08-12",
+      "proof": "tier-1-self-report"
     },
     {
       "id": "seed-cc-delegate",
       "harness": "claude-code",
       "engine": "delegate",
       "technique": "Orchestrator plans and reviews; a worker subagent does implementation. Higher throughput per output-token than solo, at more waste, best when the orchestrator reviews tightly.",
-      "model_roles": {"orchestrator": "strong", "worker": "strong-or-cheap"},
+      "model_roles": {
+        "orchestrator": "strong",
+        "worker": "strong-or-cheap"
+      },
       "effort": "high",
       "review_regime": "mixed",
       "horizon": "session",
       "samples": 78,
-      "vector": {"dollars_per_survkb": 1.36, "survkb_per_outmtok": 145, "waste_pct": 29.5, "cache_read_pct": 97.7},
-      "date": "2026-08-12"
+      "vector": {
+        "dollars_per_survkb": 1.36,
+        "survkb_per_outmtok": 145,
+        "waste_pct": 29.5,
+        "cache_read_pct": 97.7
+      },
+      "date": "2026-08-12",
+      "proof": "tier-1-self-report"
     },
     {
       "id": "seed-cc-workflow",
       "harness": "claude-code",
       "engine": "workflow",
       "technique": "Fan out independent parts as a parallel workflow, then synthesize. Fast and low human-attention, but the highest same-session waste in this seed, a candidate for pairing with a review pass to lift survival.",
-      "model_roles": {"orchestrator": "strong", "worker": "strong"},
+      "model_roles": {
+        "orchestrator": "strong",
+        "worker": "strong"
+      },
       "effort": "high",
       "review_regime": "mixed",
       "horizon": "session",
       "samples": 59,
-      "vector": {"dollars_per_survkb": 1.59, "survkb_per_outmtok": 126, "waste_pct": 57.8, "cache_read_pct": 97.3},
-      "date": "2026-08-12"
+      "vector": {
+        "dollars_per_survkb": 1.59,
+        "survkb_per_outmtok": 126,
+        "waste_pct": 57.8,
+        "cache_read_pct": 97.3
+      },
+      "date": "2026-08-12",
+      "proof": "tier-1-self-report"
     }
   ]
 }
