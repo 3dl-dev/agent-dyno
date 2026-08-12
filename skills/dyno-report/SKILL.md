@@ -1,46 +1,76 @@
 ---
 name: dyno-report
-description: Measure the fuel-efficiency of your AI coding setup from your own logs and git history, surviving work per token, split by engine / model / effort / review regime, and get a verdict on the field's efficiency claims. Runs on your machine, nothing uploaded. Self-improvement, never a ranking of people against product. Use for "how efficient is my setup" or "which engine is cheapest per surviving line".
-argument-hint: [--repo <path>] [--since 30.days.ago]
+description: Measure the fuel-efficiency of your AI coding setup from your own logs and git history, surviving work per token, split by engine / model / effort / review regime, compared against same-shape setups on the frontier. Runs on your machine, nothing uploaded. Self-improvement, never a ranking of people against product. Use for "how efficient is my setup" or "which engine is cheapest per surviving line".
+argument-hint: [--repos <path,path>] [--since 30.days.ago]
 ---
 
 # Dyno report
 
-Read `docs/governance.md` before presenting anything: you measure the operator's
-**own engine** for self-improvement. Never rank an individual against product
-outcomes; if asked, decline and roll up to team/BU for tokens-per-product.
+The numbers come from a deterministic driver, not from you. Your job is three
+things a model cannot get wrong: read the constitution, run the driver, narrate
+what it returns. Do not compute vectors, survival, or dollars yourself; if a
+number is not in `report.json`, do not report it.
 
-**Input:** $ARGUMENTS
+## 1. Read the constitution first (gating)
 
-## Two halves: a harness-neutral numerator and a per-harness denominator
+Read `docs/governance.md`. You measure the operator's **own engine** for
+self-improvement. Never rank an individual against product outcomes, never
+compare people. If asked for that, decline and cite the document; roll up to
+team/BU for tokens-per-product instead. The driver stamps `report.json` with a
+governance-clean assertion; do not emit anything that contradicts it.
 
-1. **Surviving work (numerator, works on any repo, any agent).** Run
-   `core/survival_git.py --repo <repo> --since <window>`. It reads git only:
-   of the lines added in the window, what fraction survive at HEAD (not reverted,
-   rebuilt, or bug-fixed), by age. This is the objective unit of shippable work
-   and it is identical for Claude Code, pi, OpenCode, or a human.
+## 2. Build the fuel snapshot (once per run, if absent)
 
-2. **Fuel + fingerprint (per-harness).** Pick the adapter for the harness that
-   produced the work:
-   - Claude Code → `adapters/claude-code/` (built). It reads
-     `~/.claude/projects/**` transcripts and computes tokens (priced via
-     `prices.json`), engine class, model routing, effort, review signals, and
-     same-session waste. Run its `harness-*.py` analyses; read each script's
-     header for units.
-   - pi / opencode → adapter slots; if absent, measure the numerator only and say
-     the fuel side is not yet available for that harness.
+The driver needs a snapshot of the harness's derived per-session metrics. For
+Claude Code:
 
-3. **Join** surviving work to fuel to get the efficiency vector.
+```
+python3 adapters/claude-code/snapshot.py --out <snap-parent>
+```
 
-## Present (lead with the answer, a table, and the confounds)
+Reuse an existing snapshot dir if you have a recent one. For pi / opencode, if
+the adapter is a stub, there is no fuel side yet; run the numerator only and say
+so.
 
-The efficiency **vector** by engine and the model×harness interaction; the claim
-verdicts the run touched (`docs/claims.md`); confounds by name (terrain,
-non-overlapping windows, effort mix, review regime, small N); and the one change
-to make to the *engine*. No composite score. Survival is not the same as value; say so.
+## 3. Run the driver
 
-## Contribute (opt-in)
+```
+python3 skills/dyno-report/dyno_report.py \
+    --harness claude-code --snapshot <snap-dir> \
+    --repos <repo1,repo2,...> --since 30.days.ago --out <out-dir>
+```
 
-Offer to emit an anonymized summary (engine fingerprint + vector only; no
+`--repos` is the repos the operator actually codes in (git survival is read from
+each). It writes `report.json` (the contract) and `report.md` (a rendered
+report). Everything downstream reads `report.json`.
+
+## 4. Present (lead with the answer, then the comparison, then the confounds)
+
+From `report.json`, in this order:
+
+1. **The efficiency vector by engine** (`vector_by_engine`): `$/survKB`,
+   `survKB/Mtok-out`, `waste%`, `cache-read%`, Pareto flag. No composite score.
+   The frontier is Pareto, not a rank.
+2. **The same-shape comparison** (`same_shape`): for each of the operator's
+   (engine, effort) cells, how they compare to frontier entries of the **same
+   shape**, or "no same-shape entry yet." This is the point of the report: you vs
+   setups built like yours, at your tier and effort, never you vs a person.
+3. **Claim verdicts** (`claims`) the run had data for, and **confounds**
+   (`confounds`) by name: horizon age, bulk-import terrain, small N.
+4. **The one change** to the *engine* that the same-shape comparison and the
+   vector most support. Survival is not value; say so.
+
+## 5. Contribute (opt-in, with explicit consent)
+
+Offer to emit an anonymized entry (engine fingerprint + vector only; no
 identities, repo names, or code) that the operator can PR into
-`frontier/reference-frontier.json`. Never submit without explicit consent.
+`frontier/reference-frontier.json`. Follow `skills/dyno-contribute/SKILL.md`.
+Never submit without explicit consent.
+
+## Deferred (not yet turn-key)
+
+The git-side per-engine survival cut (which engine's *committed* lines lasted, by
+effort) is v2 and not in `report.json` yet. If the operator wants it now, run
+`core/horizon_attribute.py --repo <repo> --snapshot <snap> --since <window>` per
+repo by hand, and label it as the durable-horizon cut, distinct from the
+same-session waste in the vector.

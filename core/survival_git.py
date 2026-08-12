@@ -74,21 +74,24 @@ def surviving_by_commit(repo, paths):
     return surviving
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--repo", default=".")
-    ap.add_argument("--since", default="90.days.ago")
-    args = ap.parse_args()
+def survival(repo, since, now=None):
+    """Compute horizon-survival for `repo` over the window `since`.
 
-    now = time.time()
-    commits = window_commits(args.repo, args.since)
+    Returns a structured dict (or None if the window is empty). This is the
+    importable numerator other tools (e.g. the dyno_report driver) consume, so
+    they need not scrape stdout. main() renders this same dict. Totals
+    (added / surviving / pct / fix-share) are clock-independent; only the age
+    buckets depend on `now`, so callers that want deterministic output can pass a
+    fixed `now` or ignore the buckets.
+    """
+    now = time.time() if now is None else now
+    commits = window_commits(repo, since)
     if not commits:
-        print("no commits in window", file=sys.stderr)
-        return
+        return None
     # scope blame to files still present at HEAD that were touched in the window
-    tracked = set(git(args.repo, "ls-files").splitlines())
+    tracked = set(git(repo, "ls-files").splitlines())
     paths = {p for c in commits.values() for p in c["paths"]} & tracked
-    surviving = surviving_by_commit(args.repo, paths)
+    surviving = surviving_by_commit(repo, paths)
 
     # per-commit survival, bucketed by age
     buckets = [(0, 1), (1, 3), (3, 7), (7, 14), (14, 30), (30, 90), (90, 10**6)]
@@ -110,18 +113,40 @@ def main():
 
     total_added = sum(c["added"] for c in commits.values())
     total_surv = sum(surviving.get(s, 0) for s in commits)
+    return {
+        "repo": repo,
+        "since": since,
+        "commits": len(commits),
+        "added": total_added,
+        "surviving": total_surv,
+        "pct": 100 * total_surv / max(1, total_added),
+        "buckets": [(labels[i], agg[i][0], agg[i][1]) for i in range(len(labels))],
+        "fix_added": fix_added,
+        "fix_pct": 100 * fix_added / max(1, total_added),
+    }
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--repo", default=".")
+    ap.add_argument("--since", default="90.days.ago")
+    args = ap.parse_args()
+
+    r = survival(args.repo, args.since)
+    if r is None:
+        print("no commits in window", file=sys.stderr)
+        return
     print("=" * 64)
     print(f"HORIZON-SURVIVAL  repo={args.repo}  window since {args.since}")
-    print(f"commits={len(commits)}  lines added={total_added:,}  "
-          f"surviving at HEAD={total_surv:,}  ({100*total_surv/max(1,total_added):.1f}%)")
+    print(f"commits={r['commits']}  lines added={r['added']:,}  "
+          f"surviving at HEAD={r['surviving']:,}  ({r['pct']:.1f}%)")
     print(f"\n{'code age when added':22}{'added':>10}{'surviving%':>13}")
     print("-" * 45)
-    for i, lbl in enumerate(labels):
-        added, surv = agg[i]
+    for lbl, added, surv in r["buckets"]:
         if added:
             print(f"{lbl:22}{added:>10,}{100*surv/added:>12.1f}%")
-    print(f"\nfix/revert commits added {fix_added:,} lines "
-          f"({100*fix_added/max(1,total_added):.1f}% of churn is rework/defect-driven)")
+    print(f"\nfix/revert commits added {r['fix_added']:,} lines "
+          f"({r['fix_pct']:.1f}% of churn is rework/defect-driven)")
     print("\nsurviving% = lines still blamed to the adding commit at HEAD. "
           "Falling values at older ages = code that didn't last.")
 
