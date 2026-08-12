@@ -24,7 +24,7 @@ they are load-bearing, not decoration.
 - **Stdlib only.** Python 3 standard library, no installs, no new dependencies. If
   a change seems to need a dependency, it is the wrong change.
 - **No em-dashes.** Anywhere: docs, comments, commit messages. Use commas, colons,
-  periods, semicolons. Verify with `grep -rn '—'` before committing.
+  periods, semicolons. Verify with `grep -rnP '\x{2014}'` before committing.
 - **The four-slot schema.** Every new dimension lands in exactly one existing slot:
   a fingerprint axis, a fuel line, a horizon on the numerator, or a claim row. A
   dimension that needs a fifth slot is a signal to stop and rethink.
