@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Dyno — the engine-craft leaderboard</title>
+<meta name="description" content="Surviving work per token, by engine. A leaderboard of harness efficiency — engine craft, never people against product.">
+<style>
+  :root{
+    --bg:#faf9f7; --panel:#ffffff; --ink:#1a1a1a; --muted:#6b6b6b;
+    --line:#e6e3de; --accent:#2f6f4f; --warn:#9a5b2b; --mono:'Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --best:#2f6f4f;
+  }
+  :root:not([data-theme="light"]){ }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#14150f; --panel:#1c1e17; --ink:#ececec; --muted:#9a9a92;
+      --line:#2c2e25; --accent:#7fc79c; --warn:#d99a5b; --best:#7fc79c;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#14150f; --panel:#1c1e17; --ink:#ececec; --muted:#9a9a92;
+    --line:#2c2e25; --accent:#7fc79c; --warn:#d99a5b; --best:#7fc79c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.55}
+  .wrap{max-width:900px;margin:0 auto;padding:48px 20px 80px}
+  h1{font-size:30px;margin:0 0 4px;letter-spacing:-.02em}
+  .sub{color:var(--muted);font-size:15px;margin:0 0 28px}
+  .banner{border:1px solid var(--line);border-left:3px solid var(--accent);
+    background:var(--panel);border-radius:8px;padding:14px 16px;margin:0 0 28px;font-size:14px}
+  .banner b{color:var(--accent)}
+  h2{font-size:15px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+    margin:34px 0 12px;font-weight:600}
+  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+  table{border-collapse:collapse;width:100%;font-size:14px;min-width:640px}
+  th,td{padding:11px 14px;text-align:right;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  th:first-child,td:first-child{text-align:left}
+  td.num{font-family:var(--mono)}
+  tr:last-child td{border-bottom:none}
+  .engine{font-weight:600}
+  .meta{color:var(--muted);font-size:12px}
+  .badge{display:inline-block;font-size:11px;font-family:var(--mono);color:var(--best);
+    border:1px solid var(--best);border-radius:5px;padding:1px 6px;margin-left:8px}
+  .best{color:var(--best);font-weight:700}
+  .foot{color:var(--muted);font-size:13px;margin-top:26px}
+  a{color:var(--accent)}
+  code{font-family:var(--mono);font-size:.92em;background:var(--line);padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Agent Dyno</h1>
+  <p class="sub">Surviving work per token, by engine. A leaderboard of harness efficiency.</p>
+
+  <div class="banner">
+    This ranks <b>engine craft</b> — which harness turns tokens into code that
+    lasts — <b>never people, and never against product outcomes</b>. Product
+    success is an unpredictable bet; measuring individuals against it is the
+    regime this project exists to prevent. Your numbers are yours; contributions
+    are opt-in and anonymized.
+  </div>
+
+  <h2>Reference frontier</h2>
+  <div class="scroll"><table id="board">
+    <thead><tr>
+      <th>engine</th>
+      <th>$/surv-KB ↓</th>
+      <th>survKB/Mtok ↑</th>
+      <th>waste % ↓</th>
+      <th>cache-read % ↑</th>
+      <th>samples</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table></div>
+  <p class="foot" id="context"></p>
+
+  <h2>How it works</h2>
+  <p class="sub" style="margin-bottom:8px">
+    The numerator is a git measurement — which lines you added still live,
+    unreverted and un-bug-fixed, at a horizon — so it is the same for any agent or
+    model. The denominator is priced tokens. No single score: the winner on one
+    axis is rarely the winner on another, so read the vector, not a rank. Run it
+    on your own logs with the <code>dyno-report</code> skill; contribute a row
+    with a pull request.
+  </p>
+
+  <p class="foot">
+    <a href="https://github.com/3dl-dev/agent-dyno">github.com/3dl-dev/agent-dyno</a>
+    · MIT · own your own numbers
+  </p>
+</div>
+
+<script>
+// Seed data mirrors frontier/reference-frontier.json; the page tries the live
+// file first and falls back to this so it renders standalone.
+const SEED = {"entries":[
+  {"engine":"solo","vector":{"dollars_per_survkb":1.31,"survkb_per_outmtok":115,"waste_pct":9.0,"cache_read_pct":98.6},"samples":74,"horizon":"session","harness":"claude-code"},
+  {"engine":"delegate","vector":{"dollars_per_survkb":1.36,"survkb_per_outmtok":145,"waste_pct":29.5,"cache_read_pct":97.7},"samples":78,"horizon":"session","harness":"claude-code"},
+  {"engine":"workflow","vector":{"dollars_per_survkb":1.59,"survkb_per_outmtok":126,"waste_pct":57.8,"cache_read_pct":97.3},"samples":59,"horizon":"session","harness":"claude-code"}
+]};
+const AXES=[["dollars_per_survkb","lo"],["survkb_per_outmtok","hi"],["waste_pct","lo"],["cache_read_pct","hi"]];
+
+function render(data){
+  const es=data.entries;
+  // best per axis (for highlighting) + Pareto membership
+  const best={};
+  for(const[k,dir]of AXES){
+    const vals=es.map(e=>e.vector[k]);
+    best[k]=dir==="lo"?Math.min(...vals):Math.max(...vals);
+  }
+  function dominates(a,b){let ge=true,gt=false;
+    for(const[k,dir]of AXES){const av=a.vector[k],bv=b.vector[k];
+      if(dir==="lo"){if(av>bv)ge=false;if(av<bv)gt=true;}else{if(av<bv)ge=false;if(av>bv)gt=true;}}
+    return ge&&gt;}
+  const rows=es.map(e=>{
+    const pareto=!es.some(o=>o!==e&&dominates(o,e));
+    const cell=(k)=>{const v=e.vector[k];const b=Math.abs(v-best[k])<1e-9;
+      return `<td class="num${b?' best':''}">${v}</td>`;};
+    return `<tr>
+      <td class="engine">${e.engine}${pareto?'<span class="badge">pareto</span>':''}
+        <div class="meta">${e.harness} · ${e.horizon} horizon</div></td>
+      ${cell("dollars_per_survkb")}${cell("survkb_per_outmtok")}${cell("waste_pct")}${cell("cache_read_pct")}
+      <td class="num meta">${e.samples}</td></tr>`;
+  }).join("");
+  document.getElementById("rows").innerHTML=rows;
+  document.getElementById("context").textContent =
+    "Seed data: one operator's Claude Code logs, measured at the same-session survival floor (Aug 2026). "
+    + "Bold = best on that axis. Day/week horizons and more harnesses replace this as data arrives.";
+}
+fetch("../frontier/reference-frontier.json").then(r=>r.ok?r.json():Promise.reject())
+  .then(render).catch(()=>render(SEED));
+</script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+{
+  "schema": "agent-dyno/frontier@1",
+  "note": "Opt-in, anonymized engine-craft reference points. No identities, repos, code, or product data. See frontier/README.md.",
+  "axes": {
+    "dollars_per_survkb": "USD per surviving KB (lower better)",
+    "survkb_per_outmtok": "surviving KB per output-Mtok (higher better)",
+    "waste_pct": "chars killed / chars written (lower better)",
+    "cache_read_pct": "cache-read share of input tokens (higher better)"
+  },
+  "entries": [
+    {
+      "id": "seed-cc-solo",
+      "harness": "claude-code",
+      "engine": "solo",
+      "model_roles": {"orchestrator": "strong", "worker": null},
+      "effort": "high",
+      "review_regime": "mixed",
+      "horizon": "session",
+      "samples": 74,
+      "vector": {"dollars_per_survkb": 1.31, "survkb_per_outmtok": 115, "waste_pct": 9.0, "cache_read_pct": 98.6},
+      "date": "2026-08-12"
+    },
+    {
+      "id": "seed-cc-delegate",
+      "harness": "claude-code",
+      "engine": "delegate",
+      "model_roles": {"orchestrator": "strong", "worker": "strong-or-cheap"},
+      "effort": "high",
+      "review_regime": "mixed",
+      "horizon": "session",
+      "samples": 78,
+      "vector": {"dollars_per_survkb": 1.36, "survkb_per_outmtok": 145, "waste_pct": 29.5, "cache_read_pct": 97.7},
+      "date": "2026-08-12"
+    },
+    {
+      "id": "seed-cc-workflow",
+      "harness": "claude-code",
+      "engine": "workflow",
+      "model_roles": {"orchestrator": "strong", "worker": "strong"},
+      "effort": "high",
+      "review_regime": "mixed",
+      "horizon": "session",
+      "samples": 59,
+      "vector": {"dollars_per_survkb": 1.59, "survkb_per_outmtok": 126, "waste_pct": 57.8, "cache_read_pct": 97.3},
+      "date": "2026-08-12"
+    }
+  ]
+}

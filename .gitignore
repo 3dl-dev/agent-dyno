@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+# local telemetry snapshots and archives — never commit raw logs
+snapshots/
+transcript-archive/
+*.local.json
+.DS_Store
