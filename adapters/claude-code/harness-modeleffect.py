@@ -9,7 +9,7 @@ Metric per (engine, model): waste% (killed/born), survKB per Mtok-output
 (how expensive output tokens convert to surviving code), $/surv-KB, output
 $-share. Output is priced per turn's model/date.
 
-Usage: python3 harness-modeleffect.py model-behavior/snapshots/<dir>
+Usage: python3 harness-modeleffect.py <snapshot-dir>
 Stdlib only; imports model-behavior-survival + mb_cost.
 """
 import glob
