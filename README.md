@@ -1,89 +1,95 @@
 # Agent Dyno
 
-Measure the fuel-efficiency of your AI coding setup — how many tokens it takes to
-produce work that **survives** — and compare notes with everyone else, before
-someone who controls the purse imposes a metrics regime that measures the wrong
-thing.
+You've built a real system for coding with AI — a way of wiring up models,
+subagents, review, and effort that gets work done. Agent Dyno helps you see what
+your setup already does well, and find the next bit of leverage, using your own
+data, on your own machine, with your numbers staying yours.
+
+And it does one more thing: it helps everyone get better together. The moment
+someone's setup finds a real unlock, the technique behind it becomes something
+the rest of us can try on the next run. You bring your wins to the commons, and
+you take home everyone else's.
+
+## How it helps
 
 A dynamometer measures an engine's real output under load. Agent Dyno does the
-same for a coding agent: it runs on your own logs and your own git history, and
-reports how efficiently your **harness** (how you wire the models, subagents,
-review, and effort) turns tokens into code that lasts.
+same for a coding setup: it reads your logs and your git history and shows how
+efficiently your **harness** turns tokens into work that **survives** — code that
+ships and stays shipped.
 
-## Why this exists
+- It starts from what's working. Every setup has real strengths; the report leads
+  with yours.
+- It surfaces opportunities from your own numbers, never from a rulebook. You
+  decide what to try; you watch your own number move.
+- It learns from everyone. The improvements it suggests are validated wins mined
+  from real setups like yours — with the evidence — not best-practice lectures.
 
-The token-cost backlash keeps asking the wrong question: *are you building value
-with the tokens?* Value is not attributable. You cannot trace an engineer's
-tokens to a product feature that wins the market — that is a bet, unpredictable
-in advance, no more forecastable than whether a program halts. Measuring people
-against product outcomes imports noise nobody controls, and it turns
-self-reporting into surveillance.
+Nothing is prescribed by fiat. Nothing is uploaded unless you choose to share it.
 
-So Agent Dyno measures something objective instead: **surviving work per token.**
+## What it measures
 
 - **Fuel** is tokens (priced in dollars, since input/output/cache differ ~20×).
-- **The engine** is your harness: model routing, delegation topology, review
-  regime, reasoning effort.
-- **Work** is what *survives* in git — code not reverted, not rebuilt, not later
-  bug-fixed. Measured at a horizon (a day, a week), so a harness that skips
-  review can't fake it: unverified code dies, and its numerator collapses.
+- **The engine** is your harness: model routing, delegation, review regime, effort.
+- **Work** is what survives in git — not reverted, not rebuilt, not later
+  bug-fixed. Measured at a horizon, so durable work is what counts, and the tool
+  is honest about the difference between output and output that lasts.
 
-## The one rule
+Efficiency is a **vector**, never a single score — the best setup on one axis is
+rarely best on another, so you see the whole picture and pick what matters to you.
 
-**An individual measures tokens-per-surviving-output, for self-improvement. A
-team or company measures tokens-per-product. Nobody ranks an individual against
-product outcomes.** If every engine is fuel-efficient, the unit ships efficiently
-— with no product-linked personal KPI required. Ranking individuals on product is
-a misuse of this tool, not a use of it. The reporting is built so that misuse is
-hard: individual data is self-owned and opt-in; the shared leaderboard compares
-*engine craft*, never people-against-features. See [docs/governance.md](docs/governance.md).
+## Your numbers are yours
 
-## Harness-agnostic by design
+You measure your **own** engine, for your **own** improvement. The shared
+leaderboard is about engine *craft* — which techniques turn tokens into durable
+work — never about ranking people, and never tied to product outcomes (whether a
+feature wins the market is a bet nobody controls). Contributions are opt-in and
+anonymized: the *technique and the numbers* travel; your identity, your repos,
+and your code never do. See [docs/governance.md](docs/governance.md).
 
-The numerator is a **git measurement**, so it is neutral across every agent and
-model. Which lines added at time T are still alive at T+N is a property of the
-repository, not of the tool that typed them. A human, Claude Code, pi, or
-OpenCode all deposit into the same git history and are measured the same way.
+## Get better together
 
-Only the token/cost/fingerprint side is harness-specific, and it lives behind a
-thin **adapter**. Claude Code is the first adapter; `pi` and `opencode` are
-adapter slots, not rewrites. Models plug in through a price registry, never
-hardcoded.
+The frontier is a living commons of validated leverage. Each contribution carries
+the transferable part — the engine configuration that produced a result, plus the
+result — so that when your `dyno-tune` says "setups like yours that tried this saw
+that," it's pointing at something real that someone actually did, and you can
+adopt it in an afternoon. Someone 10x's a workflow; next run, that pattern is
+waiting for the rest of us. See [frontier/](frontier/).
 
 ## Quickstart
 
 ```bash
-# 1. Objective numerator, works on any repo, any agent:
+# The objective numerator — works on any repo, any agent, no setup:
 python3 core/survival_git.py --repo /path/to/your/repo --since 30.days.ago
 
-# 2. Full efficiency report from Claude Code logs (the first adapter):
-#    see skills/dyno-report — hand it to your agent, it runs locally, stdlib only.
+# A full, friendly efficiency report from your Claude Code logs:
+#   hand skills/dyno-report to your agent — it runs locally, stdlib only.
 ```
 
-Nothing is uploaded. Everything runs on your machine. Contributing your
-(anonymized, opt-in) numbers to the shared frontier is a pull request you choose
-to make — see [frontier/](frontier/).
+## Harness-agnostic by design
 
-## What ships here
+The measure of surviving work is a **git** property, so it's the same for a human,
+Claude Code, pi, or OpenCode — everyone deposits into the same history. Only the
+token side is harness-specific, and it lives behind a thin **adapter** (Claude
+Code built; pi and opencode are open slots). Models plug in through a price
+registry. So whatever you run, you're welcome, and your wins count.
 
-The factory, the operator, and the code, as one unit — nothing held in reserve:
+## What's here
 
-- `core/` — the harness-neutral git-survival numerator.
-- `adapters/` — per-harness extraction into a common schema (claude-code built; pi, opencode as slots).
-- `skills/` — self-contained agent skills (report, dynamometer, tune); the method lives in the SKILL.md, so any agent runs them cold.
-- `frontier/` — the opt-in, community-maintained reference numbers.
-- `leaderboard/` — the public leaderboard page.
-- `docs/` — the protocol, the governance invariant, the claims register.
+- `core/` — the harness-neutral git-survival numerator + per-engine attribution.
+- `adapters/` — per-harness token extraction (claude-code built; pi, opencode slots).
+- `skills/` — self-contained agent skills (report, dynamometer, tune).
+- `frontier/` — the opt-in, community-maintained commons of technique.
+- `leaderboard/` — the public leaderboard of engine craft.
+- `docs/` — the method, the governance, the claims register.
 
 ## Status
 
-Early and honest. The concept and the harness-neutral numerator are built and
-dogfooded; horizon-survival attribution (mapping surviving lines to the harness
-that wrote them) and the pi/opencode adapters are in progress. The
-[claims register](docs/claims.md) tracks what is measured, what is confirmed, and
-what is still open — including the review-methodology debates, which are just
-more rows.
+Early and honest. The harness-neutral numerator and per-engine attribution are
+built and dogfooded; day/week horizon curves and the pi/opencode adapters grow as
+data and contributors arrive. The [claims register](docs/claims.md) tracks what's
+measured, confirmed, and still open. Come help — every setup you bring makes the
+commons better for the next person.
 
 ## License
 
-MIT. Use it, fork it, own your own numbers.
+MIT. Use it, fork it, own your own numbers, share your wins.
