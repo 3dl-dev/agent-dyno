@@ -39,24 +39,28 @@ def engine(s):
     return "solo"
 
 
+def _pick(snap, prefix):
+    """Snapshot JSONL for `prefix` (mb/mc); accepts plain or legacy .filtered."""
+    hits = sorted(glob.glob(os.path.join(snap, f"{prefix}-*.jsonl")))
+    if not hits:
+        sys.exit(f"no {prefix}-*.jsonl found in {snap}")
+    return hits[0]
+
+
 def main(snap):
     sessions, code = {}, {}
-    for l in open(glob.glob(os.path.join(snap, "mb-*.filtered.jsonl"))[0]):
+    for l in open(_pick(snap, "mb")):
         r = json.loads(l)
         if r.get("k") == "session":
             sessions[r["sess"]] = r
-    for l in open(glob.glob(os.path.join(snap, "mc-*.filtered.jsonl"))[0]):
+    for l in open(_pick(snap, "mc")):
         r = json.loads(l)
         if r.get("k") == "code":
             code[r["sess"]] = r
 
     sys.stderr.write("scanning transcripts for per-session survival ...\n")
-    sv = {}
-    for mp in glob.glob(os.path.join(surv.ROOT, "*", "*.jsonl")):
-        sid = os.path.basename(mp)[:-6]
-        born, killed, ar, cm = surv.scan_session(mp)
-        if born:
-            sv[sid] = (born, killed)
+    cache_path = os.path.join(snap, "survival-cache.json")
+    sv = surv.per_session_survival(cache_path=cache_path, verbose=True)
 
     grid = defaultdict(lambda: defaultdict(float))
     N = defaultdict(int)

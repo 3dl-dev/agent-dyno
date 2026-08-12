@@ -133,6 +133,71 @@ def scan_session(main_path):
     return total_born, killed, at_risk, committed_any
 
 
+def session_mtime(main_path):
+    """Newest mtime across a session's transcript files (main + subagents).
+
+    A new subagent transcript changes this, so the cache entry invalidates and
+    the session is rescanned.
+    """
+    m = 0.0
+    for f in session_files(main_path):
+        try:
+            m = max(m, os.path.getmtime(f))
+        except OSError:
+            continue
+    return m
+
+
+def per_session_survival(cache_path=None, verbose=False):
+    """Compute {sid: (born_chars, killed_chars)} over ROOT, scanning each session once.
+
+    This is the expensive transcript walk shared by the survival-join analyses
+    (harness-efficiency, harness-modeleffect). Computing it here, with an
+    optional on-disk cache keyed by (session id + newest transcript mtime),
+    means the walk happens once and later tools reuse it: point every tool at
+    the same `cache_path` (e.g. a file next to the snapshot) and the second run
+    is near-instant. Only sessions whose transcripts changed are rescanned.
+
+    Sessions with zero born chars are omitted from the return, but are still
+    recorded in the cache so they are not rescanned next time.
+    """
+    cache = {}
+    if cache_path and os.path.exists(cache_path):
+        try:
+            with open(cache_path) as f:
+                cache = json.load(f)
+        except Exception:
+            cache = {}
+    out = {}
+    new_cache = {}
+    scanned = reused = 0
+    for mp in glob.glob(os.path.join(ROOT, "*", "*.jsonl")):
+        sid = os.path.basename(mp)[:-6]
+        mt = session_mtime(mp)
+        ce = cache.get(sid)
+        if ce and abs(ce.get("mtime", -1) - mt) < 1e-6:
+            born, killed = ce.get("born", 0), ce.get("killed", 0)
+            reused += 1
+        else:
+            born, killed, _at_risk, _committed = scan_session(mp)
+            scanned += 1
+        new_cache[sid] = {"mtime": mt, "born": born, "killed": killed}
+        if born:
+            out[sid] = (born, killed)
+    if cache_path:
+        try:
+            tmp = cache_path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(new_cache, f)
+            os.replace(tmp, cache_path)
+        except Exception:
+            pass
+    if verbose:
+        print(f"  per-session survival: {len(out)} sessions with writes "
+              f"({scanned} scanned, {reused} from cache)", file=sys.stderr)
+    return out
+
+
 def main():
     since = None
     if "--since" in sys.argv:

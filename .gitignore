@@ -3,8 +3,9 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
-# local telemetry snapshots and archives — never commit raw logs
+# local telemetry snapshots and archives, never commit raw logs
 snapshots/
+survival-cache.json
 transcript-archive/
 *.local.json
 .DS_Store

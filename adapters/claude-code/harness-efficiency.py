@@ -9,11 +9,14 @@ VECTOR per engine and the Pareto frontier across engines. Deliberately NO
 composite score: this session's own lesson is that a composite built mostly of
 volume terms re-flatters the worst engine. The frontier is Pareto, not a rank.
 
-Input: the merged snapshot JSONL (session/turn/code records) from mb_snapshot.py.
-Also walks the raw transcripts under ~/.claude/projects for per-session survival.
+Input: the snapshot JSONL (session/turn/code records) written by snapshot.py,
+i.e. the mb-<host>.jsonl and mc-<host>.jsonl under a dated snapshot dir. Also
+walks the raw transcripts under ~/.claude/projects once for per-session survival,
+caching the result in survival-cache.json next to the snapshot so a re-run (and
+harness-modeleffect, pointed at the same snapshot) reuses it.
 
 Usage:
-  python3 harness-efficiency.py model-behavior/snapshots/<dir>/*.filtered.jsonl
+  python3 harness-efficiency.py <snapshot-dir>/mb-*.jsonl <snapshot-dir>/mc-*.jsonl
 
 Stdlib only. Imports survival scan + cost from sibling modules.
 """
@@ -47,17 +50,6 @@ def routing(orch_model, submix):
     wb = {base(m) for m in submix}
     ob = base(orch_model)
     return "homogeneous" if wb == {ob} else "cross:" + "+".join(sorted(b for b in wb if b != ob))
-
-
-def per_session_survival():
-    """sess_id -> (born_chars, killed_chars) from raw transcripts."""
-    out = {}
-    for mp in surv.glob.glob(os.path.join(surv.ROOT, "*", "*.jsonl")):
-        sid = os.path.basename(mp)[:-6]
-        born, killed, at_risk, committed = surv.scan_session(mp)
-        if born:
-            out[sid] = (born, killed)
-    return out
 
 
 def load_snapshot(paths):
@@ -170,7 +162,9 @@ def report(title, acc, n):
 def main(paths):
     sessions, code, touches = load_snapshot(paths)
     print("scanning raw transcripts for per-session survival ...", file=sys.stderr)
-    survmap = per_session_survival()
+    snap_dir = os.path.dirname(os.path.abspath(paths[0]))
+    cache_path = os.path.join(snap_dir, "survival-cache.json")
+    survmap = surv.per_session_survival(cache_path=cache_path, verbose=True)
     print(f"  survival for {len(survmap)} sessions; {len(sessions)} in snapshot",
           file=sys.stderr)
 
