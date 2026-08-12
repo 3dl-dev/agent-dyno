@@ -58,11 +58,11 @@ for the rest of us. See [frontier/](frontier/).
 ## Quickstart
 
 ```bash
-# The objective numerator — works on any repo, any agent, no setup:
+# The objective numerator, works on any repo, any agent, no setup:
 python3 core/survival_git.py --repo /path/to/your/repo --since 30.days.ago
 
 # A full, friendly efficiency report from your Claude Code logs:
-#   hand skills/dyno-report to your agent — it runs locally, stdlib only.
+#   hand skills/dyno-report to your agent, it runs locally, stdlib only.
 ```
 
 ## Harness-agnostic by design
@@ -75,12 +75,12 @@ Whatever you run, you're welcome, and your wins count.
 
 ## What's here
 
-- `core/` — the harness-neutral git-survival numerator plus per-engine attribution.
-- `adapters/` — per-harness token extraction (claude-code built; pi, opencode slots).
-- `skills/` — self-contained agent skills (report, dynamometer, tune).
-- `frontier/` — the opt-in, community-maintained commons of technique.
-- `leaderboard/` — the public leaderboard of engine craft.
-- `docs/` — the method, the governance, the claims register.
+- `core/`: the harness-neutral git-survival numerator plus per-engine attribution.
+- `adapters/`: per-harness token extraction (claude-code built; pi, opencode slots).
+- `skills/`: self-contained agent skills (report, dynamometer, tune).
+- `frontier/`: the opt-in, community-maintained commons of technique.
+- `leaderboard/`: the public leaderboard of engine craft.
+- `docs/`: the method, the governance, the claims register.
 
 ## Status
 

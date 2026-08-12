@@ -49,7 +49,7 @@ _USAGE_ALIASES = {
     "cache_r": ("cache_read_input_tokens", "cache_r_tok", "cache_r"),
 }
 
-# Record keys that hold a {model: usage_dict} breakdown — used by session_cost
+# Record keys that hold a {model: usage_dict} breakdown, used by session_cost
 # to walk every model bucket in a 'session' or 'code' record.
 _BY_MODEL_KEYS = ("main_usage", "sub_usage", "orch_by_model", "work_by_model")
 
@@ -169,7 +169,7 @@ def cost_per_edit_report(paths, models=None, prices=None):
 
     Returns a list of (model, sessions, edits, dollars, dollars_per_edit) rows,
     aggregated as sum(dollars)/sum(edits) across sessions dominated by that
-    model — a weighted average, not a mean of per-session ratios.
+    model, a weighted average, not a mean of per-session ratios.
     """
     models = models or ["claude-fable-5", "claude-opus-4-8", "claude-opus-5"]
     prices = prices if prices is not None else load_prices()

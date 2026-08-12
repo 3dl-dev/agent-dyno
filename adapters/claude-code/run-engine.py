@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-run-engine.py — the dynamometer (P2 of the Harness Efficiency Protocol).
+run-engine.py, the dynamometer (P2 of the Harness Efficiency Protocol).
 
 Where run-arm.py varied the *model pair*, this varies the *engine* (harness):
 same task, same repo/ref, replayed through each entry in ENGINE_CATALOG, so the
-efficiency vector is compared on identical terrain — the only clean way to
+efficiency vector is compared on identical terrain, the only clean way to
 settle "opus-drives-sonnet vs just-opus" or "wide fan-out vs sequential".
 
 An engine is a bundle: orchestrator model + worker model + whether to write a
@@ -20,7 +20,7 @@ Usage:
   python3 run-engine.py --task tasks/fix-parser.json --dry-run
 
 A task JSON is {task_id, repo, ref, prompt, check?}. Running the full matrix
-spends real tokens — that is the operator's call; --dry-run prints the matrix
+spends real tokens, that is the operator's call; --dry-run prints the matrix
 and the exact commands first. Extract metrics afterwards with
 model-experiment/extract-run.py, then analyze with the harness-* scripts.
 
@@ -139,11 +139,11 @@ def main():
                 run_arm.write_worker_spec(wt)  # pins per run-arm's template
             # NOTE: full session invocation + runs.jsonl append mirrors run-arm.main();
             # kept behind --dry-run by default so a matrix never spends unprompted.
-            print("  (live execution stub — remove the guard once the operator "
+            print("  (live execution stub, remove the guard once the operator "
                   "authorizes spend; see run-arm.main for the invoke+record body)")
 
     if args.dry_run:
-        print("\ndry run — nothing executed, no tokens spent. "
+        print("\ndry run, nothing executed, no tokens spent. "
               "Re-run without --dry-run to execute (spends tokens).")
 
 

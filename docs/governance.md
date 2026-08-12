@@ -5,7 +5,7 @@ This is the constitution. Everything else serves it.
 ## The unit is the individual's own engine
 
 Agent Dyno measures tokens in, surviving output out, for a single person's own
-setup. It exists for **self-improvement** — you tuning your engine against your
+setup. It exists for **self-improvement**, you tuning your engine against your
 own past self. That is the whole intended use.
 
 ## The line that must never be crossed
@@ -16,7 +16,7 @@ efficiency tied to features shipped, nor be compared to other people on output.
 Three reasons, and they compound:
 
 1. **Product success is unpredictable.** Whether a feature wins the market is a
-   bet, not a skill readout — no more forecastable than whether a program halts.
+   bet, not a skill readout, no more forecastable than whether a program halts.
    Ranking a person on it punishes them for noise they cannot control.
 2. **It corrupts the signal.** The moment self-reporting feeds a personal ranking,
    people report to look good, not to learn. The honest numbers the method needs
@@ -40,8 +40,8 @@ no product-linked individual KPI required. That is the point.
 
 - Individual data is self-owned and never leaves the machine unless the person
   opts in.
-- The shared leaderboard compares **engine craft** — who tuned the most efficient
-  harness — never people against features. Contributions are anonymized (engine
+- The shared leaderboard compares **engine craft**: who tuned the most efficient
+  harness, never people against features. Contributions are anonymized (engine
   fingerprint + vector only; no identities, no repo names, no code).
 - Any agent or report asked to produce an individual-versus-product ranking must
   decline and cite this document.

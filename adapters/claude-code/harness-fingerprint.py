@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-harness-fingerprint.py — granular engine taxonomy + the O(read) test.
+harness-fingerprint.py, granular engine taxonomy + the O(read) test.
 Extends the coarse solo/delegate/workflow of harness-characterize.py into
 named SETUPS, using signal that separates a naive plain-Claude session from a
 practice-kit swarm from a parallel-session driver:
@@ -134,7 +134,7 @@ def main(paths):
         rpe = a["reads"] / max(1, a["edits"])
         ocr = 100 * a["o_cache_r"] / max(1, a["o_cache_r"] + a["o_in"] + a["o_cache_w"])
         wcr = 100 * a["w_cache_r"] / max(1, a["w_cache_r"] + a["w_in"] + a["w_cache_w"])
-        wcr_s = f"{wcr:>15.1f}" if (a["w_cache_r"] + a["w_in"]) else f"{'—':>15}"
+        wcr_s = f"{wcr:>15.1f}" if (a["w_cache_r"] + a["w_in"]) else f"{'-':>15}"
         print(f"{lab:18}{n[lab]:>5}{rpe:>12.1f}{ocr:>13.1f}%{wcr_s}%")
 
     # ── the O(read) test: worker cold-cache tax, homogeneous vs cross-model ──

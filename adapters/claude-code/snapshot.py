@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-snapshot.py — universal, dependency-free retention for the fuel/fingerprint side.
+snapshot.py, universal, dependency-free retention for the fuel/fingerprint side.
 
 Long-horizon analytics has two halves, and only one of them needs retaining:
 
-  * Surviving work (the numerator) lives in GIT — retained forever by everyone,
+  * Surviving work (the numerator) lives in GIT: retained forever by everyone,
     for free. core/survival_git.py reads it directly. No archiver, no infra.
   * The fuel/fingerprint side (tokens, effort, engine) lives in the harness's
     transcripts, which rotate (~30 days for Claude Code). This script freezes the
-    *derived* per-session metrics before they rotate — kilobytes a month, stored
+    *derived* per-session metrics before they rotate, kilobytes a month, stored
     locally, that anyone can keep forever with zero infrastructure.
 
 So retention in this kit is: keep git (you already do) + keep these tiny local
@@ -58,7 +58,7 @@ def main():
         except subprocess.CalledProcessError as e:
             print(f"extractor {extractor} failed: {e}", file=sys.stderr)
     print(f"snapshot written: {d}")
-    print("keep this directory — it is your long-horizon fuel record. "
+    print("keep this directory, it is your long-horizon fuel record. "
           "Tiny, local, and all you need alongside git.")
 
 

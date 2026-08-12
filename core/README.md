@@ -1,4 +1,4 @@
-# core — the harness-neutral numerator
+# core, the harness-neutral numerator
 
 `survival_git.py` computes horizon-survival from git alone: of the lines added in
 a past window, what fraction are still alive at HEAD (still blamed to the adding
@@ -17,4 +17,4 @@ Known limits (tracked, not hidden):
   (a fix touching recently-added lines) is a follow-on.
 - blame is line-exact, so a cosmetic reformat resets blame and undercounts survival.
 - repo-level until commits are mapped to sessions/harnesses for per-engine
-  attribution — that mapping is what turns the numerator into a harness comparison.
+  attribution, that mapping is what turns the numerator into a harness comparison.

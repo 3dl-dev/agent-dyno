@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-harness-readcost.py — adjudicate the O(reads) claims against our own logs.
+harness-readcost.py, adjudicate the O(reads) claims against our own logs.
 
 Tests two literature claims:
-  C1  "cost is O(reads)"        — read machinery (input + cache-read + cache-write)
+  C1  "cost is O(reads)"     , read machinery (input + cache-read + cache-write)
                                    dominates $ vs generation (output).
-  C2  "reads grow with depth"   — per-turn read cost rises as the conversation
+  C2  "reads grow with depth", per-turn read cost rises as the conversation
                                    gets longer (the quadratic-ish curve).
 
 Reads $ = price(input + cache_read + cache_write); Gen $ = price(output), per turn

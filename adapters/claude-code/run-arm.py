@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-run-arm.py — arm-runner harness for the orchestrator/subagent model-configuration
+run-arm.py, arm-runner harness for the orchestrator/subagent model-configuration
 experiment (resonant-321).
 
     python3 run-arm.py <arm> <task-id> --repo <path> --ref <git-ref> --prompt-file <path>
@@ -15,7 +15,7 @@ For every arm, the subagent worker spec (.claude/agents/impl-worker.md) pins
 pin a subagent to Opus 5 from a session driven by any other model: the Agent
 tool's `model` parameter is an enum (`sonnet|opus|haiku|fable`) with no way to
 name a specific generation's Opus tier, and it resolves aliases within the
-*driving session's* model family — from an Opus 4.8 session, `model: "opus"`
+*driving session's* model family, from an Opus 4.8 session, `model: "opus"`
 resolves to Opus 4.8, not Opus 5. An agent spec's frontmatter, by contrast,
 takes a full model ID.
 
@@ -53,7 +53,7 @@ WORKER_MODEL = "claude-opus-5"
 
 WORKER_SPEC = f"""---
 name: impl-worker
-description: General implementation worker for delegated coding tasks — writing files, running commands, editing code. Use this agent for any generic subagent work in this session.
+description: General implementation worker for delegated coding tasks, writing files, running commands, editing code. Use this agent for any generic subagent work in this session.
 model: {WORKER_MODEL}
 ---
 

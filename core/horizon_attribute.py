@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-horizon_attribute.py — join surviving git lines to the engine that wrote them.
+horizon_attribute.py, join surviving git lines to the engine that wrote them.
 
 This is what turns the harness-neutral numerator into a per-engine long-horizon
 comparison. survival_git.py answers "did the code last"; this answers "did *this
@@ -20,7 +20,7 @@ Inputs:
 Stdlib + git only.
 
 Result: per engine, of the lines it added in the window, what fraction survive at
-HEAD — the real horizon-survival numerator, attributed.
+HEAD, the real horizon-survival numerator, attributed.
 """
 import argparse
 import glob

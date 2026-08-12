@@ -1,7 +1,7 @@
 # Dynamometer task suite
 
 Each task is a JSON: {task_id, repo, ref, prompt, check?}. Use REAL extracted
-repo tasks (a bug, a feature, a refactor) with a known-good outcome — replayed
+repo tasks (a bug, a feature, a refactor) with a known-good outcome, replayed
 identically through every engine in run-engine.py's ENGINE_CATALOG so the
 efficiency vector is compared on identical terrain.
 

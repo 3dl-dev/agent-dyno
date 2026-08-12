@@ -1,4 +1,4 @@
-# adapters/opencode — slot
+# adapters/opencode, slot
 
 Adapter slot for the **OpenCode** harness. Not yet implemented.
 

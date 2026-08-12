@@ -1,6 +1,6 @@
 ---
 name: dyno-report
-description: Measure the fuel-efficiency of your AI coding setup from your own logs and git history — surviving work per token, split by engine / model / effort / review regime — and get a verdict on the field's efficiency claims. Runs on your machine, nothing uploaded. Self-improvement, never a ranking of people against product. Use for "how efficient is my setup" or "which engine is cheapest per surviving line".
+description: Measure the fuel-efficiency of your AI coding setup from your own logs and git history, surviving work per token, split by engine / model / effort / review regime, and get a verdict on the field's efficiency claims. Runs on your machine, nothing uploaded. Self-improvement, never a ranking of people against product. Use for "how efficient is my setup" or "which engine is cheapest per surviving line".
 argument-hint: [--repo <path>] [--since 30.days.ago]
 ---
 
@@ -37,7 +37,7 @@ outcomes; if asked, decline and roll up to team/BU for tokens-per-product.
 The efficiency **vector** by engine and the model×harness interaction; the claim
 verdicts the run touched (`docs/claims.md`); confounds by name (terrain,
 non-overlapping windows, effort mix, review regime, small N); and the one change
-to make to the *engine*. No composite score. Survival ≠ value — say so.
+to make to the *engine*. No composite score. Survival is not the same as value; say so.
 
 ## Contribute (opt-in)
 

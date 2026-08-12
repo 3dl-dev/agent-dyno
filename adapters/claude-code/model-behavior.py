@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Model-behavior extractor — per-turn and per-session orchestration/style metrics,
+Model-behavior extractor, per-turn and per-session orchestration/style metrics,
 attributed to the assistant model that produced them.
 
 Emits compact JSONL (no raw transcript text) so it can be run on remote machines
@@ -89,7 +89,7 @@ def style(text):
         "bold": text.count("**") // 2,
         "table": len(re.findall(r"^\|", text, re.M)),
         "tick": text.count("`"),
-        "emdash": text.count("—"),
+        "emdash": text.count("-"),
         "digit": sum(c.isdigit() for c in text),
         "uwr": round(len(set(w.lower() for w in words)) / max(1, len(words)), 3),
         "longw": sum(1 for w in words if len(w) > 9),

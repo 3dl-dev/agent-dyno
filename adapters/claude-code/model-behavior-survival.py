@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Prototype: objective "wasted build" signal — code written and then provably
+Prototype: objective "wasted build" signal, code written and then provably
 killed. Walks raw session transcripts, tracks characters written per file path
 (Edit/Write, main loop + subagents), then detects kill events that target those
 paths in the SAME session:

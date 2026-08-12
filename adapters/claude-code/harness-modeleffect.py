@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-harness-modeleffect.py — isolate the MODEL effect at fixed harness, and the
+harness-modeleffect.py, isolate the MODEL effect at fixed harness, and the
 model x harness interaction. Answers "is model irrelevant?": no. Within one
 engine, output-token -> surviving-code efficiency and waste vary by model; and
 a model's waste depends on the harness wrapped around it (interaction).
@@ -101,7 +101,7 @@ def main(snap):
             if g and N[(e, m)] >= MIN_N:
                 cells += f"{100*g['killed']/max(1, g['born']):>11.0f}%"
             else:
-                cells += f"{'—':>12}"
+                cells += f"{'-':>12}"
         print(f"{m:11}{cells}")
     print("\nA model efficient solo can waste heavily once it orchestrates: "
           "efficiency is f(model, harness, interaction), not either alone.")

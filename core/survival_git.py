@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-harness-survival-git.py — horizon-survival, measured from git (harness-neutral).
+harness-survival-git.py, horizon-survival, measured from git (harness-neutral).
 
 The objective numerator of the Harness Efficiency Protocol: of the lines added in
 a past window, what fraction are still alive at HEAD (survived), and what fraction
 were later touched by a fix/revert (defect signal). This is a property of the
-repository, not of the agent that typed the code — so it works identically for
+repository, not of the agent that typed the code, so it works identically for
 Claude Code, pi, OpenCode, or a human, across any model family. Git is the shared
 substrate.
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-extract-run.py — per-run metrics for the model-configuration experiment
+extract-run.py, per-run metrics for the model-configuration experiment
 (resonant-321), using the SAME definitions as
 the sibling model-behavior.py and model-behavior-code.py in this adapter
-(imported directly from this directory — not re-derived).
+(imported directly from this directory, not re-derived).
 
     python3 extract-run.py --runs-file runs.jsonl [--out metrics-runs.jsonl]
     python3 extract-run.py <session_id> [<session_id> ...] [--out metrics-runs.jsonl]
@@ -71,7 +71,7 @@ def find_session_path(session_id):
     if not matches:
         return None
     # Prefer the most recently modified if somehow more than one matches
-    # (shouldn't happen — session ids are UUIDs — but be defensive).
+    # (shouldn't happen, session ids are UUIDs, but be defensive).
     matches.sort(key=lambda p: os.path.getmtime(p), reverse=True)
     return matches[0]
 

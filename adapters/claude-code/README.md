@@ -10,19 +10,19 @@ Python 3, stdlib only. No install.
 
 ## What's here
 
-- `model-behavior.py`, `model-behavior-code.py` — per-turn / per-session /
+- `model-behavior.py`, `model-behavior-code.py`: per-turn / per-session /
   per-code extractors (tokens, tools, effort, orchestrator vs worker split).
-- `model-behavior-survival.py` — same-session waste (the survival floor).
-- `mb_cost.py` + `prices.json` — full dollar accounting; edit `prices.json` to
+- `model-behavior-survival.py`: same-session waste (the survival floor).
+- `mb_cost.py` + `prices.json`: full dollar accounting; edit `prices.json` to
   add models or update rates (never hardcode IDs elsewhere).
-- `harness-characterize.py` — engine classes + engine×model entanglement.
-- `harness-efficiency.py` — the efficiency vector + Pareto frontier.
-- `harness-fingerprint.py` — granular setups + the delegation cold-read test.
-- `harness-modeleffect.py` — model effect at fixed harness + interaction.
-- `harness-readcost.py` — is cost O(reads).
-- `harness-switchcost.py` — mid-session model-switch tax.
-- `harness-subagenttax.py` — per-subagent cold-prefill tax.
-- `run-engine.py` + `run-arm.py` — the dynamometer: one task through every engine
+- `harness-characterize.py`: engine classes + engine×model entanglement.
+- `harness-efficiency.py`: the efficiency vector + Pareto frontier.
+- `harness-fingerprint.py`: granular setups + the delegation cold-read test.
+- `harness-modeleffect.py`: model effect at fixed harness + interaction.
+- `harness-readcost.py`: is cost O(reads).
+- `harness-switchcost.py`: mid-session model-switch tax.
+- `harness-subagenttax.py`: per-subagent cold-prefill tax.
+- `run-engine.py` + `run-arm.py`: the dynamometer: one task through every engine
   (see `skills/dyno-dynamometer`). `--dry-run` plans the matrix and spends nothing.
 
 ## Common schema (what every adapter must emit)

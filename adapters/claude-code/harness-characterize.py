@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-harness-characterize.py — P0 of the Harness Efficiency Protocol
+harness-characterize.py, P0 of the Harness Efficiency Protocol
 (docs/specs/harness-efficiency-protocol.md).
 
 Classifies each session by the ENGINE it ran (solo / delegate / workflow),

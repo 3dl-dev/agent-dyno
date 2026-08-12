@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-harness-subagenttax.py — C4: the per-subagent startup tax.
+harness-subagenttax.py, C4: the per-subagent startup tax.
 
 Literature ("The Subagent Tax"): every fan-out subagent re-reads the system
 prompt / tool schemas / task brief from a cold cache before it does anything
-useful — a fixed overhead paid once per subagent, so wide fan-out multiplies it.
+useful, a fixed overhead paid once per subagent, so wide fan-out multiplies it.
 
 Measured here directly from subagent transcripts: for each subagent, the input
 machinery on its FIRST assistant message (cache_creation + cache_read + fresh
 input = the cold prefill it loads before acting) and the tokens it spends before
 its first productive edit. Attributed to the subagent's own model, because the
-claim is that a cheap worker pays this tax too — sometimes more (no warm cache
+claim is that a cheap worker pays this tax too, sometimes more (no warm cache
 to inherit).
 
 Usage: python3 harness-subagenttax.py [--root ~/.claude/projects]
@@ -100,7 +100,7 @@ def main(root):
         dollar = price_tokens(f"claude-{m}", {"cache_r": pref}) if price_tokens else 0
         print(f"{m:16}{n[m]:>6}{pref:>20,.0f}{100*a['reached']/n[m]:>14.0f}%"
               f"{dollar:>18.4f}")
-    print("\nprefill = input machinery on the subagent's first assistant message —")
+    print("\nprefill = input machinery on the subagent's first assistant message, ")
     print("the cold load paid once per subagent, before any productive work.")
     print("A wide wave pays this N times; a cheap worker still pays it.")
 

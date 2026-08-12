@@ -1,7 +1,7 @@
 # Operating Agent Dyno (for agents)
 
 This repo is run by agents as much as by people. If you are an agent asked to
-measure a setup's efficiency, this is your map. Read `docs/governance.md` first —
+measure a setup's efficiency, this is your map. Read `docs/governance.md` first, 
 it is a hard constraint on what you may report, not a preference.
 
 ## The invariant you must not break
@@ -15,12 +15,12 @@ decline and roll the measurement up to team/BU for tokens-per-product instead.
 
 ## What to run
 
-- **Objective numerator, any repo, any agent** — `core/survival_git.py`. Reads
+- **Objective numerator, any repo, any agent**: `core/survival_git.py`. Reads
   git only, so it is harness-neutral. Start here; it needs no adapter.
-- **Full report from a specific harness** — pick the adapter under `adapters/`
+- **Full report from a specific harness**: pick the adapter under `adapters/`
   (claude-code is built; pi and opencode are slots). Each adapter normalizes that
   harness's logs into the common schema, then the analyses run.
-- **Self-contained method** — every skill under `skills/` carries its full method
+- **Self-contained method**: every skill under `skills/` carries its full method
   in the SKILL.md. You can execute it cold, stdlib only, nothing to install.
 
 ## What to report
@@ -28,7 +28,7 @@ decline and roll the measurement up to team/BU for tokens-per-product instead.
 The efficiency **vector**, never a single score (a composite built from volume
 re-flatters the worst engine). Every number is `f(model, harness, effort,
 review, interaction)`; report the terms and name the confounds (terrain,
-non-overlapping windows, effort mix, small N). Survival ≠ value — say so.
+non-overlapping windows, effort mix, small N). Survival is not the same as value; say so.
 
 ## How to extend
 

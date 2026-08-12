@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-harness-efficiency.py — P1 of the Harness Efficiency Protocol
+harness-efficiency.py, P1 of the Harness Efficiency Protocol
 (docs/specs/harness-efficiency-protocol.md).
 
 Joins per-session SURVIVING work (born - same-session-killed chars) with FUEL

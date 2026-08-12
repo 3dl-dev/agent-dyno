@@ -11,7 +11,7 @@ measurable after the fact, and needs no prediction of what wins the market.
 |---|---|
 | fuel | tokens, priced in dollars (input / output / cache-write / cache-read differ ~20×) |
 | engine | the harness: model routing, delegation topology, review regime, effort |
-| work | code that **survives** in git — not reverted, not rebuilt, not later bug-fixed |
+| work | code that **survives** in git, not reverted, not rebuilt, not later bug-fixed |
 | efficiency | surviving work ÷ fuel, reported as a **vector**, never one score |
 
 A composite score is the Goodhart door: fold survival into a volume-heavy index
@@ -34,11 +34,11 @@ pi, or OpenCode are all measured identically. `core/survival_git.py` computes it
 
 Long-horizon analytics needs the past, but almost none of it needs archiving:
 
-- **The numerator is already retained — by git.** Which lines you added survive
+- **The numerator is already retained: by git.** Which lines you added survive
   is in your history forever, for everyone, free. No archiver, no NAS, no tank.
 - **Only the fuel/fingerprint side rotates** (transcripts, ~30 days). Retain it
   with `adapters/<harness>/snapshot.py`: a periodic dump of the *derived*
-  per-session metrics — kilobytes a month, local. The full history of one
+  per-session metrics, kilobytes a month, local. The full history of one
   operator's setup is ~3.5 MB, against ~2.8 GB of raw transcripts.
 
 So retention here is universal: **keep git (you already do) plus these tiny local
@@ -49,7 +49,7 @@ this kit. Do not assume anyone else has your storage.
 ## Rigor and review are measured, not mandated
 
 Skipping review looks hyper-efficient in the short run because it spends no
-tokens verifying. But the cost was moved, not removed — onto a human (manual
+tokens verifying. But the cost was moved, not removed, onto a human (manual
 review) or onto the future (defects at horizon). A framework that tracks both
 fuel lines (tokens **and** human attention) plus horizon-survival sees where it
 went. So review is a first-class fingerprint axis, a spectrum, not an ideology:

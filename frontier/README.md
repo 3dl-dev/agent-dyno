@@ -1,4 +1,4 @@
-# frontier — a commons of what works
+# frontier, a commons of what works
 
 `reference-frontier.json` is where the field gets better together. It isn't a
 scoreboard. It's a living collection of techniques that turn tokens into durable

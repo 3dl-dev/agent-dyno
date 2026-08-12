@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Coding-activity extractor — per session, split into orchestrator (main loop) and
+Coding-activity extractor, per session, split into orchestrator (main loop) and
 worker (subagent) counters, attributed to the model that drove the session.
 
     python3 model-behavior-code.py --out ~/model-code-$(hostname).jsonl

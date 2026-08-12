@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-harness-switchcost.py — C6: the mid-session model-switch penalty.
+harness-switchcost.py, C6: the mid-session model-switch penalty.
 
 Literature (Alderson / arXiv 2608.03893): switching the main-thread model
-family mid-conversation repays prefill from a cold cache — the turn after a
+family mid-conversation repays prefill from a cold cache, the turn after a
 switch cannot reuse the prior model's KV cache and re-reads history at low
 cache-hit rate. This is the *pure* cross-family tax, distinct from C11's
 delegation form (where each subagent is its own cached context).
@@ -82,7 +82,7 @@ def main(paths):
     print(f"  sessions with a mid-session model switch: {switch_sessions}/{len(by_sess)}")
     print(f"  switch events measured: {len(post_switch)}")
     if not post_switch:
-        print("\n  No mid-session switches in this window — claim untestable here.")
+        print("\n  No mid-session switches in this window, claim untestable here.")
         return
     print(f"\n  {'':22}{'cache-read share':>18}{'fresh-input tok/turn':>22}")
     print(f"  {'turn after a switch':22}{100*mean(post_switch):>17.1f}%{mean(post_freshtok):>22,.0f}")
