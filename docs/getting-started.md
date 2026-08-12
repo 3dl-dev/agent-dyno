@@ -1,7 +1,7 @@
-# Run it end to end
+# Getting started
 
-The real test is a fresh clone against your own data. Nothing is uploaded; every
-command reads your local git and your local logs.
+Run Agent Dyno against your own data in a couple of minutes. Nothing is uploaded;
+every command reads your local git and your local logs.
 
 ## 0. Fresh clone
 
@@ -93,10 +93,8 @@ Draft an anonymized entry for your frontier following
 horizon, the proof tier. Append it to your own `frontier/reference-frontier.json`
 for internal use, or open a PR against `3dl-dev/agent-dyno` to go public.
 
-## What to report back
+## If something looks off
 
-- Did a fresh clone run with zero setup, or did something need installing?
-- Which steps worked, which broke, and the exact error if any.
-- Were the numbers sane and did they match your gut on your own setup?
-- Timing: how slow was step 4 on your transcript store?
-- Anything confusing in the output or the docs.
+Open an issue at https://github.com/3dl-dev/agent-dyno/issues with the command
+you ran, the output, and your setup. A number that surprises you is often the
+interesting part, not a bug, so include what you expected too.

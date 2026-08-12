@@ -90,7 +90,7 @@ Whatever you run, you're welcome, and your wins count.
 ## Status
 
 Early and honest. The harness-neutral numerator and per-engine attribution are
-built and dogfooded. Day/week horizon curves and the pi/opencode adapters grow as
+built and tested. Day/week horizon curves and the pi/opencode adapters grow as
 data and contributors arrive. The [claims register](docs/claims.md) tracks what's
 measured, what's confirmed, and what's still open. Come help; every setup you
 bring makes the commons better for the next person.
