@@ -10,12 +10,12 @@ question: any per-model efficiency number is a blend until we know how many
 distinct engines produced it.
 
 Input: the merged snapshot JSONL emitted by mb_snapshot.py, i.e. one or more
-  mb-<host>.filtered.jsonl   (session + turn records from model-behavior.py)
-  mc-<host>.filtered.jsonl   (code records from model-behavior-code.py)
+  mb-<host>.jsonl   (session + turn records from model-behavior.py)
+  mc-<host>.jsonl   (code records from model-behavior-code.py)
 
 Usage:
   python3 harness-characterize.py mb-*.jsonl mc-*.jsonl
-  python3 harness-characterize.py model-behavior/snapshots/2026-08-11-workshop/*.filtered.jsonl
+  python3 harness-characterize.py <snapshot-dir>/*.jsonl
 
 Stdlib only. Joins full cost via the sibling mb_cost module if importable.
 """

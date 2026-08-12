@@ -13,7 +13,7 @@ changed from the previous turn; compare that turn's cache-read share (cache_r /
 all input) against the session's baseline (turns with no recent switch). A cold
 re-read shows up as a cache-read-share collapse and elevated fresh-input.
 
-Usage: python3 harness-switchcost.py model-behavior/snapshots/<dir>/mb-*.filtered.jsonl
+Usage: python3 harness-switchcost.py <snapshot-dir>/mb-*.jsonl
 Stdlib only.
 """
 import json

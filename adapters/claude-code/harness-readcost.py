@@ -11,7 +11,7 @@ Tests two literature claims:
 Reads $ = price(input + cache_read + cache_write); Gen $ = price(output), per turn
 at the turn's model + date. Depth = cumulative tokens seen in the session so far.
 
-Usage: python3 harness-readcost.py model-behavior/snapshots/<dir>/mb-*.filtered.jsonl
+Usage: python3 harness-readcost.py <snapshot-dir>/mb-*.jsonl
 Stdlib only; imports mb_cost.
 """
 import json

@@ -16,7 +16,7 @@ it starts cold and pays full read cost. Measured here as worker cache-read share
 and reads-per-edit, split by homogeneous vs cross-model routing.
 
 Usage:
-  python3 harness-fingerprint.py model-behavior/snapshots/<dir>/*.filtered.jsonl
+  python3 harness-fingerprint.py <snapshot-dir>/*.jsonl
 Stdlib only.
 """
 import glob
