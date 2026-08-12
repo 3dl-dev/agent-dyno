@@ -63,6 +63,17 @@ def model_tier(m):
     return "unknown"
 
 
+def modal(values, default="unknown"):
+    """Most common value; ties broken by sorted value so output is deterministic
+    regardless of hash-seed / set-iteration order across processes."""
+    if not values:
+        return default
+    counts = {}
+    for v in values:
+        counts[v] = counts.get(v, 0) + 1
+    return sorted(counts, key=lambda v: (-counts[v], v))[0]
+
+
 def engine_of(sess):
     if (sess.get("workflows") or 0) > 0 or (sess.get("wf_agents") or 0) > 0:
         return "workflow"
@@ -147,8 +158,7 @@ def session_metrics(sess, turns, code, survival, session_cost, usage_field):
         cache_r = sum(t.get("cache_r_tok", 0) for t in T)
         cache_w = sum(t.get("cache_w_tok", 0) for t in T)
     touches = sum(1 for t in T if t.get("user_chars", 0) > 0)
-    efforts = [t.get("effort") for t in T if t.get("effort")]
-    effort = max(set(efforts), key=efforts.count) if efforts else "unknown"
+    effort = modal([t.get("effort") for t in T if t.get("effort")])
     c = code.get(sid) or {}
     orch_out = usage_field(c.get("orch") or {}, "out") if usage_field \
         else (c.get("orch") or {}).get("out_tok", 0)
@@ -243,8 +253,7 @@ def same_shape(op_cells_by_ee, frontier):
     for (engine, effort), cells in sorted(op_cells_by_ee.items()):
         opv = vector(cells)
         # dominant orchestrator tier in this operator cell
-        tiers = [model_tier(m["model"]) for m in cells]
-        op_tier = max(set(tiers), key=tiers.count) if tiers else "unknown"
+        op_tier = modal([model_tier(m["model"]) for m in cells])
         matches = []
         for e in fentries:
             if e.get("engine") == engine and e.get("effort") == effort:

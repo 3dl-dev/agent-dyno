@@ -47,15 +47,20 @@ def build_snapshot(d):
     # S1 solo opus-5:      born 10240 killed 1024 -> waste 10%, survKB 9.0
     # S2 delegate opus-4-8: born 20480 killed 6144 -> waste 30%, survKB 14.0
     # S3 workflow opus-5:   born 10240 killed 8192 -> waste 80%, survKB 2.0
+    # s4 mirrors s2 (delegate/high) but with a CHEAP model, so the delegate/high
+    # cell has a strong+cheap tier tie -> exercises deterministic tie-breaking.
+    # Every delegate ratio axis is unchanged (s4 == s2 shape); only survKB doubles.
     sessions = [
         sess("s1", "claude-opus-5", {}, 1000, 100, 9000, 900),
         sess("s2", "claude-opus-4-8", {"plain_agents": 2}, 2000, 200, 18000, 1800),
         sess("s3", "claude-opus-5", {"workflows": 1, "wf_agents": 4}, 1500, 150, 13500, 1350),
+        sess("s4", "claude-fable-5", {"plain_agents": 2}, 2000, 200, 18000, 1800),
     ]
     turns = [
         turn("s1", "claude-opus-5", 1000, 100, 9000, 900),
         turn("s2", "claude-opus-4-8", 2000, 200, 18000, 1800),
         turn("s3", "claude-opus-5", 1500, 150, 13500, 1350),
+        turn("s4", "claude-fable-5", 2000, 200, 18000, 1800),
     ]
     with open(os.path.join(d, "mb-fix.jsonl"), "w") as f:
         for r in sessions + turns:
@@ -64,13 +69,15 @@ def build_snapshot(d):
     code = [
         {"k": "code", "sess": "s2", "orch": {"out_tok": 500}, "work": {"out_tok": 0}},
         {"k": "code", "sess": "s3", "orch": {"out_tok": 800}, "work": {"out_tok": 0}},
+        {"k": "code", "sess": "s4", "orch": {"out_tok": 500}, "work": {"out_tok": 0}},
     ]
     with open(os.path.join(d, "mc-fix.jsonl"), "w") as f:
         for r in code:
             f.write(json.dumps(r) + "\n")
     surv = {"s1": {"born": 10240, "killed": 1024},
             "s2": {"born": 20480, "killed": 6144},
-            "s3": {"born": 10240, "killed": 8192}}
+            "s3": {"born": 10240, "killed": 8192},
+            "s4": {"born": 20480, "killed": 6144}}
     with open(os.path.join(d, "survival-cache.json"), "w") as f:
         json.dump(surv, f)
     return sessions
@@ -114,12 +121,13 @@ def approx(a, b, tol=0.02):
     return a is not None and abs(a - b) <= tol
 
 
-def run_driver(snap, repo, frontier, out):
+def run_driver(snap, repo, frontier, out, hashseed="0"):
+    env = dict(os.environ, PYTHONHASHSEED=hashseed)
     subprocess.run([sys.executable, os.path.join(HERE, "dyno_report.py"),
                     "--harness", "claude-code", "--snapshot", snap,
                     "--repos", repo, "--since", "1.day.ago",
                     "--frontier", frontier, "--now", "1754006400", "--out", out],
-                   check=True, capture_output=True, text=True)
+                   check=True, capture_output=True, text=True, env=env)
     return json.load(open(os.path.join(out, "report.json")))
 
 
@@ -140,7 +148,7 @@ def main():
         veng = {r["engine"]: r for r in rep["vector_by_engine"]}
         expect = {  # engine -> (survkb, waste, survkb_per_outmtok, cache_read_pct)
             "solo": (9.0, 10.0, 9000.0, 90.0),
-            "delegate": (14.0, 30.0, 7000.0, 90.0),
+            "delegate": (28.0, 30.0, 7000.0, 90.0),  # s2 + s4 (mirror), ratios unchanged
             "workflow": (2.0, 80.0, 1333.33, 90.0),
         }
         for e, (skb, waste, spm, crd) in expect.items():
@@ -163,8 +171,8 @@ def main():
             fails.append(f"solo $/survKB {veng['solo']['d_per_survkb']} != "
                          f"{round(exp_solo_d / 9.0, 4)} (session_cost/survKB)")
 
-        # orchestrator-tok axis on delegate: 500 / 14.0
-        if not approx(veng["delegate"]["orch_tok_per_survkb"], round(500 / 14.0, 2), tol=0.1):
+        # orchestrator-tok axis on delegate: (500 + 500) orch out / 28.0 survKB
+        if not approx(veng["delegate"]["orch_tok_per_survkb"], round(1000 / 28.0, 2), tol=0.1):
             fails.append(f"delegate orch_tok/survKB wrong: "
                          f"{veng['delegate']['orch_tok_per_survkb']}")
 
@@ -178,6 +186,11 @@ def main():
         solo = ss.get(("solo", "high"))
         if not solo or solo["status"] != "no-same-shape-entry":
             fails.append("solo/high should be no-same-shape-entry (frontier solo is effort=low)")
+        # tier tie (delegate/high has strong s2 + cheap s4) must resolve deterministically
+        deleg = ss.get(("delegate", "high"))
+        if not deleg or deleg["operator_orchestrator_tier"] != "cheap":
+            fails.append(f"delegate/high tier tie not broken deterministically: "
+                         f"{deleg and deleg['operator_orchestrator_tier']} (expected 'cheap')")
 
         # ---- (3) provenance + governance stamp ----
         prov = rep["provenance"]
@@ -191,12 +204,14 @@ def main():
         if not approx(rep["numerator"]["pct"], 60.0, tol=0.5):
             fails.append(f"numerator pct {rep['numerator']['pct']} != 60")
 
-        # ---- (4) byte-identical re-run ----
-        run_driver(snap, repo, frontier, out2)
+        # ---- (4) byte-identical re-run under a DIFFERENT hash seed ----
+        # (out1 ran with PYTHONHASHSEED=0; run out2 with =1 so any set-iteration
+        # nondeterminism, e.g. tie-breaking, would diverge the bytes and fail.)
+        run_driver(snap, repo, frontier, out2, hashseed="1")
         b1 = open(os.path.join(out1, "report.json"), "rb").read()
         b2 = open(os.path.join(out2, "report.json"), "rb").read()
         if b1 != b2:
-            fails.append("report.json is not byte-identical across runs")
+            fails.append("report.json is not byte-identical across runs / hash seeds")
 
     if fails:
         print("FAIL  dyno_report:")
