@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# REFERENCE BUILD. Source of truth: survival_git.spec.md (what it must do)
+# + test_survival_git.py (the verification). Code is a regenerable artifact:
+# rebuild it from the spec and the acceptance test must still pass. See SOURCE.md.
 """
 harness-survival-git.py, horizon-survival, measured from git (harness-neutral).
 
