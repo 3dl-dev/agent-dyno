@@ -78,6 +78,18 @@ The user sees three things and nothing else:
    Rendered as a self-contained chart (`report.html`) and a compact textual
    timeline in `report.md`.
 
+## The inference cost gate (turn-quality layer)
+
+The misery/handover classifier (Haiku triage -> Sonnet classify) spends inference,
+so it is opt-in above a threshold. Express its cost the way a subscription user
+feels it: **tokens per model, and as a ratio to the window's own baseline usage**,
+never dollars. E.g. a full-store pass is Haiku + Sonnet tokens totalling a small
+fraction of a week's processed tokens (and a few percent of the scarcer weekly
+output). Gate opt-in on that ratio (default: ask above ~1% of weekly output), and
+after the pass report tokens actually spent against the same baseline. The tool
+eats its own dog food: an assessment's inference cost is justified by the savings
+it unlocks, and the operator sees the ratio before the spend.
+
 Everything else (the full vector, per-cell same-shape, claims, confounds,
 numerator, fingerprint, provenance) is machinery. It lives in `report.json` for
 inspection, and is kept OUT of the default surface.
