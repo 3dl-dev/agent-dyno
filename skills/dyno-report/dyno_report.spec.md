@@ -104,9 +104,15 @@ Three artifacts under `--out`, all a pure function of inputs:
 - `report.md`: the functional surface only, from a fixed template, no model in
   the loop: the topline number, the one lever with its predicted delta, the
   measure line, and a compact annotated timeline. Short by design.
-- `report.html`: a self-contained, theme-aware chart of EQ over time annotated
-  with the operator's fingerprint changes. Single series, direct value labels,
-  native SVG tooltips, a table view. No external assets, no scripts required.
+- `report.html`: a self-contained, theme-aware page with two charts. (1) EQ over
+  time annotated with the operator's fingerprint changes. (2) **Fuel and work over
+  time** as aligned small multiples: the three token streams (cache-read, read,
+  output) and the net code retained, each on its own scale, sharing one time axis
+  at the `--granularity` bucket (day / week / month). Different scales by design,
+  so never one axis (the dataviz method forbids dual-axis). Direct value labels,
+  native SVG tooltips. No external assets, no scripts. Slicing the fuel-and-work
+  series by model / effort / engine, and hourly granularity (needs per-turn
+  timestamps), are the next increment.
 
 ## Governance (enforced in code, not left to the narrator)
 

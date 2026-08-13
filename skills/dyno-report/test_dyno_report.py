@@ -268,7 +268,18 @@ def main():
             if not any("orchestrator" in c for c in tlr[1]["changes"]):
                 fails.append(f"week 2 should annotate an orchestrator change, "
                              f"got {tlr[1]['changes']}")
-        # the chart artifact exists and is a self-contained SVG page
+        # fuel-and-work series: 2 weekly buckets; week 1 = s1+s2
+        fw = (rep.get("fuel_and_work") or {}).get("series") or []
+        if len(fw) != 2:
+            fails.append(f"fuel_and_work should have 2 weekly buckets, got {len(fw)}")
+        else:
+            b0 = fw[0]
+            if b0["surv_kb"] != 23.0:  # (9216 + 14336) / 1024
+                fails.append(f"week1 net-code {b0['surv_kb']} != 23.0")
+            if b0["output_tok"] != 3000 or b0["read_tok"] != 300:
+                fails.append(f"week1 token streams wrong: {b0}")
+
+        # the chart artifact exists and carries both charts
         htmlp = os.path.join(out1, "report.html")
         if not os.path.exists(htmlp):
             fails.append("report.html was not written")
@@ -276,6 +287,8 @@ def main():
             hh = open(htmlp).read()
             if "<svg" not in hh or "surviving KB per dollar" not in hh:
                 fails.append("report.html is not the expected chart")
+            if "Fuel and work over time" not in hh:
+                fails.append("report.html is missing the fuel-and-work small multiples")
 
         # ---- (3c) the measure loop: re-run with the first report as baseline ----
         out3 = os.path.join(tmp, "out3")

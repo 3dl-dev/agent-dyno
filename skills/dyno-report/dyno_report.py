@@ -344,6 +344,51 @@ def _iso_week(day):
     return iso[0], iso[1]
 
 
+def _bucket(day, gran):
+    """Time-bucket key + human label for a YYYY-MM-DD day at a granularity."""
+    if gran == "month":
+        return day[:7], day[:7]
+    if gran == "day":
+        return day, _daylabel(day)
+    key = _iso_week(day)
+    return f"{key[0]}-{key[1]:02d}", _week_label(key)
+
+
+def _daylabel(day):
+    y, m, d = (int(x) for x in day.split("-")[:3])
+    return f"{_MONTHS[m - 1]} {d}"
+
+
+def fuel_and_work(metrics, gran="week"):
+    """The core chart data: the fuel trio (read, cache-read, output tokens) and
+    the work (net code retained, KB) per time bucket. Different scales by design,
+    so the surface renders them as aligned small multiples, never one axis."""
+    buckets = {}
+    order = []
+    for m in metrics:
+        if not m.get("day"):
+            continue
+        try:
+            key, label = _bucket(m["day"], gran)
+        except Exception:
+            continue
+        if key not in buckets:
+            buckets[key] = {"bucket": label, "read_tok": 0, "cache_read_tok": 0,
+                            "cache_write_tok": 0, "output_tok": 0, "surv_kb": 0.0}
+            order.append(key)
+        b = buckets[key]
+        b["read_tok"] += m["in_tok"]
+        b["cache_read_tok"] += m["cache_r"]
+        b["cache_write_tok"] += m["cache_w"]
+        b["output_tok"] += m["out_tok"]
+        survc = m["born"] - m["killed"]
+        b["surv_kb"] += survc / 1024 if survc > 0 else 0.0
+    rows = [buckets[k] for k in sorted(order)]
+    for r in rows:
+        r["surv_kb"] = round(r["surv_kb"], 1)
+    return rows
+
+
 def _week_label(key):
     """Human calendar date for an (iso_year, iso_week) key: the week's Monday,
     e.g. 'Aug 4'. Nobody thinks in ISO week numbers."""
@@ -520,7 +565,7 @@ def measure_vs_baseline(current_eq, baseline_path):
 
 
 def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
-                 baseline_path=None):
+                 baseline_path=None, granularity="week"):
     session_cost, usage_field = load_adapter_cost(harness)
     sessions, turns, code, survival = load_snapshot(snapshot_dir)
     metrics = []
@@ -575,6 +620,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
     measure = measure_vs_baseline(tl["eq"], baseline_path)
     tline = timeline(metrics)
     bs = babysitting(metrics)
+    fuel = fuel_and_work(metrics, granularity)
 
     # provenance
     repo_prov = []
@@ -603,6 +649,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
         "lever": lever,
         "measure": measure,
         "timeline": tline,
+        "fuel_and_work": {"granularity": granularity, "series": fuel},
         "vector_by_engine": vector_by_engine,
         "vector_by_engine_model": vector_by_engine_model,
         "numerator": numerator,
@@ -697,13 +744,17 @@ def render_html(report):
         "<style>\n"
         ".viz-root{color-scheme:light;--surface:#fcfcfb;--ink:#0b0b0b;"
         "--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--axis:#c3c2b7;"
-        "--series:#2a78d6;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;"
+        "--series:#2a78d6;--c-cacheread:#2a78d6;--c-read:#eb6834;--c-output:#1baf7a;"
+        "--c-work:#0ca30c;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;"
         "background:var(--surface);color:var(--ink);padding:24px;border-radius:8px;}\n"
         "@media (prefers-color-scheme:dark){:root:where(:not([data-theme=light])) .viz-root{"
         "color-scheme:dark;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;--muted:#898781;"
-        "--grid:#2c2c2a;--axis:#383835;--series:#3987e5;}}\n"
+        "--grid:#2c2c2a;--axis:#383835;--series:#3987e5;--c-cacheread:#3987e5;"
+        "--c-read:#d95926;--c-output:#199e70;--c-work:#0ca30c;}}\n"
         ":root[data-theme=dark] .viz-root{color-scheme:dark;--surface:#1a1a19;--ink:#fff;"
-        "--ink2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--axis:#383835;--series:#3987e5;}\n"
+        "--ink2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--axis:#383835;--series:#3987e5;"
+        "--c-cacheread:#3987e5;--c-read:#d95926;--c-output:#199e70;--c-work:#0ca30c;}\n"
+        ".viz-root h2{font-size:15px;margin:24px 0 2px;font-weight:600;}\n"
         ".viz-root h1{font-size:20px;margin:0 0 2px;font-weight:600;}\n"
         ".viz-root p{color:var(--ink2);font-size:13px;margin:0 0 16px;}\n"
         ".viz-root svg{max-width:100%;height:auto;}\n"
@@ -796,8 +847,84 @@ def render_html(report):
             f'setup, so a move on the curve ties to a change, not noise.</p>'
             f'{"".join(parts)}{legend}'
             f'<table><thead><tr><th>week</th><th>EQ</th><th>sessions</th>'
-            f'<th>changes</th></tr></thead><tbody>{rows}</tbody></table></div>')
+            f'<th>changes</th></tr></thead><tbody>{rows}</tbody></table>'
+            f'{render_small_multiples(report)}</div>')
     return _page(head + body)
+
+
+def _fmt_tok(n):
+    if n >= 1e9:
+        return f"{n / 1e9:.1f}B"
+    if n >= 1e6:
+        return f"{n / 1e6:.0f}M"
+    if n >= 1e3:
+        return f"{n / 1e3:.0f}k"
+    return str(int(n))
+
+
+def render_small_multiples(report):
+    """Fuel and work over time as aligned small multiples: the three token
+    streams (cache-read, read, output) and the net code retained, each on its own
+    scale, sharing one time axis. Different scales by design, so never one axis."""
+    fw = report.get("fuel_and_work") or {}
+    rows = fw.get("series") or []
+    esc = _html.escape
+    if len(rows) < 2:
+        return ""
+    panels = [
+        ("cache_read_tok", "cache-read tokens", "var(--c-cacheread)", _fmt_tok),
+        ("read_tok", "read tokens", "var(--c-read)", _fmt_tok),
+        ("output_tok", "output tokens", "var(--c-output)", _fmt_tok),
+        ("surv_kb", "net code retained (KB)", "var(--c-work)",
+         lambda v: f"{v:,.0f}"),
+    ]
+    W, PH, GAP, ml, mr, mt = 760, 66, 26, 60, 16, 16
+    n = len(rows)
+    pw = W - ml - mr
+    out = [f'<svg viewBox="0 0 {W} {mt + len(panels) * (PH + GAP)}" role="img" '
+           f'aria-label="fuel and work over time">']
+
+    def X(i):
+        return ml + (pw * i / (n - 1) if n > 1 else pw / 2)
+
+    for pi, (key, label, color, fmt) in enumerate(panels):
+        top = mt + pi * (PH + GAP)
+        vals = [r[key] for r in rows]
+        vmax = max(vals) or 1
+
+        def Y(v, top=top):
+            return top + PH * (1 - v / vmax)
+        # baseline + panel label + peak value
+        out.append(f'<line x1="{ml}" y1="{top+PH}" x2="{ml+pw}" y2="{top+PH}" '
+                   f'stroke="var(--grid)" stroke-width="1"/>')
+        out.append(f'<text x="{ml}" y="{top-4}" font-size="11" font-weight="600" '
+                   f'fill="var(--ink2)">{esc(label)}</text>')
+        out.append(f'<text x="{ml+pw}" y="{top-4}" text-anchor="end" font-size="10" '
+                   f'fill="var(--muted)">peak {esc(fmt(vmax))}</text>')
+        # area fill + line
+        area = f"{ml},{top+PH} " + " ".join(
+            f"{X(i):.1f},{Y(v):.1f}" for i, v in enumerate(vals)) + \
+            f" {ml+pw},{top+PH}"
+        out.append(f'<polygon points="{area}" fill="{color}" opacity="0.14"/>')
+        line = " ".join(f"{X(i):.1f},{Y(v):.1f}" for i, v in enumerate(vals))
+        out.append(f'<polyline points="{line}" fill="none" stroke="{color}" '
+                   f'stroke-width="2" stroke-linejoin="round"/>')
+        for i, v in enumerate(vals):
+            tip = f"{rows[i]['bucket']}: {fmt(v)} {label}"
+            out.append(f'<circle cx="{X(i):.1f}" cy="{Y(v):.1f}" r="3" fill="{color}">'
+                       f'<title>{esc(tip)}</title></circle>')
+        # x labels on the last panel only
+        if pi == len(panels) - 1:
+            for i, r in enumerate(rows):
+                out.append(f'<text x="{X(i):.1f}" y="{top+PH+16:.0f}" '
+                           f'text-anchor="middle" font-size="10" '
+                           f'fill="var(--muted)">{esc(r["bucket"])}</text>')
+    out.append("</svg>")
+    gran = fw.get("granularity", "week")
+    return (f'<h2>Fuel and work over time (by {esc(gran)})</h2>'
+            f'<p>The three token streams that make up your fuel, against the code '
+            f'that survived. Aligned in time, each on its own scale.</p>'
+            f'{"".join(out)}')
 
 
 def _page(inner):
@@ -819,6 +946,8 @@ def main():
                     help="fixed epoch for deterministic age buckets; default clock")
     ap.add_argument("--baseline", default=None,
                     help="a prior report.json; show the actual EQ move since it")
+    ap.add_argument("--granularity", default="week", choices=["day", "week", "month"],
+                    help="time bucket for the fuel-and-work chart")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -826,7 +955,8 @@ def main():
     report = build_report(args.snapshot, repos, args.since, args.frontier,
                           args.harness, args.now,
                           baseline_path=os.path.expanduser(args.baseline)
-                          if args.baseline else None)
+                          if args.baseline else None,
+                          granularity=args.granularity)
     os.makedirs(args.out, exist_ok=True)
     with open(os.path.join(args.out, "report.json"), "w") as f:
         json.dump(report, f, indent=2, sort_keys=True)
