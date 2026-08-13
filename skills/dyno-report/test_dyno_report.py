@@ -415,6 +415,17 @@ def main():
                 fails.append("report.html is not the expected chart")
             if "Fuel and work over time" not in hh:
                 fails.append("report.html is missing the fuel-and-work small multiples")
+            # ---- (item 3) the slicer cuts by every fingerprint dimension ----
+            for lbl in ("by model", "by effort", "by engine", "by routing",
+                        "by review regime", "by knowledge practice"):
+                if lbl not in hh:
+                    fails.append(f"report.html slicer missing dimension group: {lbl}")
+            # git-side work units join the page (as a table, not a fake time series)
+            if "Surviving work by model" not in hh:
+                fails.append("report.html missing the attribution (per-model work) table")
+            # still self-contained: no external asset references
+            if "src=" in hh or "<link" in hh or "http://" in hh or "https://" in hh:
+                fails.append("report.html is not self-contained (external asset reference)")
 
         # ---- (3c) the measure loop: re-run with the first report as baseline ----
         out3 = os.path.join(tmp, "out3")

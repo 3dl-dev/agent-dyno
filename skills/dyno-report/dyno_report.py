@@ -1113,10 +1113,24 @@ def _sm_svg(rows):
     return "".join(out)
 
 
+# dimension id -> the fuel_and_work slice key and the human group label. One
+# selector cuts by every fingerprint dimension the driver slices.
+_SLICE_DIMS = [
+    ("model", "by_model", "by model"),
+    ("effort", "by_effort", "by effort"),
+    ("engine", "by_engine", "by engine"),
+    ("routing", "by_routing", "by routing"),
+    ("review_regime", "by_review_regime", "by review regime"),
+    ("knowledge_practice", "by_knowledge_practice", "by knowledge practice"),
+]
+
+
 def render_small_multiples(report):
-    """Fuel and work over time as aligned small multiples, with an interactive
-    model slice: the three token streams and net code retained, each on its own
-    scale. Self-contained (inline JS toggling pre-rendered slices, no external
+    """Fuel and work over time as aligned small multiples, with ONE interactive
+    slicer that cuts by every fingerprint dimension (model / effort / engine /
+    routing / review regime / knowledge practice), grouped by dimension. Each
+    option shows a pre-rendered slice; slices with fewer than two non-empty buckets
+    are dropped. Self-contained (inline JS toggling pre-rendered blocks, no external
     assets) -- honoring the stdlib/hoistable, ships-itself constraint."""
     fw = report.get("fuel_and_work") or {}
     rows = fw.get("series") or []
@@ -1124,23 +1138,59 @@ def render_small_multiples(report):
     if len(rows) < 2:
         return ""
     gran = fw.get("granularity", "week")
-    slices = [("all", "All models", rows)]
-    for m, s in (fw.get("by_model") or {}).items():
-        if len([b for b in s if b]) >= 2:
-            slices.append((f"model-{m}", m, s))
-    opts = "".join(f'<option value="fw-{esc(sid)}">{esc(label)}</option>'
-                   for sid, label, _ in slices)
-    blocks = "".join(
-        f'<div id="fw-{esc(sid)}" class="fw-slice"{"" if i == 0 else " hidden"}>'
-        f'{_sm_svg(s)}</div>' for i, (sid, label, s) in enumerate(slices))
+    blocks = [f'<div id="fw-all" class="fw-slice">{_sm_svg(rows)}</div>']
+    groups = ['<option value="fw-all">All sessions</option>']
+    idx = 0
+    for dim_id, key, group_label in _SLICE_DIMS:
+        opts = []
+        for val, s in sorted((fw.get(key) or {}).items()):
+            if len([b for b in s if b]) < 2:
+                continue
+            idx += 1
+            bid = f"fw-{dim_id}-{idx}"
+            blocks.append(f'<div id="{bid}" class="fw-slice" hidden>{_sm_svg(s)}</div>')
+            opts.append(f'<option value="{bid}">{esc(str(val))}</option>')
+        if opts:
+            groups.append(f'<optgroup label="{esc(group_label)}">{"".join(opts)}'
+                          f'</optgroup>')
     js = ("<script>(function(){var s=document.getElementById('fw-sel');if(!s)return;"
           "s.addEventListener('change',function(){"
           "document.querySelectorAll('.fw-slice').forEach(function(d){d.hidden=true;});"
           "var t=document.getElementById(s.value);if(t)t.hidden=false;});})();</script>")
     return (f'<h2>Fuel and work over time (by {esc(gran)})</h2>'
             f'<p>The three token streams that make up your fuel, against the code '
-            f'that survived, each on its own scale. Slice by model: '
-            f'<select id="fw-sel">{opts}</select></p>{blocks}{js}')
+            f'that survived, each on its own scale. Slice by any dimension: '
+            f'<select id="fw-sel">{"".join(groups)}</select></p>'
+            f'{"".join(blocks)}{js}{render_attribution(report)}')
+
+
+def render_attribution(report):
+    """The git<->session attribution (item 2) surfaced in the page: per model and
+    per effort, the surviving lines / complexity / commits the join credited to
+    each. A table, not a small-multiples panel -- it is a per-cell total, not a
+    time series, so forcing it onto the shared time axis would be dishonest."""
+    attr = ((report.get("numerator") or {}).get("attribution")) or {}
+    if not attr.get("matched"):
+        return ""
+    esc = _html.escape
+
+    def table(title, first_col, d):
+        rows = "".join(
+            f"<tr><td>{esc(str(k))}</td><td>{v['surviving']:,}</td>"
+            f"<td>{v['net_complexity']:,}</td><td>{v['commits']}</td></tr>"
+            for k, v in d.items())
+        return (f"<h2>{esc(title)}</h2><table><thead><tr><th>{esc(first_col)}</th>"
+                f"<th>surviving lines</th><th>complexity</th><th>commits</th>"
+                f"</tr></thead><tbody>{rows}</tbody></table>")
+
+    parts = []
+    if attr.get("by_model"):
+        parts.append(table("Surviving work by model", "model", attr["by_model"]))
+    if attr.get("by_effort"):
+        parts.append(table("Surviving work by effort", "effort", attr["by_effort"]))
+    note = (f'<p style="margin-top:8px">Joined {attr["matched"]} commit(s) to a '
+            f'session; {attr.get("unmatched", 0)} matched no session window.</p>')
+    return "".join(parts) + note if parts else ""
 
 
 def _page(inner):

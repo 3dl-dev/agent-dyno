@@ -168,9 +168,15 @@ Three artifacts under `--out`, all a pure function of inputs:
   output) and the net code retained, each on its own scale, sharing one time axis
   at the `--granularity` bucket (day / week / month). Different scales by design,
   so never one axis (the dataviz method forbids dual-axis). Direct value labels,
-  native SVG tooltips. No external assets, no scripts. Slicing the fuel-and-work
-  series by model / effort / engine, and hourly granularity (needs per-turn
-  timestamps), are the next increment.
+  native SVG tooltips. No external assets: any interactivity is inline (a small
+  self-contained `<script>`), so the page stays a single hoistable file. A single
+  selector cuts the fuel-and-work series by every fingerprint dimension the driver
+  slices (model / effort / engine / routing / review regime / knowledge practice),
+  grouped so each dimension is its own option group; slices with fewer than two
+  non-empty buckets are dropped. Beneath it, the git<->session attribution (per
+  model and per effort: surviving lines, surviving complexity, commits) is rendered
+  as a compact table, not forced into the time-series panels (it is not a time
+  series). Hourly granularity (needs per-turn timestamps) is the next increment.
 
 ## Governance (enforced in code, not left to the narrator)
 
