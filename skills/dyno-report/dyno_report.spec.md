@@ -60,6 +60,14 @@ The user sees three things and nothing else:
 3. **Measure.** With `--baseline <prev report.json>`, show the actual EQ move
    since last run beside what was predicted. This closes the predict-then-measure
    loop: tweak the rig, re-run, see if the number moved as promised.
+4. **EQ over time, annotated with the operator's own fingerprint changes.** Bin
+   sessions by ISO week, compute the weekly EQ, and detect when the dominant
+   fingerprint (engine, orchestrator model, effort) changed week-to-week. Each
+   change is a marked flag on the curve, so a move ties to a change the operator
+   made, not to noise. Everyone iterates their stack; those changes are the
+   confounds, and making them visible on the curve is how you control for them.
+   Rendered as a self-contained chart (`report.html`) and a compact textual
+   timeline in `report.md`.
 
 Everything else (the full vector, per-cell same-shape, claims, confounds,
 numerator, fingerprint, provenance) is machinery. It lives in `report.json` for
@@ -67,14 +75,17 @@ inspection, and is kept OUT of the default surface.
 
 ## Output
 
-Two artifacts under `--out`, both a pure function of inputs:
+Three artifacts under `--out`, all a pure function of inputs:
 
-- `report.json`: the full structured bundle (topline, lever, measure, vector,
-  same-shape, claim verdicts, confounds, numerator, provenance). The contract
-  other tools consume, and the inspect layer.
+- `report.json`: the full structured bundle (topline, lever, measure, timeline,
+  vector, same-shape, claim verdicts, confounds, numerator, provenance). The
+  contract other tools consume, and the inspect layer.
 - `report.md`: the functional surface only, from a fixed template, no model in
-  the loop: the topline number, the one lever with its predicted delta, and the
-  measure line. Short by design.
+  the loop: the topline number, the one lever with its predicted delta, the
+  measure line, and a compact annotated timeline. Short by design.
+- `report.html`: a self-contained, theme-aware chart of EQ over time annotated
+  with the operator's fingerprint changes. Single series, direct value labels,
+  native SVG tooltips, a table view. No external assets, no scripts required.
 
 ## Governance (enforced in code, not left to the narrator)
 

@@ -58,6 +58,10 @@ else, so present those three and stop:
 3. **The measure line** (`measure`, present only with `--baseline`): the actual
    move since last run, beside what was predicted. This is the loop: tweak,
    re-run, see if it moved.
+4. **EQ over time** (`timeline`, and the chart in `report.html`): the weekly EQ
+   curve with the operator's own fingerprint changes flagged on it, so a move
+   ties to a change they made, not to noise. Point them at `report.html` for the
+   chart; the compact version is already in `report.md`.
 
 Do **not** narrate the vector, the same-shape cells, the claims, or the
 confounds. That is the machinery; it lives in `report.json` for anyone who asks

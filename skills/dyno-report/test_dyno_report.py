@@ -26,8 +26,8 @@ import mb_cost  # noqa: E402  (to compute expected dollars the same way the driv
 DAY = "2026-08-01"
 
 
-def sess(sid, model, engine_kw, out, intok, cr, cw):
-    r = {"k": "session", "sess": sid, "host": "fix", "day": DAY,
+def sess(sid, model, engine_kw, out, intok, cr, cw, day=DAY):
+    r = {"k": "session", "sess": sid, "host": "fix", "day": day,
          "model": model, "msgs": 2, "submix": {},
          "workflows": 0, "wf_agents": 0, "plain_agents": 0,
          "main_usage": {model: {"in_tok": intok, "out_tok": out,
@@ -50,11 +50,13 @@ def build_snapshot(d):
     # s4 mirrors s2 (delegate/high) but with a CHEAP model, so the delegate/high
     # cell has a strong+cheap tier tie -> exercises deterministic tie-breaking.
     # Every delegate ratio axis is unchanged (s4 == s2 shape); only survKB doubles.
+    # week A (08-03): s1, s2   week B (08-12): s3, s4  -> a two-week timeline with
+    # a fingerprint change (orchestrator opus -> fable) detectable in week B.
     sessions = [
-        sess("s1", "claude-opus-5", {}, 1000, 100, 9000, 900),
-        sess("s2", "claude-opus-4-8", {"plain_agents": 2}, 2000, 200, 18000, 1800),
-        sess("s3", "claude-opus-5", {"workflows": 1, "wf_agents": 4}, 1500, 150, 13500, 1350),
-        sess("s4", "claude-fable-5", {"plain_agents": 2}, 2000, 200, 18000, 1800),
+        sess("s1", "claude-opus-5", {}, 1000, 100, 9000, 900, day="2026-08-03"),
+        sess("s2", "claude-opus-4-8", {"plain_agents": 2}, 2000, 200, 18000, 1800, day="2026-08-03"),
+        sess("s3", "claude-opus-5", {"workflows": 1, "wf_agents": 4}, 1500, 150, 13500, 1350, day="2026-08-12"),
+        sess("s4", "claude-fable-5", {"plain_agents": 2}, 2000, 200, 18000, 1800, day="2026-08-12"),
     ]
     turns = [
         turn("s1", "claude-opus-5", 1000, 100, 9000, 900),
@@ -244,6 +246,27 @@ def main():
         if "Efficiency vector by engine" in md or "Same-shape comparison" in md:
             fails.append("surface leaked the machinery (vector/same-shape tables)")
 
+        # ---- (3d) timeline over time, annotated with fingerprint changes ----
+        tlr = [r for r in rep["timeline"] if r["eq"] is not None]
+        if len(tlr) != 2:
+            fails.append(f"timeline should have 2 weeks, got {len(tlr)}")
+        else:
+            if tlr[0]["week"] > tlr[1]["week"]:
+                fails.append("timeline weeks not in ascending order")
+            if tlr[0]["changes"]:
+                fails.append("first week should have no change annotations")
+            if not any("orchestrator" in c for c in tlr[1]["changes"]):
+                fails.append(f"week 2 should annotate an orchestrator change, "
+                             f"got {tlr[1]['changes']}")
+        # the chart artifact exists and is a self-contained SVG page
+        htmlp = os.path.join(out1, "report.html")
+        if not os.path.exists(htmlp):
+            fails.append("report.html was not written")
+        else:
+            hh = open(htmlp).read()
+            if "<svg" not in hh or "surviving KB per dollar" not in hh:
+                fails.append("report.html is not the expected chart")
+
         # ---- (3c) the measure loop: re-run with the first report as baseline ----
         out3 = os.path.join(tmp, "out3")
         rep3 = run_driver(snap, repo, frontier, out3,
@@ -258,10 +281,11 @@ def main():
         # (out1 ran with PYTHONHASHSEED=0; run out2 with =1 so any set-iteration
         # nondeterminism, e.g. tie-breaking, would diverge the bytes and fail.)
         run_driver(snap, repo, frontier, out2, hashseed="1")
-        b1 = open(os.path.join(out1, "report.json"), "rb").read()
-        b2 = open(os.path.join(out2, "report.json"), "rb").read()
-        if b1 != b2:
-            fails.append("report.json is not byte-identical across runs / hash seeds")
+        for name in ("report.json", "report.html"):
+            b1 = open(os.path.join(out1, name), "rb").read()
+            b2 = open(os.path.join(out2, name), "rb").read()
+            if b1 != b2:
+                fails.append(f"{name} is not byte-identical across runs / hash seeds")
 
     if fails:
         print("FAIL  dyno_report:")

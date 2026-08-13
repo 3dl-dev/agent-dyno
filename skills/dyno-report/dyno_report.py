@@ -26,8 +26,10 @@ Stdlib only. Deterministic: same (snapshot, git HEADs, frontier, since) inputs
 give byte-identical report.json regardless of the model that invoked it.
 """
 import argparse
+import datetime
 import glob
 import hashlib
+import html as _html
 import json
 import os
 import sys
@@ -165,6 +167,7 @@ def session_metrics(sess, turns, code, survival, session_cost, usage_field):
     dollars = session_cost(sess) if session_cost else 0.0
     return {
         "sid": sid,
+        "day": sess.get("day"),
         "engine": engine_of(sess),
         "model": base_model(sess.get("model")),
         "effort": effort,
@@ -318,6 +321,46 @@ def topline(metrics):
     return {"eq": eq, "unit": "surviving KB per dollar",
             "surv_kb": round(survkb, 2), "dollars": round(dollars, 2),
             "sessions": len(metrics), "_survkb": survkb, "_dollars": dollars}
+
+
+def _iso_week(day):
+    y, m, d = (int(x) for x in day.split("-")[:3])
+    iso = datetime.date(y, m, d).isocalendar()
+    return iso[0], iso[1]
+
+
+def timeline(metrics):
+    """EQ as a function of time (ISO week), annotated with the operator's own
+    fingerprint changes. Everyone iterates their stack; making those changes
+    visible on the curve is how you attribute a move to a change instead of noise.
+    """
+    weeks = defaultdict(list)
+    for m in metrics:
+        if not m.get("day"):
+            continue
+        try:
+            weeks[_iso_week(m["day"])].append(m)
+        except Exception:
+            continue
+    rows, prev = [], None
+    for key in sorted(weeks):
+        cells = weeks[key]
+        survc = sum(c["born"] - c["killed"] for c in cells)
+        dollars = sum(c["dollars"] for c in cells)
+        survkb = survc / 1024 if survc > 0 else 0.0
+        eq = round(survkb / dollars, 4) if dollars else None
+        fp = {"engine": modal([c["engine"] for c in cells]),
+              "orchestrator": modal([c["model"] for c in cells]),
+              "effort": modal([c["effort"] for c in cells])}
+        changes = []
+        if prev:
+            for dim in ("engine", "orchestrator", "effort"):
+                if fp[dim] != prev[dim]:
+                    changes.append(f"{dim}: {prev[dim]} to {fp[dim]}")
+        rows.append({"week": f"{key[0]}-W{key[1]:02d}", "eq": eq,
+                     "sessions": len(cells), "fingerprint": fp, "changes": changes})
+        prev = fp
+    return rows
 
 
 def frontier_eq(entry):
@@ -487,6 +530,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
     lever = best_lever(by_ee_cells, frontier, tl["_survkb"], tl["_dollars"])
     tl = {k: v for k, v in tl.items() if not k.startswith("_")}  # drop internals
     measure = measure_vs_baseline(tl["eq"], baseline_path)
+    tline = timeline(metrics)
 
     # provenance
     repo_prov = []
@@ -513,6 +557,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
         "topline": tl,
         "lever": lever,
         "measure": measure,
+        "timeline": tline,
         "vector_by_engine": vector_by_engine,
         "vector_by_engine_model": vector_by_engine_model,
         "numerator": numerator,
@@ -564,12 +609,148 @@ def render_md(report):
         L.append(f"{measure['baseline_eq']} to {measure['current_eq']} "
                  f"({pred_s}actual {measure['actual_delta']:+}, {arrow}).")
         L.append("")
+    tline = [r for r in report.get("timeline", []) if r["eq"] is not None]
+    if len(tline) >= 2:
+        L.append("## Your EQ over time")
+        L.append("")
+        L.append("Each change you made is marked, so a move ties to a change, not "
+                 "noise. Full annotated chart: report.html.")
+        L.append("")
+        hi = max(r["eq"] for r in tline) or 1.0
+        for r in tline:
+            fill = int(round(12 * r["eq"] / hi))
+            bar = "█" * fill + "·" * (12 - fill)
+            note = ("  <- " + "; ".join(r["changes"])) if r["changes"] else ""
+            L.append(f"`{r['week']}  {r['eq']:<7} {bar}`{note}")
+        L.append("")
     L.append("---")
     L.append("_Full vector, fingerprint, per-repo survival, claim verdicts, and "
              "confounds are in report.json. Open it only if you want the "
              "derivation._")
     L.append("")
     return "\n".join(L)
+
+
+def render_html(report):
+    """Self-contained, theme-aware chart of EQ over time, annotated with the
+    operator's own fingerprint changes. Single series (blue), direct value
+    labels, recessive grid, numbered change-flags, native SVG tooltips, table
+    view. Stdlib string-building only, no external assets."""
+    tl = [r for r in report.get("timeline", []) if r["eq"] is not None]
+    eq0 = report["topline"]["eq"]
+    esc = _html.escape
+    head = (
+        "<style>\n"
+        ".viz-root{color-scheme:light;--surface:#fcfcfb;--ink:#0b0b0b;"
+        "--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--axis:#c3c2b7;"
+        "--series:#2a78d6;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;"
+        "background:var(--surface);color:var(--ink);padding:24px;border-radius:8px;}\n"
+        "@media (prefers-color-scheme:dark){:root:where(:not([data-theme=light])) .viz-root{"
+        "color-scheme:dark;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;--muted:#898781;"
+        "--grid:#2c2c2a;--axis:#383835;--series:#3987e5;}}\n"
+        ":root[data-theme=dark] .viz-root{color-scheme:dark;--surface:#1a1a19;--ink:#fff;"
+        "--ink2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--axis:#383835;--series:#3987e5;}\n"
+        ".viz-root h1{font-size:20px;margin:0 0 2px;font-weight:600;}\n"
+        ".viz-root p{color:var(--ink2);font-size:13px;margin:0 0 16px;}\n"
+        ".viz-root svg{max-width:100%;height:auto;}\n"
+        ".viz-root table{border-collapse:collapse;font-size:13px;margin-top:16px;"
+        "font-variant-numeric:tabular-nums;}\n"
+        ".viz-root th,.viz-root td{text-align:left;padding:4px 12px 4px 0;color:var(--ink2);"
+        "border-bottom:1px solid var(--grid);}\n"
+        ".viz-root th{color:var(--muted);font-weight:600;}\n"
+        ".viz-root .flag{color:var(--series);font-weight:600;}\n"
+        "</style>\n")
+    if len(tl) < 2:
+        body = (f'<div class="viz-root"><h1>{esc(str(eq0))} surviving KB per dollar</h1>'
+                "<p>Not enough weeks of data to chart a trend yet.</p></div>")
+        return _page(head + body)
+
+    W, H = 760, 380
+    ml, mr, mt, mb = 52, 24, 44, 52
+    pw, ph = W - ml - mr, H - mt - mb
+    eqs = [r["eq"] for r in tl]
+    ylo, yhi = min(eqs), max(eqs)
+    if yhi == ylo:
+        yhi, ylo = yhi + 1, 0.0
+    pad = (yhi - ylo) * 0.15
+    ylo, yhi = ylo - pad, yhi + pad
+    n = len(tl)
+
+    def X(i):
+        return ml + (pw * i / (n - 1) if n > 1 else pw / 2)
+
+    def Y(v):
+        return mt + ph * (1 - (v - ylo) / (yhi - ylo))
+
+    parts = [f'<svg viewBox="0 0 {W} {H}" role="img" '
+             f'aria-label="EQ over time">']
+    # horizontal gridlines + y labels (3 ticks)
+    for t in range(3):
+        v = ylo + (yhi - ylo) * t / 2
+        y = Y(v)
+        parts.append(f'<line x1="{ml}" y1="{y:.1f}" x2="{ml+pw}" y2="{y:.1f}" '
+                     f'stroke="var(--grid)" stroke-width="1"/>')
+        parts.append(f'<text x="{ml-8:.0f}" y="{y+4:.1f}" text-anchor="end" '
+                     f'font-size="11" fill="var(--muted)">{v:.2f}</text>')
+    # baseline
+    parts.append(f'<line x1="{ml}" y1="{mt+ph}" x2="{ml+pw}" y2="{mt+ph}" '
+                 f'stroke="var(--axis)" stroke-width="1"/>')
+    # annotation flags (fingerprint changes): dashed verticals + numbered marks
+    flags = []
+    k = 0
+    for i, r in enumerate(tl):
+        if not r["changes"]:
+            continue
+        k += 1
+        x = X(i)
+        parts.append(f'<line x1="{x:.1f}" y1="{mt-6}" x2="{x:.1f}" y2="{mt+ph}" '
+                     f'stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3"/>')
+        parts.append(f'<circle cx="{x:.1f}" cy="{mt-6}" r="8" fill="var(--surface)" '
+                     f'stroke="var(--series)" stroke-width="1.5"/>')
+        parts.append(f'<text x="{x:.1f}" y="{mt-2.5}" text-anchor="middle" '
+                     f'font-size="10" font-weight="600" fill="var(--series)">{k}</text>')
+        flags.append((k, r))
+    # the line
+    pts = " ".join(f"{X(i):.1f},{Y(r['eq']):.1f}" for i, r in enumerate(tl))
+    parts.append(f'<polyline points="{pts}" fill="none" stroke="var(--series)" '
+                 f'stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>')
+    # points with native tooltips + direct value labels + x tick labels
+    for i, r in enumerate(tl):
+        x, y = X(i), Y(r["eq"])
+        tip = f"{r['week']}: {r['eq']} survKB/$, {r['sessions']} sessions"
+        if r["changes"]:
+            tip += " | " + "; ".join(r["changes"])
+        parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4.5" fill="var(--surface)" '
+                     f'stroke="var(--series)" stroke-width="2"><title>{esc(tip)}</title></circle>')
+        parts.append(f'<text x="{x:.1f}" y="{y-10:.1f}" text-anchor="middle" '
+                     f'font-size="10" fill="var(--ink2)">{r["eq"]:.2f}</text>')
+        parts.append(f'<text x="{x:.1f}" y="{mt+ph+16:.0f}" text-anchor="middle" '
+                     f'font-size="10" fill="var(--muted)">{esc(r["week"])}</text>')
+    parts.append("</svg>")
+
+    rows = "".join(
+        f"<tr><td>{esc(r['week'])}</td><td>{r['eq']}</td><td>{r['sessions']}</td>"
+        f"<td>{esc('; '.join(r['changes']) or '')}</td></tr>" for r in tl)
+    legend = ""
+    if flags:
+        items = "".join(f'<li><span class="flag">{k}</span> {esc(r["week"])}: '
+                        f'{esc("; ".join(r["changes"]))}</li>' for k, r in flags)
+        legend = (f'<p style="margin-top:12px"><strong>Your changes:</strong></p>'
+                  f'<ol style="font-size:13px;color:var(--ink2);margin:4px 0">{items}</ol>')
+    body = (f'<div class="viz-root"><h1>{esc(str(eq0))} surviving KB per dollar</h1>'
+            f'<p>Higher is better. Each numbered flag is a change you made to your '
+            f'setup, so a move on the curve ties to a change, not noise.</p>'
+            f'{"".join(parts)}{legend}'
+            f'<table><thead><tr><th>week</th><th>EQ</th><th>sessions</th>'
+            f'<th>changes</th></tr></thead><tbody>{rows}</tbody></table></div>')
+    return _page(head + body)
+
+
+def _page(inner):
+    return ("<!doctype html><html><head><meta charset=utf-8>"
+            "<meta name=viewport content=\"width=device-width,initial-scale=1\">"
+            "<title>Dyno: your efficiency over time</title></head>"
+            f"<body>{inner}</body></html>\n")
 
 
 def main():
@@ -598,6 +779,8 @@ def main():
         f.write("\n")
     with open(os.path.join(args.out, "report.md"), "w") as f:
         f.write(render_md(report))
+    with open(os.path.join(args.out, "report.html"), "w") as f:
+        f.write(render_html(report))
     print(os.path.join(args.out, "report.json"))
 
 
