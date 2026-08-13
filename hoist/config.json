@@ -1,0 +1,39 @@
+{
+  "_comment": "Layer 2 hoistable config for agent-dyno (see ~/projects/hoistable). This is the formula that ships agent-dyno: on install it clones the repo and renders a report with zero setup. Canonical home is here, in agent-dyno; the hoistable index points across at this file (point don't embed, single source of truth). source.clone is the repo location (swap for the public URL to distribute publicly).",
+  "app": "agent-dyno",
+  "source": { "clone": "/home/baron/projects/agent-dyno", "dir": "agent-dyno" },
+  "binds": [
+    { "name": "git", "probe": "git --version", "required": true },
+    { "name": "python3", "probe": "python3 --version", "required": true }
+  ],
+  "default_profile": "default",
+  "profiles": {
+    "default": {
+      "isolation": {
+        "none": true,
+        "why": "hermetic: everything runs inside a throwaway clone. demo.py fabricates its own synthetic snapshot and a throwaway git repo under .hoist-report/_demo and renders the report there; it starts no daemons, binds no host ports, and writes no state outside the clone. Nothing leaves the machine."
+      },
+      "preflight": [
+        { "name": "python>=3.8",
+          "probe": "python3 -c \"import sys; sys.exit(0 if sys.version_info >= (3,8) else 1)\"",
+          "required": true }
+      ],
+      "bringup": [
+        { "name": "render-demo-report",
+          "run": "python3 skills/dyno-report/demo.py --out .hoist-report" }
+      ],
+      "health": [
+        { "name": "report-json-written", "check": "test -f .hoist-report/report.json" },
+        { "name": "report-html-written", "check": "test -f .hoist-report/report.html" }
+      ],
+      "acceptance": [
+        { "name": "numerator-selftest", "check": "python3 core/test_survival_git.py" },
+        { "name": "driver-selftest", "check": "python3 skills/dyno-report/test_dyno_report.py" },
+        { "name": "evidence-selftest", "check": "python3 adapters/claude-code/fingerprint_evidence.py --selftest" },
+        { "name": "demo-render-selftest", "check": "python3 skills/dyno-report/demo.py --selftest" },
+        { "name": "report-has-topline", "check": "grep -q 'functionality per Mtok' .hoist-report/report.html" },
+        { "name": "report-is-a-chart", "check": "grep -q '<svg' .hoist-report/report.html" }
+      ]
+    }
+  }
+}

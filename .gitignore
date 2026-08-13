@@ -9,3 +9,4 @@ survival-cache.json
 transcript-archive/
 *.local.json
 .DS_Store
+.hoist-report/
