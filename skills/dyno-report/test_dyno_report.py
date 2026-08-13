@@ -296,6 +296,14 @@ def main():
             fails.append("fuel_and_work missing by_effort / by_engine slices")
         if not fwroot.get("by_routing"):
             fails.append("fuel_and_work missing by_routing slice (new fingerprint dim)")
+        # fingerprint contract: rig placed on the taxonomy's six dimensions
+        fpr = rep.get("fingerprint") or {}
+        for dim in ("orchestration_topology", "model_routing", "reasoning_effort",
+                    "review_regime", "knowledge_practice", "delivery_cadence"):
+            if dim not in fpr:
+                fails.append(f"fingerprint contract missing dimension: {dim}")
+        if "pending" not in str(fpr.get("review_regime", "")):
+            fails.append("review_regime should be a pending-classification slot")
         else:
             b0 = fw[0]
             if b0["surv_kb"] != 23.0:  # (9216 + 14336) / 1024

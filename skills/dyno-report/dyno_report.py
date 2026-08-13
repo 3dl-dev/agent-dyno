@@ -179,6 +179,8 @@ def session_metrics(sess, turns, code, survival, session_cost, usage_field):
     interrupts = sum(1 for t in T if t.get("interrupted"))
     ends_q = sum(1 for t in T if t.get("ends_q"))
     n_turns = len(T)
+    # fan-out width (deterministic topology sub-signal): subagents dispatched
+    fanout = (sess.get("wf_agents") or 0) + (sess.get("plain_agents") or 0)
     effort = modal([t.get("effort") for t in T if t.get("effort")])
     c = code.get(sid) or {}
     orch_out = usage_field(c.get("orch") or {}, "out") if usage_field \
@@ -203,6 +205,7 @@ def session_metrics(sess, turns, code, survival, session_cost, usage_field):
         "interrupts": interrupts,
         "ends_q": ends_q,
         "n_turns": n_turns,
+        "fanout": fanout,
         "dollars": dollars,
     }
 
@@ -495,6 +498,34 @@ def babysitting(cells):
     }
 
 
+def fingerprint_summary(metrics, numerator):
+    """The rig as one point in the taxonomy's six dimensions (docs/taxonomy.md).
+    Harness-neutral by construction: it reads the generic per-session fields, not
+    anything Claude-Code-specific. Deterministic dimensions are filled; the
+    pattern dimensions (fine topology, review regime, knowledge practice) carry a
+    'pending-classification' slot the in-session LLM classifier fills -- keeping
+    the tool self-bootstrapping (no API key, no install)."""
+    if not metrics:
+        return None
+    fanouts = [m["fanout"] for m in metrics if m.get("fanout")]
+    pending = "pending-classification (LLM; see docs/taxonomy.md)"
+    return {
+        "orchestration_topology": {
+            "coarse": modal([m["engine"] for m in metrics]),
+            "fanout_width_mean": round(sum(fanouts) / len(fanouts), 1) if fanouts else 0,
+            "fine": pending,
+        },
+        "model_routing": modal([m["routing"] for m in metrics]),
+        "reasoning_effort": modal([m["effort"] for m in metrics]),
+        "review_regime": pending,
+        "knowledge_practice": pending,
+        "delivery_cadence": {
+            "change_failure_rate": numerator.get("change_failure_rate")},
+        "ingested_dimensions": ["topology(coarse)", "routing", "effort",
+                                "delivery-cadence"],
+    }
+
+
 def frontier_eq(entry):
     d = (entry.get("vector") or {}).get("dollars_per_survkb")
     return (1.0 / d) if d else None
@@ -706,6 +737,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
             "constitution": "docs/governance.md",
         },
         "topline": tl,
+        "fingerprint": fingerprint_summary(metrics, numerator),
         "babysitting": bs,
         "lever": lever,
         "measure": measure,
