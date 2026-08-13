@@ -598,7 +598,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
     # changes (shipped units of work: merged PRs, not commits) with change failure
     # rate. Volume and throughput carry different signal.
     repo_rows = []
-    tot_add = tot_surv = tot_ch = tot_fail = 0
+    tot_add = tot_surv = tot_ch = tot_fail = tot_cx = 0
     for repo in repos:
         r = survival_git.survival(repo, since, now=now)
         ch = survival_git.changes(repo, since, now=now)
@@ -609,19 +609,25 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
         tot_ch += ch["changes"]
         tot_fail += ch["failed"]
         if r is None:
-            row.update({"commits": 0, "added": 0, "surviving": 0, "pct": None})
+            row.update({"commits": 0, "added": 0, "surviving": 0, "pct": None,
+                        "net_complexity": 0})
         else:
             row.update({"commits": r["commits"], "added": r["added"],
-                        "surviving": r["surviving"], "pct": round(r["pct"], 2)})
+                        "surviving": r["surviving"], "pct": round(r["pct"], 2),
+                        "net_complexity": r["net_complexity"]})
             tot_add += r["added"]
             tot_surv += r["surviving"]
+            tot_cx += r["net_complexity"]
         repo_rows.append(row)
     numerator = {"repos": repo_rows, "total_added": tot_add,
                  "total_surviving": tot_surv,
                  "pct": round(100 * tot_surv / tot_add, 2) if tot_add else None,
                  "total_changes": tot_ch, "total_failed_changes": tot_fail,
                  "change_failure_rate": round(100 * tot_fail / tot_ch, 2)
-                 if tot_ch else None}
+                 if tot_ch else None,
+                 "net_complexity": tot_cx,
+                 "complexity_per_1k_lines": round(1000 * tot_cx / tot_surv, 1)
+                 if tot_surv else None}
 
     frontier = json.load(open(frontier_path)) if os.path.exists(frontier_path) else {"entries": []}
     ss = same_shape(by_ee_cells, frontier)
@@ -700,6 +706,14 @@ def render_md(report):
                  f"unit of work (a merged PR), not a commit. Value is unpredictable, "
                  f"so throughput of changes is what to grow -- more shipped per "
                  f"dollar, without raising the failure rate.")
+        if num.get("net_complexity"):
+            L.append("")
+            L.append(f"Net complexity retained: {num['net_complexity']:,} decision "
+                     f"points ({num['complexity_per_1k_lines']} per 1k surviving "
+                     f"lines). A cyclomatic-complexity proxy that scales change by "
+                     f"density, not line count, so a dense change outweighs "
+                     f"boilerplate of the same size. Crude (stdlib, no parser), a "
+                     f"companion to volume, not a value measure.")
     L.append("")
     if lever:
         L.append("## Your biggest lever")

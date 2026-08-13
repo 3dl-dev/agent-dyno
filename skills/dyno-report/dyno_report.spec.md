@@ -144,6 +144,13 @@ engine join needs commit-to-session matching that earns its own fixture.
 Surviving work is reported two ways, because they carry different signal:
 
 - **Surviving KB** (`survival_git`): code volume that lasts. A crude size proxy.
+- **Net complexity retained** (`survival_git`, decision-point count over surviving
+  code): a language-agnostic cyclomatic-complexity proxy that scales change by
+  density, not line count, so a dense change outweighs boilerplate of the same
+  size. Crude by necessity (stdlib, no per-language parser; miscounts in strings
+  and comments), a companion to volume and never a value measure. The useful cut
+  is density (decision points per 1k surviving lines): it separates dense logic
+  from bulk that inflates net-KB.
 - **DORA changes** (`survival_git.changes`): the accepted delivery vocabulary. A
   *change* is a shipped unit of work (a merged PR), NOT a commit (an arbitrary
   checkpoint). Throughput is deployment frequency; quality is *change failure

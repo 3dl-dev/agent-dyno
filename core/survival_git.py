@@ -34,6 +34,11 @@ from collections import defaultdict
 
 SHA_RE = re.compile(r"^([0-9a-f]{40}) ")
 FIXY = re.compile(r"\b(fix|bug|revert|regression|hotfix|patch)\b", re.I)
+# Decision points, the language-agnostic core of cyclomatic complexity (McCabe).
+# A stdlib proxy: no per-language parser, so it is crude (miss/false-count in
+# strings and comments), but it scales change by density, not just line count.
+DECISION_RE = re.compile(
+    r"\b(if|elif|else\s+if|for|while|case|when|catch|except|switch)\b|&&|\|\||\?")
 _SINCE_RE = re.compile(r"(\d+)\.(day|week|month)s?\.ago")
 
 
@@ -64,17 +69,25 @@ def window_commits(repo, since):
 
 
 def surviving_by_commit(repo, paths):
-    """One blame pass over `paths`; return {sha: surviving_line_count}."""
+    """One blame pass over `paths`. Returns ({sha: surviving_line_count},
+    {sha: surviving_decision_points}) -- the second is the cyclomatic-complexity
+    proxy of the surviving code attributed to each commit."""
     surviving = defaultdict(int)
+    complexity = defaultdict(int)
     for path in paths:
         out = git(repo, "blame", "HEAD", "--line-porcelain", "--", path)
         if not out:
             continue
+        cur = None
         for line in out.splitlines():
             m = SHA_RE.match(line)
             if m:
-                surviving[m.group(1)] += 1
-    return surviving
+                cur = m.group(1)
+                surviving[cur] += 1
+            elif cur is not None and line.startswith("\t"):
+                complexity[cur] += len(DECISION_RE.findall(line))
+                cur = None  # content line consumed
+    return surviving, complexity
 
 
 def _since_to_date(since, now):
@@ -142,7 +155,7 @@ def survival(repo, since, now=None):
     # scope blame to files still present at HEAD that were touched in the window
     tracked = set(git(repo, "ls-files").splitlines())
     paths = {p for c in commits.values() for p in c["paths"]} & tracked
-    surviving = surviving_by_commit(repo, paths)
+    surviving, complexity = surviving_by_commit(repo, paths)
 
     # per-commit survival, bucketed by age
     buckets = [(0, 1), (1, 3), (3, 7), (7, 14), (14, 30), (30, 90), (90, 10**6)]
@@ -164,12 +177,14 @@ def survival(repo, since, now=None):
 
     total_added = sum(c["added"] for c in commits.values())
     total_surv = sum(surviving.get(s, 0) for s in commits)
+    net_complexity = sum(complexity.get(s, 0) for s in commits)
     return {
         "repo": repo,
         "since": since,
         "commits": len(commits),
         "added": total_added,
         "surviving": total_surv,
+        "net_complexity": net_complexity,
         "pct": 100 * total_surv / max(1, total_added),
         "buckets": [(labels[i], agg[i][0], agg[i][1]) for i in range(len(labels))],
         "fix_added": fix_added,
@@ -194,6 +209,9 @@ def main():
     ch = changes(args.repo, args.since)
     print(f"changes (DORA, {ch['source']})={ch['changes']}  "
           f"change failure rate={ch['change_failure_rate']}%")
+    dens = 1000 * r["net_complexity"] / r["surviving"] if r["surviving"] else 0
+    print(f"net complexity retained={r['net_complexity']:,} decision points "
+          f"(~cyclomatic proxy; {dens:.0f} per 1k surviving lines)")
     print(f"\n{'code age when added':22}{'added':>10}{'surviving%':>13}")
     print("-" * 45)
     for lbl, added, surv in r["buckets"]:

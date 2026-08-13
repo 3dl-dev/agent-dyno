@@ -117,12 +117,13 @@ def gitc(repo, *a):
 def build_repo(repo):
     gitc(repo, "init", "-q")
     p = os.path.join(repo, "f.txt")
+    # each line carries one decision point ("if") -> 6 surviving lines = complexity 6
     with open(p, "w") as fh:
-        fh.write("\n".join(f"line{i}" for i in range(10)) + "\n")
+        fh.write("\n".join(f"if line{i}:" for i in range(10)) + "\n")
     gitc(repo, "add", "f.txt")
     gitc(repo, "commit", "-q", "-m", "add ten")
     with open(p, "w") as fh:
-        fh.write("\n".join(f"line{i}" for i in range(6)) + "\n")
+        fh.write("\n".join(f"if line{i}:" for i in range(6)) + "\n")
     gitc(repo, "commit", "-qam", "trim to six")
 
 
@@ -222,6 +223,9 @@ def main():
                          f"cfr {nn['change_failure_rate']}")
         if rep["numerator"]["repos"][0]["change_source"] != "git-trunk (approx)":
             fails.append("fixture change source should be the git-trunk fallback")
+        # net complexity: 6 surviving lines each carry one "if" -> 6 decision points
+        if nn["net_complexity"] != 6:
+            fails.append(f"net_complexity should be 6, got {nn['net_complexity']}")
 
         # ---- (3b) topline EQ, the lever, and the surface ----
         # total surviving chars: s1 9216 + s2 14336 + s3 2048 + s4 14336 = 39936
