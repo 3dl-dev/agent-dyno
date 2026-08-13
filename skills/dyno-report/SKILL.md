@@ -44,13 +44,56 @@ python3 skills/dyno-report/dyno_report.py \
 each). It writes `report.json` (the contract) and `report.md` (a rendered
 report). Everything downstream reads `report.json`.
 
+## 3b. Classify the pattern dimensions (optional, cached, cost-gated)
+
+Three of the six fingerprint dimensions (docs/taxonomy.md) are patterns a counter
+cannot place: **fine topology**, **review regime**, **knowledge practice**. You
+classify them once and cache the result; the driver then consumes the cache
+deterministically. This is what the model is allowed to do (the driver stays a
+pure function). Skip it if the operator only wants the topline; the report is
+complete without it, the three slots just read "pending-classification".
+
+If they want the full fingerprint:
+
+1. Package the evidence (no raw transcripts reach you, only a compact bundle per
+   rig):
+
+   ```
+   python3 adapters/claude-code/fingerprint_evidence.py \
+       --snapshot <snap-dir> --out <snap-dir>/fingerprint-evidence.json
+   ```
+
+2. **Classify distinct rigs, not sessions.** The bundle is keyed by rig
+   (`engine/routing/effort`); every session sharing a skeleton is one rig, so you
+   classify each rig once. This is the dedup that keeps the cost a fraction of a
+   percent of weekly output. Run the cascade cheap-first: Haiku triages the
+   obvious rigs, escalate an ambiguous one to Sonnet, Opus only if still unclear.
+   For each rig, read its `skills` / `bash` / `subagent_tasks` evidence and pick
+   one accepted-term value per dimension from docs/taxonomy.md (e.g. review regime
+   in none / automated / agentic review pass / sweeps / cross-model / spec +
+   acceptance / manual). Cost-gate exactly like the misery layer: above ~1% of
+   weekly output, show the operator the ratio and ask before spending.
+
+3. Write labels only (no raw text; operator-correctable) to
+   `<snap-dir>/fingerprint-labels.json`:
+
+   ```
+   { "schema": "agent-dyno/fingerprint-labels@1",
+     "rigs": { "delegate/none/high": { "fine_topology": "orchestrator-workers",
+       "review_regime": "agentic review pass", "knowledge_practice": "skills" } } }
+   ```
+
+4. Re-run the driver (step 3). It finds the cache alongside the snapshot (or pass
+   `--labels <path>`), fills the three slots of `fingerprint`, and exposes
+   `by_review_regime` / `by_knowledge_practice` slices.
+
 ## 4. Present the surface, and only the surface
 
 The driver already wrote it: show `report.md`. It is three things and nothing
 else, so present those three and stop:
 
-1. **The topline** (`topline.eq`): one number, `surviving-KB per dollar`, higher
-   is better. This is the meter.
+1. **The topline** (`topline.eq`): one number, `surviving functionality
+   (decision points) per Mtok output`, higher is better. This is the meter.
 2. **The one lever** (`lever`): the single tweak with the largest predicted gain,
    in plain language, with the predicted new topline. If `lever` is null, say
    they are at the frontier for their shape and there is nothing to suggest; never

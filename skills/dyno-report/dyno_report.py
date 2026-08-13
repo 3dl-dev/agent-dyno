@@ -96,6 +96,40 @@ def routing_of(sess):
     return "homogeneous" if worker_bases == {orch} else "cross-family"
 
 
+def rig_key(m):
+    """The deterministic fingerprint skeleton a session belongs to: engine /
+    routing / effort. The classifier labels distinct RIGS, not sessions (the
+    dedup decision), so this is the join key between a session and its
+    fingerprint-labels entry. Pure function of already-computed fields."""
+    return f"{m['engine']}/{m['routing']}/{m['effort']}"
+
+
+PATTERN_DIMS = ("fine_topology", "review_regime", "knowledge_practice")
+
+
+def load_labels(labels_path):
+    """Load the fingerprint-labels cache: {rig_key: {fine_topology, review_regime,
+    knowledge_practice}}. Returns {} if absent. Labels-only, operator-correctable;
+    the driver consumes them but never computes them (the determinism invariant:
+    pattern classification is the in-session model's job, cached here)."""
+    if not labels_path or not os.path.exists(labels_path):
+        return {}
+    try:
+        data = json.load(open(labels_path))
+    except Exception:
+        return {}
+    return data.get("rigs") or {}
+
+
+def attach_labels(metrics, labels):
+    """Attach the three pattern-dimension labels to each session by its rig key.
+    Absent cache or absent rig -> 'unclassified' (the pending slot survives)."""
+    for m in metrics:
+        rig = labels.get(rig_key(m), {})
+        for dim in PATTERN_DIMS:
+            m[dim] = rig.get(dim, "unclassified")
+
+
 def load_adapter_cost(harness):
     """Return (session_cost, usage_field) for the harness adapter, or (None,None).
 
@@ -509,20 +543,32 @@ def fingerprint_summary(metrics, numerator):
         return None
     fanouts = [m["fanout"] for m in metrics if m.get("fanout")]
     pending = "pending-classification (LLM; see docs/taxonomy.md)"
+
+    def label(dim):
+        """Modal label for a pattern dimension, or the pending slot when the
+        labels cache did not classify this rig (modal == 'unclassified')."""
+        v = modal([m.get(dim, "unclassified") for m in metrics])
+        return pending if v == "unclassified" else v
+
+    fine, review, knowledge = (label(d) for d in PATTERN_DIMS)
+    ingested = ["topology(coarse)", "routing", "effort", "delivery-cadence"]
+    for name, val in (("fine-topology", fine), ("review-regime", review),
+                      ("knowledge-practice", knowledge)):
+        if val != pending:
+            ingested.append(name)
     return {
         "orchestration_topology": {
             "coarse": modal([m["engine"] for m in metrics]),
             "fanout_width_mean": round(sum(fanouts) / len(fanouts), 1) if fanouts else 0,
-            "fine": pending,
+            "fine": fine,
         },
         "model_routing": modal([m["routing"] for m in metrics]),
         "reasoning_effort": modal([m["effort"] for m in metrics]),
-        "review_regime": pending,
-        "knowledge_practice": pending,
+        "review_regime": review,
+        "knowledge_practice": knowledge,
         "delivery_cadence": {
             "change_failure_rate": numerator.get("change_failure_rate")},
-        "ingested_dimensions": ["topology(coarse)", "routing", "effort",
-                                "delivery-cadence"],
+        "ingested_dimensions": ingested,
     }
 
 
@@ -640,7 +686,7 @@ def measure_vs_baseline(current_eq, baseline_path):
 
 
 def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
-                 baseline_path=None, granularity="week"):
+                 baseline_path=None, granularity="week", labels_path=None):
     session_cost, usage_field = load_adapter_cost(harness)
     sessions, turns, code, survival = load_snapshot(snapshot_dir)
     metrics = []
@@ -649,6 +695,13 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
         if m:
             metrics.append(m)
     metrics.sort(key=lambda m: m["sid"])  # deterministic order
+
+    # pattern-dimension labels: explicit --labels, else alongside the snapshot.
+    # Absent -> the three pattern dims stay pending; a no-cache run is unchanged.
+    if labels_path is None:
+        default = os.path.join(snapshot_dir, "fingerprint-labels.json")
+        labels_path = default if os.path.exists(default) else None
+    attach_labels(metrics, load_labels(labels_path))
 
     # vectors by engine and by (engine, model)
     by_eng_cells = defaultdict(list)
@@ -748,6 +801,9 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
             "by_effort": fuel_sliced(metrics, granularity, "effort"),
             "by_engine": fuel_sliced(metrics, granularity, "engine"),
             "by_routing": fuel_sliced(metrics, granularity, "routing"),
+            "by_review_regime": fuel_sliced(metrics, granularity, "review_regime"),
+            "by_knowledge_practice": fuel_sliced(metrics, granularity,
+                                                 "knowledge_practice"),
         },
         "vector_by_engine": vector_by_engine,
         "vector_by_engine_model": vector_by_engine_model,
@@ -1037,6 +1093,9 @@ def main():
                     help="fixed epoch for deterministic age buckets; default clock")
     ap.add_argument("--baseline", default=None,
                     help="a prior report.json; show the actual EQ move since it")
+    ap.add_argument("--labels", default=None,
+                    help="fingerprint-labels.json (pattern dims per rig); default: "
+                         "alongside the snapshot if present")
     ap.add_argument("--granularity", default="week", choices=["day", "week", "month"],
                     help="time bucket for the fuel-and-work chart")
     ap.add_argument("--out", required=True)
@@ -1047,7 +1106,9 @@ def main():
                           args.harness, args.now,
                           baseline_path=os.path.expanduser(args.baseline)
                           if args.baseline else None,
-                          granularity=args.granularity)
+                          granularity=args.granularity,
+                          labels_path=os.path.expanduser(args.labels)
+                          if args.labels else None)
     os.makedirs(args.out, exist_ok=True)
     with open(os.path.join(args.out, "report.json"), "w") as f:
         json.dump(report, f, indent=2, sort_keys=True)

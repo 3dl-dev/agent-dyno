@@ -131,7 +131,26 @@ def approx(a, b, tol=0.02):
     return a is not None and abs(a - b) <= tol
 
 
-def run_driver(snap, repo, frontier, out, hashseed="0", baseline=None):
+def build_labels(path):
+    """A fingerprint-labels cache for the fixture's three distinct rigs (all have
+    empty submix -> routing 'none', all high effort). Modal review_regime across
+    the four sessions is 'agentic review pass' (s2+s4 delegate); modal fine is
+    'orchestrator-workers'; modal knowledge_practice is 'skills'."""
+    labels = {"schema": "agent-dyno/fingerprint-labels@1", "rigs": {
+        "solo/none/high": {"fine_topology": "single-agent",
+                           "review_regime": "spec + acceptance",
+                           "knowledge_practice": "skills"},
+        "delegate/none/high": {"fine_topology": "orchestrator-workers",
+                               "review_regime": "agentic review pass",
+                               "knowledge_practice": "skills"},
+        "workflow/none/high": {"fine_topology": "parallelization",
+                               "review_regime": "sweeps",
+                               "knowledge_practice": "memory"}}}
+    with open(path, "w") as f:
+        json.dump(labels, f)
+
+
+def run_driver(snap, repo, frontier, out, hashseed="0", baseline=None, labels=None):
     env = dict(os.environ, PYTHONHASHSEED=hashseed)
     cmd = [sys.executable, os.path.join(HERE, "dyno_report.py"),
            "--harness", "claude-code", "--snapshot", snap,
@@ -139,6 +158,8 @@ def run_driver(snap, repo, frontier, out, hashseed="0", baseline=None):
            "--frontier", frontier, "--now", "1754006400", "--out", out]
     if baseline:
         cmd += ["--baseline", baseline]
+    if labels:
+        cmd += ["--labels", labels]
     subprocess.run(cmd, check=True, capture_output=True, text=True, env=env)
     return json.load(open(os.path.join(out, "report.json")))
 
@@ -310,6 +331,42 @@ def main():
                 fails.append(f"week1 net-code {b0['surv_kb']} != 23.0")
             if b0["output_tok"] != 3000 or b0["read_tok"] != 300:
                 fails.append(f"week1 token streams wrong: {b0}")
+
+        # ---- (item 1) the fingerprint labels cache fills the pattern dims ----
+        # A run WITHOUT a cache keeps the three pattern dims pending (asserted
+        # above on out1). A run WITH a cache fills them from the modal rig label,
+        # and a by_review_regime slice appears. The driver consumes the cache
+        # deterministically (byte-identical across hash seeds).
+        labels_path = os.path.join(tmp, "fingerprint-labels.json")
+        build_labels(labels_path)
+        out4 = os.path.join(tmp, "out4")
+        rep4 = run_driver(snap, repo, frontier, out4, labels=labels_path)
+        fpr4 = rep4.get("fingerprint") or {}
+        if fpr4.get("review_regime") != "agentic review pass":
+            fails.append(f"labels: review_regime should be modal 'agentic review "
+                         f"pass', got {fpr4.get('review_regime')}")
+        if fpr4.get("knowledge_practice") != "skills":
+            fails.append(f"labels: knowledge_practice should be modal 'skills', "
+                         f"got {fpr4.get('knowledge_practice')}")
+        fine4 = (fpr4.get("orchestration_topology") or {}).get("fine")
+        if fine4 != "orchestrator-workers":
+            fails.append(f"labels: fine topology should be modal "
+                         f"'orchestrator-workers', got {fine4}")
+        if "review-regime" not in (fpr4.get("ingested_dimensions") or []):
+            fails.append("labels: review-regime should join ingested_dimensions")
+        byrr = (rep4.get("fuel_and_work") or {}).get("by_review_regime") or {}
+        if "agentic review pass" not in byrr:
+            fails.append(f"labels: by_review_regime slice missing regimes: "
+                         f"{sorted(byrr)}")
+        if not (rep4.get("fuel_and_work") or {}).get("by_knowledge_practice"):
+            fails.append("labels: by_knowledge_practice slice missing")
+        # determinism of the cache-consuming path: same inputs, different seed
+        out5 = os.path.join(tmp, "out5")
+        run_driver(snap, repo, frontier, out5, hashseed="7", labels=labels_path)
+        for name in ("report.json", "report.html"):
+            if open(os.path.join(out4, name), "rb").read() != \
+               open(os.path.join(out5, name), "rb").read():
+                fails.append(f"labels: {name} not byte-identical across seeds")
 
         # the chart artifact exists and carries both charts
         htmlp = os.path.join(out1, "report.html")

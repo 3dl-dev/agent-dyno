@@ -99,6 +99,51 @@ after the pass report tokens actually spent against the same baseline. The tool
 eats its own dog food: an assessment's inference cost is justified by the savings
 it unlocks, and the operator sees the ratio before the spend.
 
+## The fingerprint labels cache (the pattern dimensions)
+
+Three of the six taxonomy dimensions are patterns, not counts: **fine topology**
+(orchestrator-workers vs MoA vs evaluator-optimizer, under the coarse
+solo/delegate/workflow), **review regime** (none / automated / agentic review pass
+/ sweeps / cross-model / spec+acceptance / manual), and **knowledge practice**
+(skills / memory / retrieval / compaction). They do not fall out of a counter, so
+the driver does not classify them; the in-session model does, once, and writes the
+result to a cache the driver then consumes deterministically. This keeps the
+driver a pure function (the determinism invariant) while still filling the axes.
+
+The cache is `fingerprint-labels.json` (default: alongside the snapshot), schema
+`agent-dyno/fingerprint-labels@1`:
+
+```
+{ "schema": "agent-dyno/fingerprint-labels@1",
+  "rigs": { "<rig-key>": { "fine_topology": "...", "review_regime": "...",
+                            "knowledge_practice": "..." }, ... } }
+```
+
+The **rig key** is the deterministic fingerprint tuple `engine/routing/effort`
+(the skeleton the driver already computes per session). Classifying by rig, not by
+session, is the dedup decision (roadmap decision 3): every session sharing a
+skeleton is one rig, classified once. Labels only, no raw transcript text; the
+operator may hand-correct any value. The driver:
+
+- joins each session to its rig key and attaches the three labels (absent cache or
+  absent rig -> the label is `unclassified`, and the pending-classification slot
+  stays, so a run with no cache is unchanged);
+- fills the three pending slots of `fingerprint` from the modal label;
+- exposes `fuel_and_work.by_review_regime` (and `by_knowledge_practice`) as
+  first-class slices, so review regime can be watched and held fixed like any
+  other dimension;
+- carries the per-session labels into the confound machinery, so an uneven
+  review-regime mix is namable as a confound (see the confounds section).
+
+The evidence the classifier reads is packaged by the adapter (harness-specific),
+not the driver: `adapters/<harness>/fingerprint_evidence.py` buckets per-rig
+evidence (skills invoked, Bash-command tags of test/lint vs shell, per-subagent
+task descriptions) so the model classifies from a compact bundle, never raw logs.
+The skill (`SKILL.md`) runs the Haiku->Sonnet cascade over the distinct rigs and
+writes the cache; cost is gated exactly like the misery layer above. None of this
+is on the driver's critical path: the driver reads the cache if present and is
+otherwise unchanged.
+
 Everything else (the full vector, per-cell same-shape, claims, confounds,
 numerator, fingerprint, provenance) is machinery. It lives in `report.json` for
 inspection, and is kept OUT of the default surface.
