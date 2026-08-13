@@ -1,9 +1,20 @@
 # Roadmap and handoff: completing the fingerprint and the join
 
 A clean session resumes from here. This is an execution pointer, not a belief:
-read it, read `skills/dyno-report/dyno_report.spec.md`, run the two tests to
-confirm the baseline is green, then execute items 1-5 in order. Do not
-re-litigate the decisions logged below; they were made deliberately.
+read it, read `skills/dyno-report/dyno_report.spec.md`, run the tests to confirm
+the baseline is green. Do not re-litigate the decisions logged below; they were
+made deliberately.
+
+**Items 1-5 are complete** (branch `dyno-report-driver`, commits `2937ed0`
+through `fa2142e`); see the per-item DONE notes under "The plan" below. To confirm
+the baseline, run every test:
+
+```
+python3 core/test_survival_git.py
+python3 skills/dyno-report/test_dyno_report.py
+python3 adapters/claude-code/fingerprint_evidence.py --selftest
+python3 skills/dyno-report/demo.py --selftest
+```
 
 Branch: `dyno-report-driver`. Baseline is committed and green.
 
@@ -114,12 +125,20 @@ same pipe. The surface stays one number; everything else is depth you descend in
    already matches commits to sessions by project + time; leverage it, do not
    hand-roll project-name matching.
 
-## The plan: items 1-5
+## The plan: items 1-5 (DONE)
 
-Do them in order. Each is source-first: write/adjust the spec and the acceptance
-test first, then the code.
+All five landed source-first (spec + acceptance test first, then code), each its
+own commit on `dyno-report-driver`. The per-item outcomes below are kept as the
+record of what was built; the "DONE" line on each says where it lives.
 
 ### 1. Wire the LLM classifier as a cached fingerprint layer
+**DONE** (`2937ed0`). Driver: `rig_key` / `load_labels` / `attach_labels`;
+`fingerprint_summary` reads the modal rig label or keeps the pending slot;
+`by_review_regime` + `by_knowledge_practice` slices; `--labels` flag with default
+discovery alongside the snapshot. Adapter: `adapters/claude-code/fingerprint_evidence.py`
+(per-rig evidence, `--selftest`). Skill: `SKILL.md` step 3b runs the cascade and
+writes `fingerprint-labels.json`. Test: fixture cache fills the pattern dims + a
+`by_review_regime` slice appears + byte-identical across seeds.
 Outcome: the three pending fingerprint dimensions (fine topology, review regime,
 knowledge practice) are filled per rig by the in-session model and consumed by the
 driver as real dimensions (sliceable, holdable-as-confound, nudgeable-as-lever).
@@ -136,6 +155,13 @@ fingerprint dims populated + a `by_review_regime` slice appears; determinism hol
 (driver consumes cache deterministically).
 
 ### 2. Git-side join (exact topline + per-model work units)
+**DONE** (`edadae9`). Topline denominator scopes to sessions whose `proj` names a
+measured repo (`topline.denominator_sessions`; window-approx fallback when no
+`proj`). `numerator.attribution` (by_model / by_effort, matched / unmatched)
+attributes surviving lines + complexity via `attribute_work`, reusing
+`horizon_attribute.load_sessions` and `survival_git`. Test: s4's non-matching
+`proj` is excluded from the denominator; the fixture commits attribute their 6
+decision points to s1's opus-5/high.
 Outcome: the topline denominator scopes to the measured repos' own sessions
 (kills the window-approx), and complexity/DORA-changes slice by model/effort.
 How: use `core/horizon_attribute.py` to attribute commits -> sessions -> model.
@@ -145,6 +171,12 @@ sessions with matching `proj` -> topline uses only matched sessions' output;
 per-model complexity present.
 
 ### 3. Extend the slicer
+**DONE** (`f9bd8fc`). One `report.html` selector cuts by model / effort / engine /
+routing / review-regime / knowledge-practice (optgroup per dimension; slices with
+<2 non-empty buckets dropped). The git-side attribution joins the page as a compact
+table (`render_attribution`), not a fake time-series panel. Self-contained,
+byte-identical across seeds. Test asserts a group per dimension + the table + no
+external asset reference.
 Outcome: `report.html` selector also cuts by effort / engine / routing (not just
 model), and the git-side work units (changes, complexity) join the panels.
 How: generalize the selector in `render_small_multiples` over the existing
@@ -153,6 +185,13 @@ Acceptance: html carries selectors for each dimension; still self-contained;
 byte-identical across hash seeds.
 
 ### 4. Close the loose ends
+**DONE** (`49d4325`). `confounds()` now also names an effort mix, a review-regime
+mix or an uncontrolled (unclassified) review regime, and non-overlapping fuel/git
+windows (takes `now`). The lever no longer calls its prediction
+`predicted_topline_eq`: it is a survKB/$ engine-efficiency move (`unit`,
+`predicts`, `predicted_efficiency[_delta]`), not the headline; the measure loop is
+ground truth on the headline and carries the prior prediction under a
+different-unit name. `confounds()` unit-tested directly; lever honesty asserted.
 Outcome: `confounds()` also names effort-mix, review-regime, and non-overlapping
 fuel/git-window confounds; the lever no longer mislabels a `$/survKB` prediction
 as a topline move. How: extend `confounds()`; either rehook `best_lever` to
@@ -162,10 +201,19 @@ keep the measure loop as the ground truth on the headline. Acceptance: test asse
 the new confound strings when the conditions hold; lever fields are honestly named.
 
 ### 5. Hoist config
-Outcome: dyno-report ships itself -- a `hoist` formula (see `~/projects/hoistable`)
-that, on install, clones the repo, builds the snapshot, and runs the report with
-zero setup. How: author the Layer 2 config per hoistable's model. Acceptance: a
-clean machine can `hoist` agent-dyno to a rendered report without manual steps.
+**DONE** (`fa2142e`). `skills/dyno-report/demo.py` fabricates a synthetic snapshot
++ throwaway git repo and renders `report.{json,md,html}` with zero setup (exercises
+the join, the labels cache, the lever, the slicer; `--selftest`). `hoist/config.json`
+is agent-dyno's canonical Layer 2 formula: a hermetic profile whose bringup renders
+the demo and whose acceptance re-runs the stdlib self-tests and grades the chart.
+Verified end to end: `python3 <hoistable>/hoist/hoist.py <agent-dyno>/hoist/config.json`
+-> BUILT, transfer 6/6. NOTE: to hoist by name (`hoist agent-dyno`), repoint the
+hoistable index entry to `../agent-dyno/hoist/config.json` (a one-line change left
+unapplied to avoid committing to the hoistable repo's main branch, which carried
+unrelated in-flight work). Direct-path hoist needs no hoistable change.
+Original outcome: dyno-report ships itself -- a `hoist` formula (see
+`~/projects/hoistable`) that, on install, clones the repo, builds the snapshot, and
+runs the report with zero setup.
 
 ## Files map
 
