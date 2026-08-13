@@ -936,15 +936,9 @@ def _fmt_tok(n):
     return str(int(n))
 
 
-def render_small_multiples(report):
-    """Fuel and work over time as aligned small multiples: the three token
-    streams (cache-read, read, output) and the net code retained, each on its own
-    scale, sharing one time axis. Different scales by design, so never one axis."""
-    fw = report.get("fuel_and_work") or {}
-    rows = fw.get("series") or []
+def _sm_svg(rows):
+    """The four-panel aligned small-multiples SVG for one fuel-and-work series."""
     esc = _html.escape
-    if len(rows) < 2:
-        return ""
     panels = [
         ("cache_read_tok", "cache-read tokens", "var(--c-cacheread)", _fmt_tok),
         ("read_tok", "read tokens", "var(--c-read)", _fmt_tok),
@@ -968,14 +962,12 @@ def render_small_multiples(report):
 
         def Y(v, top=top):
             return top + PH * (1 - v / vmax)
-        # baseline + panel label + peak value
         out.append(f'<line x1="{ml}" y1="{top+PH}" x2="{ml+pw}" y2="{top+PH}" '
                    f'stroke="var(--grid)" stroke-width="1"/>')
         out.append(f'<text x="{ml}" y="{top-4}" font-size="11" font-weight="600" '
                    f'fill="var(--ink2)">{esc(label)}</text>')
         out.append(f'<text x="{ml+pw}" y="{top-4}" text-anchor="end" font-size="10" '
                    f'fill="var(--muted)">peak {esc(fmt(vmax))}</text>')
-        # area fill + line
         area = f"{ml},{top+PH} " + " ".join(
             f"{X(i):.1f},{Y(v):.1f}" for i, v in enumerate(vals)) + \
             f" {ml+pw},{top+PH}"
@@ -987,18 +979,43 @@ def render_small_multiples(report):
             tip = f"{rows[i]['bucket']}: {fmt(v)} {label}"
             out.append(f'<circle cx="{X(i):.1f}" cy="{Y(v):.1f}" r="3" fill="{color}">'
                        f'<title>{esc(tip)}</title></circle>')
-        # x labels on the last panel only
         if pi == len(panels) - 1:
             for i, r in enumerate(rows):
                 out.append(f'<text x="{X(i):.1f}" y="{top+PH+16:.0f}" '
                            f'text-anchor="middle" font-size="10" '
                            f'fill="var(--muted)">{esc(r["bucket"])}</text>')
     out.append("</svg>")
+    return "".join(out)
+
+
+def render_small_multiples(report):
+    """Fuel and work over time as aligned small multiples, with an interactive
+    model slice: the three token streams and net code retained, each on its own
+    scale. Self-contained (inline JS toggling pre-rendered slices, no external
+    assets) -- honoring the stdlib/hoistable, ships-itself constraint."""
+    fw = report.get("fuel_and_work") or {}
+    rows = fw.get("series") or []
+    esc = _html.escape
+    if len(rows) < 2:
+        return ""
     gran = fw.get("granularity", "week")
+    slices = [("all", "All models", rows)]
+    for m, s in (fw.get("by_model") or {}).items():
+        if len([b for b in s if b]) >= 2:
+            slices.append((f"model-{m}", m, s))
+    opts = "".join(f'<option value="fw-{esc(sid)}">{esc(label)}</option>'
+                   for sid, label, _ in slices)
+    blocks = "".join(
+        f'<div id="fw-{esc(sid)}" class="fw-slice"{"" if i == 0 else " hidden"}>'
+        f'{_sm_svg(s)}</div>' for i, (sid, label, s) in enumerate(slices))
+    js = ("<script>(function(){var s=document.getElementById('fw-sel');if(!s)return;"
+          "s.addEventListener('change',function(){"
+          "document.querySelectorAll('.fw-slice').forEach(function(d){d.hidden=true;});"
+          "var t=document.getElementById(s.value);if(t)t.hidden=false;});})();</script>")
     return (f'<h2>Fuel and work over time (by {esc(gran)})</h2>'
             f'<p>The three token streams that make up your fuel, against the code '
-            f'that survived. Aligned in time, each on its own scale.</p>'
-            f'{"".join(out)}')
+            f'that survived, each on its own scale. Slice by model: '
+            f'<select id="fw-sel">{opts}</select></p>{blocks}{js}')
 
 
 def _page(inner):
