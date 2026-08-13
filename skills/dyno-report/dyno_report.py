@@ -323,10 +323,21 @@ def topline(metrics):
             "sessions": len(metrics), "_survkb": survkb, "_dollars": dollars}
 
 
+_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
 def _iso_week(day):
     y, m, d = (int(x) for x in day.split("-")[:3])
     iso = datetime.date(y, m, d).isocalendar()
     return iso[0], iso[1]
+
+
+def _week_label(key):
+    """Human calendar date for an (iso_year, iso_week) key: the week's Monday,
+    e.g. 'Aug 4'. Nobody thinks in ISO week numbers."""
+    monday = datetime.date.fromisocalendar(key[0], key[1], 1)
+    return f"{_MONTHS[monday.month - 1]} {monday.day}"
 
 
 def timeline(metrics):
@@ -357,7 +368,7 @@ def timeline(metrics):
             for dim in ("engine", "orchestrator", "effort"):
                 if fp[dim] != prev[dim]:
                     changes.append(f"{dim}: {prev[dim]} to {fp[dim]}")
-        rows.append({"week": f"{key[0]}-W{key[1]:02d}", "eq": eq,
+        rows.append({"week": _week_label(key), "eq": eq,
                      "sessions": len(cells), "fingerprint": fp, "changes": changes})
         prev = fp
     return rows
@@ -613,15 +624,15 @@ def render_md(report):
     if len(tline) >= 2:
         L.append("## Your EQ over time")
         L.append("")
-        L.append("Each change you made is marked, so a move ties to a change, not "
-                 "noise. Full annotated chart: report.html.")
+        L.append("By week. Each change you made is marked, so a move ties to a "
+                 "change, not noise. Full annotated chart: report.html.")
         L.append("")
         hi = max(r["eq"] for r in tline) or 1.0
         for r in tline:
             fill = int(round(12 * r["eq"] / hi))
             bar = "█" * fill + "·" * (12 - fill)
             note = ("  <- " + "; ".join(r["changes"])) if r["changes"] else ""
-            L.append(f"`{r['week']}  {r['eq']:<7} {bar}`{note}")
+            L.append(f"`{r['week']:<7} {r['eq']:<7} {bar}`{note}")
         L.append("")
     L.append("---")
     L.append("_Full vector, fingerprint, per-repo survival, claim verdicts, and "

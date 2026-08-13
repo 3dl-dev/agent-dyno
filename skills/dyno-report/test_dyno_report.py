@@ -14,6 +14,7 @@ Stdlib only. Needs git on PATH.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -251,8 +252,10 @@ def main():
         if len(tlr) != 2:
             fails.append(f"timeline should have 2 weeks, got {len(tlr)}")
         else:
-            if tlr[0]["week"] > tlr[1]["week"]:
-                fails.append("timeline weeks not in ascending order")
+            # labels are human calendar dates (week's Monday), not ISO week numbers
+            if not all(re.match(r"^[A-Z][a-z]{2} \d{1,2}$", r["week"]) for r in tlr):
+                fails.append(f"week labels are not calendar dates: "
+                             f"{[r['week'] for r in tlr]}")
             if tlr[0]["changes"]:
                 fails.append("first week should have no change annotations")
             if not any("orchestrator" in c for c in tlr[1]["changes"]):
