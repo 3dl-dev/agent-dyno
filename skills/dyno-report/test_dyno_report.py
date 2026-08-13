@@ -231,9 +231,9 @@ def main():
         # total surviving chars: s1 9216 + s2 14336 + s3 2048 + s4 14336 = 39936
         total_dollars = sum(costs)
         total_survkb = 39936 / 1024  # = 39.0 (still drives the lever math below)
-        # topline is now functionality (git complexity) per Mtok, LARGER is better
-        total_tok = sum(sum(s["main_usage"][s["model"]].values()) for s in sessions)
-        eq_expected = round(6 / (total_tok / 1e6), 2)  # net_complexity 6 / Mtok
+        # topline = functionality (git complexity 6) per Mtok OUTPUT, larger better
+        out_tok = sum(s["main_usage"][s["model"]]["out_tok"] for s in sessions)
+        eq_expected = round(6 / (out_tok / 1e6), 2)  # net_complexity 6 / output-Mtok
         if rep["topline"]["eq"] != eq_expected:
             fails.append(f"topline EQ {rep['topline']['eq']} != {eq_expected}")
         if rep["topline"].get("larger_is_better") is not True:

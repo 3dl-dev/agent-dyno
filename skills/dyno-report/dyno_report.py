@@ -335,15 +335,20 @@ def topline(metrics, numerator):
     survc = sum(m["born"] - m["killed"] for m in metrics)
     survkb = survc / 1024 if survc > 0 else 0.0
     dollars = sum(m["dollars"] for m in metrics)
-    total_tok = sum(m["in_tok"] + m["cache_r"] + m["cache_w"] + m["out_tok"]
-                    for m in metrics)
-    mtok = total_tok / 1e6
+    # Fuel = OUTPUT tokens (what the model generates), not total tokens: total is
+    # ~97% cache-reads, which drown the signal and are near-free on a subscription.
+    # Output is the scarce, generative fuel, and dividing by it penalizes verbosity
+    # (a chatty model burns output for the same logic and scores lower).
+    out_mtok = sum(m["out_tok"] for m in metrics) / 1e6
+    total_mtok = sum(m["in_tok"] + m["cache_r"] + m["cache_w"] + m["out_tok"]
+                     for m in metrics) / 1e6
     functionality = numerator.get("net_complexity", 0)
-    eq = round(functionality / mtok, 2) if mtok else None
+    eq = round(functionality / out_mtok, 2) if out_mtok else None
     return {"eq": eq,
-            "unit": "surviving functionality (decision points) per Mtok",
+            "unit": "surviving functionality (decision points) per Mtok output",
             "larger_is_better": True,
-            "functionality": functionality, "mtok": round(mtok, 3),
+            "functionality": functionality, "output_mtok": round(out_mtok, 3),
+            "total_mtok": round(total_mtok, 3),
             "change_failure_rate": numerator.get("change_failure_rate"),
             "surv_kb": round(survkb, 2), "dollars": round(dollars, 2),
             "sessions": len(metrics), "_survkb": survkb, "_dollars": dollars}
@@ -701,12 +706,12 @@ def render_md(report):
     L = []
     if tl["eq"] is None:
         return "# Your setup\n\nNot enough surviving-work data in this window yet.\n"
-    L.append(f"# Your setup: {tl['eq']} functionality per Mtok")
+    L.append(f"# Your setup: {tl['eq']} functionality per Mtok output")
     L.append("")
     cfr = tl.get("change_failure_rate")
     cfr_s = f" Change failure rate {cfr}% (DORA)." if cfr is not None else ""
-    L.append(f"Larger is better. Surviving functionality (decision points, a "
-             f"proxy) per million tokens of fuel, over {tl['sessions']} sessions."
+    L.append(f"Larger is better. Surviving decision-logic (a complexity proxy) per "
+             f"million tokens the model generated, over {tl['sessions']} sessions."
              f"{cfr_s} Nothing leaves your machine.")
     L.append("")
     if lever:
@@ -773,7 +778,7 @@ def render_html(report):
         ".viz-root .flag{color:var(--series);font-weight:600;}\n"
         "</style>\n")
     if len(tl) < 2:
-        body = (f'<div class="viz-root"><h1>{esc(str(eq0))} functionality per Mtok</h1>'
+        body = (f'<div class="viz-root"><h1>{esc(str(eq0))} functionality per Mtok output</h1>'
                 "<p>Not enough weeks of data to chart a trend yet.</p></div>")
         return _page(head + body)
 
@@ -849,7 +854,7 @@ def render_html(report):
                         f'{esc("; ".join(r["changes"]))}</li>' for k, r in flags)
         legend = (f'<p style="margin-top:12px"><strong>Your changes:</strong></p>'
                   f'<ol style="font-size:13px;color:var(--ink2);margin:4px 0">{items}</ol>')
-    body = (f'<div class="viz-root"><h1>{esc(str(eq0))} functionality per Mtok</h1>'
+    body = (f'<div class="viz-root"><h1>{esc(str(eq0))} functionality per Mtok output</h1>'
             f'<p>Higher is better. Each numbered flag is a change you made to your '
             f'setup, so a move on the curve ties to a change, not noise.</p>'
             f'{"".join(parts)}{legend}'
