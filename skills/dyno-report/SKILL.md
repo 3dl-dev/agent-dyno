@@ -95,11 +95,13 @@ else, so present those three and stop:
 1. **The topline** (`topline.eq`): one number, `surviving functionality
    (decision points) per Mtok output`, higher is better. This is the meter.
 2. **The one lever** (`lever`): the single tweak with the largest predicted gain,
-   in plain language, with the predicted new topline. If `lever` is null, say
-   they are at the frontier for their shape and there is nothing to suggest; never
-   invent a lever.
+   in plain language. Its prediction is a surviving-KB-per-dollar engine-efficiency
+   move (the `unit` / `predicts` fields say so), NOT a topline forecast; do not
+   present it as "the topline will become X". If `lever` is null, say they are at
+   the frontier for their shape and there is nothing to suggest; never invent a
+   lever.
 3. **The measure line** (`measure`, present only with `--baseline`): the actual
-   move since last run, beside what was predicted. This is the loop: tweak,
+   topline move since last run (the ground truth). This is the loop: tweak,
    re-run, see if it moved.
 4. **EQ over time** (`timeline`, and the chart in `report.html`): the weekly EQ
    curve with the operator's own fingerprint changes flagged on it, so a move

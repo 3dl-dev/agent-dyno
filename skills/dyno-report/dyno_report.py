@@ -627,11 +627,19 @@ def best_lever(by_ee_cells, frontier, total_survkb, total_dollars):
                 "frontier_id": fe.get("id"),
                 "tweak": fe.get("lever") or fe.get("technique"),
                 "proof": fe.get("proof"),
-                "your_cell_eq": round(cell_eq, 4),
-                "frontier_cell_eq": round(feq, 4),
-                "predicted_topline_eq": round(new_eq, 4),
-                "predicted_delta": round(new_eq - base_eq, 4)}
-        if best is None or cand["predicted_delta"] > best["predicted_delta"]:
+                # honest unit: this whole prediction lives in the frontier's own
+                # unit (surviving-KB per dollar), NOT the topline headline. The
+                # frontier does not yet carry functionality-per-Mtok, so the lever
+                # cannot predict the headline; the measure loop is ground truth on
+                # that. Fields are named to make the unit unmistakable.
+                "unit": "surviving-KB per dollar",
+                "predicts": "engine-efficiency vector (depth), not the topline headline",
+                "your_cell_efficiency": round(cell_eq, 4),
+                "frontier_cell_efficiency": round(feq, 4),
+                "predicted_efficiency": round(new_eq, 4),
+                "predicted_efficiency_delta": round(new_eq - base_eq, 4)}
+        if best is None or \
+                cand["predicted_efficiency_delta"] > best["predicted_efficiency_delta"]:
             best = cand
     return best
 
@@ -662,16 +670,43 @@ def claim_verdicts(by_engine, metrics):
     return out
 
 
-def confounds(metrics, numerator, since):
+def confounds(metrics, numerator, since, now):
     out = []
     out.append(f"Horizon: survival here is same-session (killed within the run), "
                f"and the git numerator is measured at HEAD over '{since}'. Not a "
                f"durable day/week horizon.")
-    small = [f"{e}" for e, v in {}.items()]
     n = len(metrics)
     if n < 30:
         out.append(f"Small N: only {n} code-sessions with survival in the window; "
                    f"per-cell numbers move on a few sessions.")
+    # effort mix: the blended topline can move on an effort shift, not an engine change
+    efforts = sorted({m["effort"] for m in metrics if m.get("effort")})
+    if len(efforts) > 1:
+        out.append(f"Effort mix: sessions span effort tiers {', '.join(efforts)}; "
+                   f"the blended topline can move on an effort-mix shift rather than "
+                   f"an engine change. Slice by_effort to hold it fixed.")
+    # review-regime mix (a prime survival confound) or an uncontrolled regime
+    regimes = sorted({m.get("review_regime", "unclassified") for m in metrics})
+    real = [r for r in regimes if r != "unclassified"]
+    if len(real) > 1:
+        out.append(f"Review-regime mix: sessions span {', '.join(real)}; review "
+                   f"regime moves horizon-survival, so it is a prime confound. Slice "
+                   f"by_review_regime to hold it fixed before attributing a move.")
+    elif not real:
+        out.append("Review regime uncontrolled: no fingerprint labels, so the "
+                   "review dimension is neither held fixed nor sliced. Run the "
+                   "classifier (SKILL.md step 3b) to control for this confound.")
+    # non-overlapping fuel (session) and git (numerator) windows: the ratio would
+    # divide functionality and fuel measured over different periods
+    days = sorted(m["day"] for m in metrics if m.get("day"))
+    start = survival_git._since_to_date(since, now)
+    if days and start:
+        now_date = datetime.datetime.utcfromtimestamp(now).strftime("%Y-%m-%d")
+        if days[-1] < start or days[0] > now_date:
+            out.append(f"Window mismatch: fuel sessions span {days[0]}..{days[-1]} "
+                       f"but the git numerator window is {start}..{now_date}; they "
+                       f"do not overlap, so the topline divides functionality and "
+                       f"fuel measured over different periods.")
     # bulk-import repos in the numerator
     for r in numerator["repos"]:
         if r.get("commits") and r["added"] and r["commits"] <= 2 and r["added"] > 20000:
@@ -682,17 +717,24 @@ def confounds(metrics, numerator, since):
 
 
 def measure_vs_baseline(current_eq, baseline_path):
-    """Close the loop: actual EQ move since a prior report, beside its prediction."""
+    """Close the loop: the actual TOPLINE move since a prior report (the ground
+    truth on the headline). The prior lever's prediction is carried alongside but
+    named for its own unit (survKB/$ engine-efficiency), a different quantity from
+    the headline delta, so the two are never silently equated."""
     if not baseline_path or not os.path.exists(baseline_path):
         return None
     prev = json.load(open(baseline_path))
     prev_eq = (prev.get("topline") or {}).get("eq")
-    predicted = (prev.get("lever") or {}).get("predicted_delta")
+    predicted = (prev.get("lever") or {}).get("predicted_efficiency_delta")
     if prev_eq is None or current_eq is None:
         return None
-    return {"baseline_eq": prev_eq, "current_eq": current_eq,
+    return {"metric": "topline (functionality per Mtok output)",
+            "baseline_eq": prev_eq, "current_eq": current_eq,
             "actual_delta": round(current_eq - prev_eq, 4),
-            "previously_predicted_delta": predicted}
+            "lever_predicted_efficiency_delta": predicted,
+            "note": "actual_delta is the topline headline (ground truth); the "
+                    "lever prediction is a surviving-KB-per-dollar move, a "
+                    "different unit, not a headline forecast."}
 
 
 def attribute_work(repos, since, snapshot_dir, tail=900.0):
@@ -814,6 +856,11 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
                  if tot_surv else None}
     # per-model / per-effort surviving work, via the git<->session join
     numerator["attribution"] = attribute_work(repos, since, snapshot_dir)
+    # resolve now for the now-dependent confounds (window overlap). Deterministic
+    # when --now is passed; falls back to wall-clock per the determinism contract
+    # ("same inputs, same day, same bytes").
+    now_val = now if now is not None else \
+        datetime.datetime.now(datetime.timezone.utc).timestamp()
 
     # topline denominator: scope output tokens to the sessions that worked the
     # measured repos (proj names a repo). Fall back to the whole window when no
@@ -879,7 +926,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
         "numerator": numerator,
         "same_shape": ss,
         "claims": claim_verdicts(by_engine, metrics),
-        "confounds": confounds(metrics, numerator, since),
+        "confounds": confounds(metrics, numerator, since, now_val),
     }
     return report
 
@@ -907,9 +954,9 @@ def render_md(report):
         L.append(f"{lever['tweak']}")
         L.append("")
         L.append(f"Setups shaped like yours ({lever['engine']}, {lever['effort']} "
-                 f"effort) run at {lever['frontier_cell_eq']} per dollar, against "
-                 f"your {lever['your_cell_eq']}. Adopt it, then re-run with "
-                 f"--baseline to see the number move.")
+                 f"effort) retain {lever['frontier_cell_efficiency']} surviving-KB "
+                 f"per dollar, against your {lever['your_cell_efficiency']}. Adopt "
+                 f"it, then re-run with --baseline to see whether the topline moved.")
     else:
         L.append("You are at the frontier for every shape we can compare. Nothing "
                  "to suggest; contribute your result so the next person learns.")

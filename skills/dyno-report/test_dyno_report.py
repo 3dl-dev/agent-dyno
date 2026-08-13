@@ -23,6 +23,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "adapters", "claude-code"))
 import mb_cost  # noqa: E402  (to compute expected dollars the same way the driver does)
+sys.path.insert(0, HERE)
+import dyno_report  # noqa: E402  (to unit-test the pure confounds() function directly)
 
 DAY = "2026-08-01"
 
@@ -181,8 +183,44 @@ def run_driver(snap, repo, frontier, out, hashseed="0", baseline=None, labels=No
     return json.load(open(os.path.join(out, "report.json")))
 
 
+def check_confounds(fails):
+    """(item 4) confounds() names effort mix, review-regime mix / uncontrolled, and
+    non-overlapping fuel/git windows. Unit-tested directly (pure function)."""
+    import datetime
+    now = int(datetime.datetime(2026, 8, 1, tzinfo=datetime.timezone.utc).timestamp())
+
+    def mm(effort, regime, day):
+        return {"effort": effort, "review_regime": regime, "day": day}
+
+    num = {"repos": []}
+    # mixed effort + mixed regime + Jan sessions against a Jul-Aug git window
+    cf = dyno_report.confounds(
+        [mm("high", "sweeps", "2026-01-05"), mm("low", "manual", "2026-01-06")],
+        num, "30.days.ago", now)
+    j = " || ".join(cf)
+    if "Effort mix" not in j:
+        fails.append(f"confounds: effort-mix not named: {cf}")
+    if "Review-regime mix" not in j:
+        fails.append(f"confounds: review-regime mix not named: {cf}")
+    if "Window mismatch" not in j:
+        fails.append(f"confounds: non-overlapping fuel/git window not named: {cf}")
+    # uniform effort + all-unclassified regime + overlapping window: only the
+    # 'uncontrolled review regime' confound should fire (not effort/window/mix).
+    cf2 = dyno_report.confounds(
+        [mm("high", "unclassified", "2026-07-20"),
+         mm("high", "unclassified", "2026-07-21")], num, "30.days.ago", now)
+    j2 = " || ".join(cf2)
+    if "uncontrolled" not in j2:
+        fails.append(f"confounds: uncontrolled review regime not named: {cf2}")
+    if "Effort mix" in j2:
+        fails.append(f"confounds: effort-mix falsely named on uniform effort: {cf2}")
+    if "Window mismatch" in j2:
+        fails.append(f"confounds: window-mismatch falsely named on overlap: {cf2}")
+
+
 def main():
     fails = []
+    check_confounds(fails)
     with tempfile.TemporaryDirectory() as tmp:
         snap = os.path.join(tmp, "snap"); os.makedirs(snap)
         repo = os.path.join(tmp, "repo"); os.makedirs(repo)
@@ -309,11 +347,21 @@ def main():
             frontier_eq = 1.0 / ((wf_cost / 2.0) / 2.0)
             cf_dollars = 2.0 / frontier_eq  # cell survKB 2.0 at frontier efficiency
             new_eq = round(total_survkb / (total_dollars - wf_cost + cf_dollars), 4)
-            if lever["predicted_topline_eq"] != new_eq:
-                fails.append(f"lever predicted EQ {lever['predicted_topline_eq']} "
+            # (item 4) the lever prediction is honestly a survKB/$ engine-efficiency
+            # move, NOT the topline headline: fields must say so, and the old
+            # mislabeled key must be gone.
+            if lever.get("predicted_efficiency") != new_eq:
+                fails.append(f"lever predicted_efficiency {lever.get('predicted_efficiency')} "
                              f"!= {new_eq}")
-            if lever["predicted_delta"] <= 0:
-                fails.append("lever predicted_delta should be positive")
+            if lever.get("predicted_efficiency_delta", 0) <= 0:
+                fails.append("lever predicted_efficiency_delta should be positive")
+            if "predicted_topline_eq" in lever:
+                fails.append("lever still carries the mislabeled predicted_topline_eq")
+            if lever.get("unit") != "surviving-KB per dollar":
+                fails.append(f"lever unit not honestly named: {lever.get('unit')}")
+            if "not the topline" not in (lever.get("predicts") or ""):
+                fails.append(f"lever should state it does not predict the topline: "
+                             f"{lever.get('predicts')}")
 
         # babysitting index: 2 interventions (1 nudge + 1 ends_q) over 4 turns
         bs = rep.get("babysitting")
@@ -434,8 +482,11 @@ def main():
         m = rep3.get("measure")
         if not m or m["actual_delta"] != 0.0:
             fails.append(f"measure loop: same inputs should show 0 move, got {m}")
-        elif lever and m["previously_predicted_delta"] != lever["predicted_delta"]:
-            fails.append("measure loop did not carry the prior prediction")
+        elif lever and m["lever_predicted_efficiency_delta"] != \
+                lever["predicted_efficiency_delta"]:
+            fails.append("measure loop did not carry the prior lever prediction")
+        elif "different unit" not in (m.get("note") or ""):
+            fails.append("measure loop should flag the prediction as a different unit")
 
         # ---- (4) byte-identical re-run under a DIFFERENT hash seed ----
         # (out1 ran with PYTHONHASHSEED=0; run out2 with =1 so any set-iteration

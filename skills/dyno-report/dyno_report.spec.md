@@ -42,7 +42,12 @@ dyno_report --harness <name> --repos <path>[,<path>...] [--since <git-approxidat
    emitting {claim, metric value, verdict}.
 7. **Confounds.** Emit named confounds mechanically: horizon age of the window,
    bulk-import repos (single-commit or >Xk-line commits flagged as terrain),
-   cells with N below a floor, non-overlapping fuel/git windows.
+   cells with N below a floor, an **effort mix** across the sessions (the blended
+   topline can move on an effort shift, not an engine change), a **review-regime
+   mix** or an uncontrolled (unclassified) review regime (a prime survival
+   confound), and **non-overlapping fuel/git windows** (fuel sessions and the git
+   numerator window covering different periods, so the ratio divides work and fuel
+   from different times).
 
 ## The functional surface: one number, one lever, a measurable delta
 
@@ -67,12 +72,20 @@ The user sees three things and nothing else:
 2. **One lever.** The single fingerprint tweak with the largest predicted gain:
    the operator's worst same-shape cell versus the same-shape frontier entry that
    beats it. Reported as a plain tweak (the frontier entry's technique) plus a
-   **predicted new topline** (recompute the blended EQ as if that cell ran at the
-   frontier entry's efficiency). If no same-shape entry beats the operator, there
-   is no lever; say so, never invent one.
-3. **Measure.** With `--baseline <prev report.json>`, show the actual EQ move
-   since last run beside what was predicted. This closes the predict-then-measure
-   loop: tweak the rig, re-run, see if the number moved as promised.
+   predicted move on the **engine-efficiency vector** (surviving-KB per dollar),
+   recomputed as if that cell ran at the frontier entry's efficiency. This
+   prediction is honestly a *depth* number in the frontier's own unit (survKB/$),
+   **not** the topline headline (functionality per Mtok output): the frontier does
+   not yet carry the headline unit, so the lever cannot predict it directly, and
+   its fields say so (`unit`, `predicts`). The ground truth on the headline is the
+   measure loop below, not this prediction. If no same-shape entry beats the
+   operator, there is no lever; say so, never invent one.
+3. **Measure.** With `--baseline <prev report.json>`, show the actual topline move
+   since last run (the ground truth on the headline). The lever's prior prediction
+   is carried alongside but explicitly named as a survKB/$ engine-efficiency move,
+   a different unit from the headline delta, so the two are never silently equated.
+   This closes the predict-then-measure loop: tweak the rig, re-run, see if the
+   number moved.
 3b. **The babysitting index.** Turn quality has an objective half that needs no
    inference: how often you had to intervene rather than get clean value, as
    interventions per 100 turns (nudges to continue + interrupts + hand-backs that
