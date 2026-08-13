@@ -56,10 +56,14 @@ The user sees three things and nothing else:
    (the high-score instinct), unbounded, a ratio so volume cannot game it, and
    burning output for no lasting functionality lowers it (naive tokenmaxxing
    inverted). DORA change failure rate rides alongside as the delivery-quality
-   lens; surviving-KB, dollars, and total-token fuel are depth lenses. Honest seam:
-   functionality is git-side and tokens session-side, so the window number is a
-   straight ratio; scoping tokens to the repos' own sessions (and slicing by
-   model/effort) needs the git<->session join.
+   lens; surviving-KB, dollars, and total-token fuel are depth lenses. The seam
+   between git-side functionality and session-side tokens is closed by the
+   git<->session join: the output-token denominator is scoped to the sessions that
+   actually worked in the measured repos (a session matches a repo when the repo
+   name is in its `proj`), so the denominator counts only the fuel that bought the
+   functionality in the numerator. `topline.denominator_sessions` records how many
+   sessions fed it. When no session carries `proj` (older snapshots), the driver
+   falls back to the whole-window denominator and the number is a window-approx.
 2. **One lever.** The single fingerprint tweak with the largest predicted gain:
    the operator's worst same-shape cell versus the same-shape frontier entry that
    beats it. Reported as a plain tweak (the frontier entry's technique) plus a
@@ -182,16 +186,24 @@ repo, frontier file, current date, adapter version). Same inputs, same day, same
 bytes, on any model that invokes the driver. Cross-harness parity is the adapter
 contract's job: two harnesses with equivalent work must yield comparable vectors.
 
-## v1 scope and deferrals (stated, not silent)
+## The git<->session join (exact topline + per-model work units)
 
-v1 implements steps 1, 2, 4, 5, 6, 7 and the full output/governance/determinism
-contract. **Step 3 (git-side per-engine attribution via `horizon_attribute`, the
-durable "which engine's committed lines survived" cut) is deferred to v2** and is
-not yet folded into `report.json`. Until then the narrator may run
-`core/horizon_attribute.py` per repo by hand for that cut; it is not part of the
-turn-key guarantee. This deferral is deliberate: v1 covers the same-session vector,
-the numerator, and the same-shape comparison end-to-end and tested; the git-side
-engine join needs commit-to-session matching that earns its own fixture.
+`horizon_attribute` matches a commit to the session that produced it (same
+project, commit time inside the session's active window, short tail tolerance) and
+carries that session's model / effort fingerprint. The driver leverages it (never
+hand-rolling the project-name match) for two things:
+
+1. **Exact topline.** The output-token denominator is scoped to the sessions whose
+   `proj` names a measured repo, so the topline is functionality-in-these-repos
+   over the-fuel-that-bought-it, not over the whole window. See the topline
+   section; `topline.denominator_sessions` reports the scoped count.
+2. **Per-model / per-effort work units.** Surviving lines and surviving complexity
+   are attributed to the model and effort that authored them, under
+   `numerator.attribution` (`by_model`, `by_effort`, plus `matched` / `unmatched`
+   commit counts). This is the durable "whose committed logic lasted" cut, joined
+   deterministically (commit timestamps at HEAD, session timestamps in the
+   snapshot). A commit whose time matches no session is counted as `unmatched`,
+   never silently dropped.
 
 ## The numerator's two units (volume and throughput)
 
@@ -227,7 +239,13 @@ asserts:
 2. the same-shape comparison matches only the same-shape frontier entry, and
    states "no same-shape entry" for a cell that has none;
 3. `report.json` carries full provenance and the governance-clean stamp;
-4. a second run on the same fixture and date is byte-identical.
+4. a second run on the same fixture and date is byte-identical;
+5. the topline denominator counts only the sessions whose `proj` names the
+   measured repo (a non-matching session's output is excluded), and
+   `numerator.attribution.by_model` carries the surviving complexity attributed to
+   the model whose session window brackets the fixture commits;
+6. supplying a `fingerprint-labels.json` cache fills the three pattern fingerprint
+   dimensions and exposes a `by_review_regime` slice.
 
 A build that does not pass this is not a valid build. The skill may not ship a
 number this driver did not produce.

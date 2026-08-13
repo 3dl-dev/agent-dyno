@@ -27,8 +27,8 @@ import mb_cost  # noqa: E402  (to compute expected dollars the same way the driv
 DAY = "2026-08-01"
 
 
-def sess(sid, model, engine_kw, out, intok, cr, cw, day=DAY):
-    r = {"k": "session", "sess": sid, "host": "fix", "day": day,
+def sess(sid, model, engine_kw, out, intok, cr, cw, day=DAY, proj=""):
+    r = {"k": "session", "sess": sid, "host": "fix", "day": day, "proj": proj,
          "model": model, "msgs": 2, "submix": {},
          "workflows": 0, "wf_agents": 0, "plain_agents": 0,
          "main_usage": {model: {"in_tok": intok, "out_tok": out,
@@ -38,14 +38,22 @@ def sess(sid, model, engine_kw, out, intok, cr, cw, day=DAY):
     return r
 
 
-def turn(sid, model, out, intok, cr, cw, nudge=0, interrupted=0, ends_q=0):
+def turn(sid, model, out, intok, cr, cw, nudge=0, interrupted=0, ends_q=0,
+         proj="", ts=None):
     return {"k": "turn", "sess": sid, "model": model, "effort": "high",
             "in_tok": intok, "out_tok": out, "cache_r_tok": cr, "cache_w_tok": cw,
-            "user_chars": 3, "n_asst": 1,
+            "user_chars": 3, "n_asst": 1, "proj": proj, "ts": ts,
             "nudge": nudge, "interrupted": interrupted, "ends_q": ends_q}
 
 
-def build_snapshot(d):
+def iso_utc(epoch):
+    """Tz-aware UTC ISO string; horizon_attribute.parse_iso resolves it to the same
+    epoch a git %ct commit time carries (a naive string would be read as local)."""
+    import datetime
+    return datetime.datetime.fromtimestamp(epoch, tz=datetime.timezone.utc).isoformat()
+
+
+def build_snapshot(d, commit_lo):
     # S1 solo opus-5:      born 10240 killed 1024 -> waste 10%, survKB 9.0
     # S2 delegate opus-4-8: born 20480 killed 6144 -> waste 30%, survKB 14.0
     # S3 workflow opus-5:   born 10240 killed 8192 -> waste 80%, survKB 2.0
@@ -54,18 +62,27 @@ def build_snapshot(d):
     # Every delegate ratio axis is unchanged (s4 == s2 shape); only survKB doubles.
     # week A (08-03): s1, s2   week B (08-12): s3, s4  -> a two-week timeline with
     # a fingerprint change (orchestrator opus -> fable) detectable in week B.
+    #
+    # Join fixture (item 2): s1/s2/s3 have proj "repo" (they worked the measured
+    # repo); s4 has proj "elsewhere" (its output is OUTSIDE the topline scope).
+    # Turn ts places only s1's window over the fixture commits (commit_lo), so the
+    # git<->session join attributes the surviving complexity to s1's model opus-5;
+    # s2/s3 windows sit 30 days earlier so they are not commit candidates. (The
+    # join ts axis is deliberately separate from the timeline `day` axis: commits
+    # land at test-run wall-clock, the timeline is the synthetic Aug calendar.)
+    far = commit_lo - 30 * 86400
     sessions = [
-        sess("s1", "claude-opus-5", {}, 1000, 100, 9000, 900, day="2026-08-03"),
-        sess("s2", "claude-opus-4-8", {"plain_agents": 2}, 2000, 200, 18000, 1800, day="2026-08-03"),
-        sess("s3", "claude-opus-5", {"workflows": 1, "wf_agents": 4}, 1500, 150, 13500, 1350, day="2026-08-12"),
-        sess("s4", "claude-fable-5", {"plain_agents": 2}, 2000, 200, 18000, 1800, day="2026-08-12"),
+        sess("s1", "claude-opus-5", {}, 1000, 100, 9000, 900, day="2026-08-03", proj="repo"),
+        sess("s2", "claude-opus-4-8", {"plain_agents": 2}, 2000, 200, 18000, 1800, day="2026-08-03", proj="repo"),
+        sess("s3", "claude-opus-5", {"workflows": 1, "wf_agents": 4}, 1500, 150, 13500, 1350, day="2026-08-12", proj="repo"),
+        sess("s4", "claude-fable-5", {"plain_agents": 2}, 2000, 200, 18000, 1800, day="2026-08-12", proj="elsewhere"),
     ]
     # 2 interventions over 4 turns -> babysitting index 50.0 per 100 turns
     turns = [
-        turn("s1", "claude-opus-5", 1000, 100, 9000, 900),
-        turn("s2", "claude-opus-4-8", 2000, 200, 18000, 1800, nudge=1),
-        turn("s3", "claude-opus-5", 1500, 150, 13500, 1350, ends_q=1),
-        turn("s4", "claude-fable-5", 2000, 200, 18000, 1800),
+        turn("s1", "claude-opus-5", 1000, 100, 9000, 900, proj="repo", ts=iso_utc(commit_lo)),
+        turn("s2", "claude-opus-4-8", 2000, 200, 18000, 1800, nudge=1, proj="repo", ts=iso_utc(far)),
+        turn("s3", "claude-opus-5", 1500, 150, 13500, 1350, ends_q=1, proj="repo", ts=iso_utc(far)),
+        turn("s4", "claude-fable-5", 2000, 200, 18000, 1800, proj="elsewhere", ts=iso_utc(far)),
     ]
     with open(os.path.join(d, "mb-fix.jsonl"), "w") as f:
         for r in sessions + turns:
@@ -172,11 +189,13 @@ def main():
         frontier = os.path.join(tmp, "frontier.json")
         out1 = os.path.join(tmp, "out1"); out2 = os.path.join(tmp, "out2")
 
-        sessions = build_snapshot(snap)
+        # repo first: its commit timestamps place the join windows in the snapshot
+        build_repo(repo)
+        cts = [int(x) for x in gitc(repo, "log", "--format=%ct").split()]
+        sessions = build_snapshot(snap, min(cts))
         prices = mb_cost.load_prices()
         costs = [mb_cost.session_cost(s, prices) for s in sessions]  # s1..s4
         build_frontier(frontier, costs[2])  # peg to s3 (workflow) cost
-        build_repo(repo)
         rep = run_driver(snap, repo, frontier, out1)
 
         # ---- (1) per-engine vector equals hand-computed ----
@@ -252,13 +271,31 @@ def main():
         # total surviving chars: s1 9216 + s2 14336 + s3 2048 + s4 14336 = 39936
         total_dollars = sum(costs)
         total_survkb = 39936 / 1024  # = 39.0 (still drives the lever math below)
-        # topline = functionality (git complexity 6) per Mtok OUTPUT, larger better
-        out_tok = sum(s["main_usage"][s["model"]]["out_tok"] for s in sessions)
-        eq_expected = round(6 / (out_tok / 1e6), 2)  # net_complexity 6 / output-Mtok
+        # topline = functionality (git complexity 6) per Mtok OUTPUT, larger better.
+        # The denominator scopes to sessions whose proj names the repo: s1+s2+s3
+        # (proj "repo"); s4's output (proj "elsewhere") is excluded (item 2 join).
+        matched_out = sum(s["main_usage"][s["model"]]["out_tok"]
+                          for s in sessions if "repo" in s.get("proj", ""))
+        eq_expected = round(6 / (matched_out / 1e6), 2)  # net_complexity 6 / scoped-Mtok
         if rep["topline"]["eq"] != eq_expected:
             fails.append(f"topline EQ {rep['topline']['eq']} != {eq_expected}")
+        if rep["topline"].get("denominator_sessions") != 3:
+            fails.append(f"topline denominator should scope to 3 matched sessions, "
+                         f"got {rep['topline'].get('denominator_sessions')}")
         if rep["topline"].get("larger_is_better") is not True:
             fails.append("topline should be flagged larger-is-better")
+
+        # per-model / per-effort work units: the fixture commits attribute to s1
+        # (opus-5, high), so 6 surviving decision points land there.
+        attr = rep["numerator"].get("attribution") or {}
+        if attr.get("matched", 0) < 1:
+            fails.append(f"git<->session join matched no commits: {attr}")
+        if ((attr.get("by_model") or {}).get("opus-5") or {}).get("net_complexity") != 6:
+            fails.append(f"attribution.by_model opus-5 net_complexity should be 6, "
+                         f"got {attr.get('by_model')}")
+        if ((attr.get("by_effort") or {}).get("high") or {}).get("net_complexity") != 6:
+            fails.append(f"attribution.by_effort high net_complexity should be 6, "
+                         f"got {attr.get('by_effort')}")
 
         # lever must target workflow/high (the only cell a same-shape frontier
         # entry beats), reference fix-wf-high, and predict the counterfactual EQ

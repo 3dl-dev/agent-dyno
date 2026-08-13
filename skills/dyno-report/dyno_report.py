@@ -40,6 +40,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "core"))
 
 import survival_git  # noqa: E402  (core/survival_git.py, after path insert)
+import horizon_attribute  # noqa: E402  (core/horizon_attribute.py, the commit<->session join)
 
 # ── model -> tier, so operator cells (concrete models) match frontier role tiers
 STRONG = {"opus-5", "opus-4-8", "sonnet-5", "opus-4-6", "sonnet-4-6"}
@@ -223,6 +224,7 @@ def session_metrics(sess, turns, code, survival, session_cost, usage_field):
     return {
         "sid": sid,
         "day": sess.get("day"),
+        "proj": sess.get("proj") or "",
         "engine": engine_of(sess),
         "routing": routing_of(sess),
         "model": base_model(sess.get("model")),
@@ -373,7 +375,7 @@ def _advice(axis, opv, matches):
     return {"frontier_id": best[0], "their_value": best[1], "technique": best[2]}
 
 
-def topline(metrics, numerator):
+def topline(metrics, numerator, denom_metrics=None):
     """The one meter, LARGER IS BETTER: surviving functionality per Mtok.
 
     Functionality = surviving complexity (git decision points, a proxy for how
@@ -381,17 +383,24 @@ def topline(metrics, numerator):
     tokens for no lasting functionality lowers it -- the inversion of naive
     tokenmaxxing, where more tokens 'won'. DORA change failure rate rides
     alongside as the delivery-quality lens. surviving-KB and dollars are kept as
-    depth lenses (and drive the engine-efficiency lever)."""
+    depth lenses (and drive the engine-efficiency lever).
+
+    `denom_metrics` is the git<->session-scoped subset whose output tokens buy the
+    numerator's functionality (sessions that worked the measured repos). It scopes
+    only the fuel denominator; the depth lenses stay over the whole window."""
+    denom = metrics if denom_metrics is None else denom_metrics
     survc = sum(m["born"] - m["killed"] for m in metrics)
     survkb = survc / 1024 if survc > 0 else 0.0
     dollars = sum(m["dollars"] for m in metrics)
     # Fuel = OUTPUT tokens (what the model generates), not total tokens: total is
     # ~97% cache-reads, which drown the signal and are near-free on a subscription.
     # Output is the scarce, generative fuel, and dividing by it penalizes verbosity
-    # (a chatty model burns output for the same logic and scores lower).
-    out_mtok = sum(m["out_tok"] for m in metrics) / 1e6
+    # (a chatty model burns output for the same logic and scores lower). Scoped to
+    # the sessions that produced the functionality (the git<->session join), so the
+    # denominator is not inflated by fuel spent in repos we did not measure.
+    out_mtok = sum(m["out_tok"] for m in denom) / 1e6
     total_mtok = sum(m["in_tok"] + m["cache_r"] + m["cache_w"] + m["out_tok"]
-                     for m in metrics) / 1e6
+                     for m in denom) / 1e6
     functionality = numerator.get("net_complexity", 0)
     eq = round(functionality / out_mtok, 2) if out_mtok else None
     return {"eq": eq,
@@ -399,6 +408,7 @@ def topline(metrics, numerator):
             "larger_is_better": True,
             "functionality": functionality, "output_mtok": round(out_mtok, 3),
             "total_mtok": round(total_mtok, 3),
+            "denominator_sessions": len(denom),
             "change_failure_rate": numerator.get("change_failure_rate"),
             "surv_kb": round(survkb, 2), "dollars": round(dollars, 2),
             "sessions": len(metrics), "_survkb": survkb, "_dollars": dollars}
@@ -685,6 +695,52 @@ def measure_vs_baseline(current_eq, baseline_path):
             "previously_predicted_delta": predicted}
 
 
+def attribute_work(repos, since, snapshot_dir, tail=900.0):
+    """Join surviving git work to the (model, effort) that authored it.
+
+    Leverages horizon_attribute.load_sessions for the project+time match (never
+    hand-rolling it) and survival_git for per-commit surviving lines AND surviving
+    complexity. A commit matches the session whose active window brackets its time
+    (short tail tolerance); its surviving lines/complexity accrue to that session's
+    model and effort. Deterministic: commit times are fixed at HEAD, session times
+    are fixed in the snapshot; a commit matching no session is counted, not
+    dropped. This is the durable 'whose committed logic lasted' cut."""
+    by_model = defaultdict(lambda: {"commits": 0, "surviving": 0, "net_complexity": 0})
+    by_effort = defaultdict(lambda: {"commits": 0, "surviving": 0, "net_complexity": 0})
+    matched = unmatched = 0
+    for repo in repos:
+        repo_name = os.path.basename(os.path.normpath(repo))
+        sessions = horizon_attribute.load_sessions(snapshot_dir, repo_name)
+        if not sessions:
+            continue
+        commits = survival_git.window_commits(repo, since)
+        if not commits:
+            continue
+        tracked = set(survival_git.git(repo, "ls-files").splitlines())
+        paths = {p for c in commits.values() for p in c["paths"]} & tracked
+        surviving, complexity = survival_git.surviving_by_commit(repo, paths)
+        for sha, c in commits.items():
+            if c["added"] == 0:
+                continue
+            cand = [s for s in sessions
+                    if s["start"] - tail <= c["ts"] <= s["end"] + tail]
+            if not cand:
+                unmatched += 1
+                continue
+            s = min(cand, key=lambda s: abs((s["start"] + s["end"]) / 2 - c["ts"]))
+            matched += 1
+            for agg, key in ((by_model, s["model"]), (by_effort, s["effort"])):
+                a = agg[key]
+                a["commits"] += 1
+                a["surviving"] += surviving.get(sha, 0)
+                a["net_complexity"] += complexity.get(sha, 0)
+    return {
+        "matched": matched, "unmatched": unmatched,
+        "by_model": {k: by_model[k] for k in sorted(by_model)},
+        "by_effort": {k: by_effort[k] for k in sorted(by_effort)},
+    }
+
+
 def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
                  baseline_path=None, granularity="week", labels_path=None):
     session_cost, usage_field = load_adapter_cost(harness)
@@ -756,10 +812,23 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
                  "net_complexity": tot_cx,
                  "complexity_per_1k_lines": round(1000 * tot_cx / tot_surv, 1)
                  if tot_surv else None}
+    # per-model / per-effort surviving work, via the git<->session join
+    numerator["attribution"] = attribute_work(repos, since, snapshot_dir)
+
+    # topline denominator: scope output tokens to the sessions that worked the
+    # measured repos (proj names a repo). Fall back to the whole window when no
+    # session carries proj, so older snapshots still produce a (window-approx)
+    # number rather than nothing.
+    repo_names = [os.path.basename(os.path.normpath(r)) for r in repos]
+    if any(m.get("proj") for m in metrics):
+        denom_metrics = [m for m in metrics
+                         if any(rn and rn in m["proj"] for rn in repo_names)]
+    else:
+        denom_metrics = metrics
 
     frontier = json.load(open(frontier_path)) if os.path.exists(frontier_path) else {"entries": []}
     ss = same_shape(by_ee_cells, frontier)
-    tl = topline(metrics, numerator)
+    tl = topline(metrics, numerator, denom_metrics)
     lever = best_lever(by_ee_cells, frontier, tl["_survkb"], tl["_dollars"])
     tl = {k: v for k, v in tl.items() if not k.startswith("_")}  # drop internals
     measure = measure_vs_baseline(tl["eq"], baseline_path)
