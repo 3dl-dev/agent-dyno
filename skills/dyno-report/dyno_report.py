@@ -409,6 +409,17 @@ def fuel_and_work(metrics, gran="week"):
     return rows
 
 
+def fuel_sliced(metrics, gran, dim):
+    """The fuel-and-work series cut by a fingerprint dimension (model / effort /
+    engine): {dim_value: [buckets...]}. Session-side only -- tokens and same-
+    session survival, no git join needed. This is how you watch one model's token
+    towers against the work they bought, next to another's."""
+    groups = defaultdict(list)
+    for m in metrics:
+        groups[m.get(dim, "unknown")].append(m)
+    return {k: fuel_and_work(v, gran) for k, v in sorted(groups.items())}
+
+
 def _week_label(key):
     """Human calendar date for an (iso_year, iso_week) key: the week's Monday,
     e.g. 'Aug 4'. Nobody thinks in ISO week numbers."""
@@ -686,7 +697,12 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
         "lever": lever,
         "measure": measure,
         "timeline": tline,
-        "fuel_and_work": {"granularity": granularity, "series": fuel},
+        "fuel_and_work": {
+            "granularity": granularity, "series": fuel,
+            "by_model": fuel_sliced(metrics, granularity, "model"),
+            "by_effort": fuel_sliced(metrics, granularity, "effort"),
+            "by_engine": fuel_sliced(metrics, granularity, "engine"),
+        },
         "vector_by_engine": vector_by_engine,
         "vector_by_engine_model": vector_by_engine_model,
         "numerator": numerator,

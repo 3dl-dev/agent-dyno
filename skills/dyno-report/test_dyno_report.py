@@ -284,9 +284,16 @@ def main():
                 fails.append(f"week 2 should annotate an orchestrator change, "
                              f"got {tlr[1]['changes']}")
         # fuel-and-work series: 2 weekly buckets; week 1 = s1+s2
-        fw = (rep.get("fuel_and_work") or {}).get("series") or []
+        fwroot = rep.get("fuel_and_work") or {}
+        fw = fwroot.get("series") or []
         if len(fw) != 2:
             fails.append(f"fuel_and_work should have 2 weekly buckets, got {len(fw)}")
+        # sliced by model: opus-5 / opus-4-8 / fable-5 each get their own series
+        bym = fwroot.get("by_model") or {}
+        if not ({"opus-5", "opus-4-8", "fable-5"} <= set(bym)):
+            fails.append(f"fuel_and_work.by_model missing model slices: {sorted(bym)}")
+        if not fwroot.get("by_effort") or not fwroot.get("by_engine"):
+            fails.append("fuel_and_work missing by_effort / by_engine slices")
         else:
             b0 = fw[0]
             if b0["surv_kb"] != 23.0:  # (9216 + 14336) / 1024
