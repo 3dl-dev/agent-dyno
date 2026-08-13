@@ -113,12 +113,21 @@ def survival(repo, since, now=None):
 
     total_added = sum(c["added"] for c in commits.values())
     total_surv = sum(surviving.get(s, 0) for s in commits)
+    # Attempts: a commit is one discrete swing at value (a login button and a
+    # neural net can each be one). Scope-agnostic on purpose: weighting by size
+    # would smuggle back the value-prediction the method rejects. A surviving
+    # attempt is one whose work is still alive at HEAD (not reverted or rebuilt).
+    attempts = sum(1 for c in commits.values() if c["added"] > 0)
+    surviving_attempts = sum(1 for sha, c in commits.items()
+                             if c["added"] > 0 and surviving.get(sha, 0) > 0)
     return {
         "repo": repo,
         "since": since,
         "commits": len(commits),
         "added": total_added,
         "surviving": total_surv,
+        "attempts": attempts,
+        "surviving_attempts": surviving_attempts,
         "pct": 100 * total_surv / max(1, total_added),
         "buckets": [(labels[i], agg[i][0], agg[i][1]) for i in range(len(labels))],
         "fix_added": fix_added,
@@ -140,6 +149,9 @@ def main():
     print(f"HORIZON-SURVIVAL  repo={args.repo}  window since {args.since}")
     print(f"commits={r['commits']}  lines added={r['added']:,}  "
           f"surviving at HEAD={r['surviving']:,}  ({r['pct']:.1f}%)")
+    print(f"attempts (commits w/ code)={r['attempts']}  "
+          f"surviving attempts={r['surviving_attempts']}  "
+          f"({100*r['surviving_attempts']/max(1,r['attempts']):.1f}%)")
     print(f"\n{'code age when added':22}{'added':>10}{'surviving%':>13}")
     print("-" * 45)
     for lbl, added, surv in r["buckets"]:

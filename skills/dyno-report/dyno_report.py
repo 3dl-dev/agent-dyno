@@ -594,23 +594,32 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
         vector_by_engine_model.append({"engine": e, "model": mdl,
                                        **vector(by_em_cells[(e, mdl)])})
 
-    # numerator per repo
+    # numerator per repo -- reported in two units: KB (volume) and attempts
+    # (count of committed swings at value). Attempts is the truer "shots on goal".
     repo_rows = []
-    tot_add = tot_surv = 0
+    tot_add = tot_surv = tot_att = tot_satt = 0
     for repo in repos:
         r = survival_git.survival(repo, since, now=now)
         name = os.path.basename(os.path.normpath(repo))
         if r is None:
             repo_rows.append({"name": name, "commits": 0, "added": 0,
-                              "surviving": 0, "pct": None})
+                              "surviving": 0, "pct": None,
+                              "attempts": 0, "surviving_attempts": 0})
             continue
         repo_rows.append({"name": name, "commits": r["commits"], "added": r["added"],
-                          "surviving": r["surviving"], "pct": round(r["pct"], 2)})
+                          "surviving": r["surviving"], "pct": round(r["pct"], 2),
+                          "attempts": r["attempts"],
+                          "surviving_attempts": r["surviving_attempts"]})
         tot_add += r["added"]
         tot_surv += r["surviving"]
+        tot_att += r["attempts"]
+        tot_satt += r["surviving_attempts"]
     numerator = {"repos": repo_rows, "total_added": tot_add,
                  "total_surviving": tot_surv,
-                 "pct": round(100 * tot_surv / tot_add, 2) if tot_add else None}
+                 "pct": round(100 * tot_surv / tot_add, 2) if tot_add else None,
+                 "total_attempts": tot_att, "total_surviving_attempts": tot_satt,
+                 "attempt_survival_pct": round(100 * tot_satt / tot_att, 2)
+                 if tot_att else None}
 
     frontier = json.load(open(frontier_path)) if os.path.exists(frontier_path) else {"entries": []}
     ss = same_shape(by_ee_cells, frontier)
@@ -681,6 +690,15 @@ def render_md(report):
                  f"{bs['ends_q']} hand-backs on a question). Lower is better. This "
                  f"is the attention cost the dollar number can't see; it is not "
                  f"folded into the topline.")
+    num = report.get("numerator") or {}
+    if num.get("total_attempts"):
+        L.append("")
+        L.append(f"**Attempts: {num['total_attempts']} committed swings, "
+                 f"{num['total_surviving_attempts']} still alive "
+                 f"({num['attempt_survival_pct']}%).** An attempt is one commit -- "
+                 f"a login button and a neural net each count as one. Value is "
+                 f"unpredictable, so this counts shots on goal, not code volume; "
+                 f"more surviving attempts per dollar is the goal.")
     L.append("")
     if lever:
         L.append("## Your biggest lever")

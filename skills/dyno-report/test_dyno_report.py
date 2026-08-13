@@ -215,6 +215,15 @@ def main():
         # numerator sanity: 10 added, 4 deleted -> 60%
         if not approx(rep["numerator"]["pct"], 60.0, tol=0.5):
             fails.append(f"numerator pct {rep['numerator']['pct']} != 60")
+        # attempts (commits): the code-adding commit survives -> internally consistent
+        nn = rep["numerator"]
+        if not (nn["total_attempts"] >= 1 and 1 <= nn["total_surviving_attempts"]
+                <= nn["total_attempts"]):
+            fails.append(f"attempts numerator inconsistent: {nn['total_attempts']} / "
+                         f"{nn['total_surviving_attempts']}")
+        elif nn["attempt_survival_pct"] != round(
+                100 * nn["total_surviving_attempts"] / nn["total_attempts"], 2):
+            fails.append("attempt_survival_pct does not match its components")
 
         # ---- (3b) topline EQ, the lever, and the surface ----
         # total surviving chars: s1 9216 + s2 14336 + s3 2048 + s4 14336 = 39936
