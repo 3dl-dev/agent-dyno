@@ -44,9 +44,12 @@ into the driver, so you cannot slice or same-shape by routing.
 *How output is checked before it is trusted.* A spectrum, per the repo's own
 `protocol.md`, and the accepted verification patterns (LLM-as-judge;
 self-consistency; Reflexion / reflection).
-Accepted values: **none** - **automated** (lint / type / test) - **sweeps**
+Accepted values: **none** - **automated** (lint / type / test) - **agentic review
+pass** (an LLM/subagent review step, e.g. a code-review skill) - **sweeps**
 (adversarial passes) - **cross-model** review - **spec + acceptance** (test-first)
-- **manual**.
+- **manual**. (The *agentic review pass* value was surfaced by the classifier on
+real data: an LLM-run review skill maps to none of automated / sweep / cross-model
+cleanly, so it earns its own accepted value.)
 Signal: tool and skill signatures in the transcript (test runs, review subagents,
 sweep skills, acceptance tests written before code).
 Ingested: **no.** The biggest gap, because review regime is a prime confound (it
