@@ -84,6 +84,18 @@ def engine_of(sess):
     return "solo"
 
 
+def routing_of(sess):
+    """Model routing (taxonomy dim 2), countable so it stays deterministic: do the
+    worker models differ from the orchestrator's? 'none' (no workers) /
+    'homogeneous' (workers share the orchestrator's family) / 'cross-family'."""
+    submix = sess.get("submix") or {}
+    if not submix:
+        return "none"
+    orch = base_model(sess.get("model"))
+    worker_bases = {base_model(m) for m in submix}
+    return "homogeneous" if worker_bases == {orch} else "cross-family"
+
+
 def load_adapter_cost(harness):
     """Return (session_cost, usage_field) for the harness adapter, or (None,None).
 
@@ -176,6 +188,7 @@ def session_metrics(sess, turns, code, survival, session_cost, usage_field):
         "sid": sid,
         "day": sess.get("day"),
         "engine": engine_of(sess),
+        "routing": routing_of(sess),
         "model": base_model(sess.get("model")),
         "effort": effort,
         "born": sv["born"],
@@ -702,6 +715,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
             "by_model": fuel_sliced(metrics, granularity, "model"),
             "by_effort": fuel_sliced(metrics, granularity, "effort"),
             "by_engine": fuel_sliced(metrics, granularity, "engine"),
+            "by_routing": fuel_sliced(metrics, granularity, "routing"),
         },
         "vector_by_engine": vector_by_engine,
         "vector_by_engine_model": vector_by_engine_model,

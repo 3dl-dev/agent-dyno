@@ -294,6 +294,8 @@ def main():
             fails.append(f"fuel_and_work.by_model missing model slices: {sorted(bym)}")
         if not fwroot.get("by_effort") or not fwroot.get("by_engine"):
             fails.append("fuel_and_work missing by_effort / by_engine slices")
+        if not fwroot.get("by_routing"):
+            fails.append("fuel_and_work missing by_routing slice (new fingerprint dim)")
         else:
             b0 = fw[0]
             if b0["surv_kb"] != 23.0:  # (9216 + 14336) / 1024
