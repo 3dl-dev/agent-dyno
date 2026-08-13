@@ -323,13 +323,28 @@ def _advice(axis, opv, matches):
     return {"frontier_id": best[0], "their_value": best[1], "technique": best[2]}
 
 
-def topline(metrics):
-    """The one meter: surviving-KB per dollar. Unbounded, higher is better."""
+def topline(metrics, numerator):
+    """The one meter, LARGER IS BETTER: surviving functionality per Mtok.
+
+    Functionality = surviving complexity (git decision points, a proxy for how
+    much real logic you built and kept). Fuel = total tokens processed. Burning
+    tokens for no lasting functionality lowers it -- the inversion of naive
+    tokenmaxxing, where more tokens 'won'. DORA change failure rate rides
+    alongside as the delivery-quality lens. surviving-KB and dollars are kept as
+    depth lenses (and drive the engine-efficiency lever)."""
     survc = sum(m["born"] - m["killed"] for m in metrics)
-    dollars = sum(m["dollars"] for m in metrics)
     survkb = survc / 1024 if survc > 0 else 0.0
-    eq = round(survkb / dollars, 4) if dollars else None
-    return {"eq": eq, "unit": "surviving KB per dollar",
+    dollars = sum(m["dollars"] for m in metrics)
+    total_tok = sum(m["in_tok"] + m["cache_r"] + m["cache_w"] + m["out_tok"]
+                    for m in metrics)
+    mtok = total_tok / 1e6
+    functionality = numerator.get("net_complexity", 0)
+    eq = round(functionality / mtok, 2) if mtok else None
+    return {"eq": eq,
+            "unit": "surviving functionality (decision points) per Mtok",
+            "larger_is_better": True,
+            "functionality": functionality, "mtok": round(mtok, 3),
+            "change_failure_rate": numerator.get("change_failure_rate"),
             "surv_kb": round(survkb, 2), "dollars": round(dollars, 2),
             "sessions": len(metrics), "_survkb": survkb, "_dollars": dollars}
 
@@ -631,7 +646,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
 
     frontier = json.load(open(frontier_path)) if os.path.exists(frontier_path) else {"entries": []}
     ss = same_shape(by_ee_cells, frontier)
-    tl = topline(metrics)
+    tl = topline(metrics, numerator)
     lever = best_lever(by_ee_cells, frontier, tl["_survkb"], tl["_dollars"])
     tl = {k: v for k, v in tl.items() if not k.startswith("_")}  # drop internals
     measure = measure_vs_baseline(tl["eq"], baseline_path)
@@ -686,34 +701,13 @@ def render_md(report):
     L = []
     if tl["eq"] is None:
         return "# Your setup\n\nNot enough surviving-work data in this window yet.\n"
-    L.append(f"# Your setup: {tl['eq']} surviving KB per dollar")
+    L.append(f"# Your setup: {tl['eq']} functionality per Mtok")
     L.append("")
-    L.append(f"Higher is better. That is durable code per dollar of tokens, over "
-             f"{tl['sessions']} sessions. Nothing here leaves your machine.")
-    bs = report.get("babysitting")
-    if bs:
-        L.append("")
-        L.append(f"**Babysitting: {bs['per_100_turns']} per 100 turns** "
-                 f"({bs['nudges']} nudges, {bs['interrupts']} interrupts, "
-                 f"{bs['ends_q']} hand-backs on a question). Lower is better. This "
-                 f"is the attention cost the dollar number can't see; it is not "
-                 f"folded into the topline.")
-    num = report.get("numerator") or {}
-    if num.get("total_changes"):
-        L.append("")
-        L.append(f"**Changes shipped: {num['total_changes']}, change failure rate "
-                 f"{num['change_failure_rate']}%** (DORA). A change is a shipped "
-                 f"unit of work (a merged PR), not a commit. Value is unpredictable, "
-                 f"so throughput of changes is what to grow -- more shipped per "
-                 f"dollar, without raising the failure rate.")
-        if num.get("net_complexity"):
-            L.append("")
-            L.append(f"Net complexity retained: {num['net_complexity']:,} decision "
-                     f"points ({num['complexity_per_1k_lines']} per 1k surviving "
-                     f"lines). A cyclomatic-complexity proxy that scales change by "
-                     f"density, not line count, so a dense change outweighs "
-                     f"boilerplate of the same size. Crude (stdlib, no parser), a "
-                     f"companion to volume, not a value measure.")
+    cfr = tl.get("change_failure_rate")
+    cfr_s = f" Change failure rate {cfr}% (DORA)." if cfr is not None else ""
+    L.append(f"Larger is better. Surviving functionality (decision points, a "
+             f"proxy) per million tokens of fuel, over {tl['sessions']} sessions."
+             f"{cfr_s} Nothing leaves your machine.")
     L.append("")
     if lever:
         L.append("## Your biggest lever")
@@ -721,46 +715,26 @@ def render_md(report):
         L.append(f"{lever['tweak']}")
         L.append("")
         L.append(f"Setups shaped like yours ({lever['engine']}, {lever['effort']} "
-                 f"effort) that do this run at about {lever['frontier_cell_eq']} "
-                 f"per dollar, against your {lever['your_cell_eq']}.")
-        L.append(f"**Predicted move: +{lever['predicted_delta']}** "
-                 f"(to about {lever['predicted_topline_eq']}). Try it, then run "
-                 f"this again with --baseline pointed at this report.json, and it "
-                 f"will tell you if the number actually moved.")
+                 f"effort) run at {lever['frontier_cell_eq']} per dollar, against "
+                 f"your {lever['your_cell_eq']}. Adopt it, then re-run with "
+                 f"--baseline to see the number move.")
     else:
-        L.append("You are at the frontier for every shape we can compare. No lever "
-                 "to suggest; contribute your result so the next person can learn "
-                 "from it.")
+        L.append("You are at the frontier for every shape we can compare. Nothing "
+                 "to suggest; contribute your result so the next person learns.")
     L.append("")
     if measure:
         L.append("## Since last time")
         L.append("")
         arrow = "up" if measure["actual_delta"] > 0 else \
                 ("flat" if measure["actual_delta"] == 0 else "down")
-        pred = measure["previously_predicted_delta"]
-        pred_s = f"predicted +{pred}, " if pred is not None else ""
         L.append(f"{measure['baseline_eq']} to {measure['current_eq']} "
-                 f"({pred_s}actual {measure['actual_delta']:+}, {arrow}).")
-        L.append("")
-    tline = [r for r in report.get("timeline", []) if r["eq"] is not None]
-    if len(tline) >= 2:
-        L.append("## Your EQ over time")
-        L.append("")
-        L.append("By week. Each change you made is marked, so a move ties to a "
-                 "change, not noise. Full annotated chart: report.html.")
-        L.append("")
-        hi = max(r["eq"] for r in tline) or 1.0
-        for r in tline:
-            fill = int(round(12 * r["eq"] / hi))
-            bar = "█" * fill + "·" * (12 - fill)
-            bsy = f" babysit={r['babysitting']}" if r.get("babysitting") is not None else ""
-            note = ("  <- " + "; ".join(r["changes"])) if r["changes"] else ""
-            L.append(f"`{r['week']:<7} {r['eq']:<7} {bar}{bsy}`{note}")
+                 f"(actual {measure['actual_delta']:+}, {arrow}).")
         L.append("")
     L.append("---")
-    L.append("_Full vector, fingerprint, per-repo survival, claim verdicts, and "
-             "confounds are in report.json. Open it only if you want the "
-             "derivation._")
+    L.append("_This surface is one number. The parameters behind it -- fuel "
+             "streams, babysitting, changes, complexity, and the timeline, sliced "
+             "by model and effort -- live in report.html (charts) and report.json "
+             "(data). Go there to descend._")
     L.append("")
     return "\n".join(L)
 
@@ -799,7 +773,7 @@ def render_html(report):
         ".viz-root .flag{color:var(--series);font-weight:600;}\n"
         "</style>\n")
     if len(tl) < 2:
-        body = (f'<div class="viz-root"><h1>{esc(str(eq0))} surviving KB per dollar</h1>'
+        body = (f'<div class="viz-root"><h1>{esc(str(eq0))} functionality per Mtok</h1>'
                 "<p>Not enough weeks of data to chart a trend yet.</p></div>")
         return _page(head + body)
 
@@ -875,7 +849,7 @@ def render_html(report):
                         f'{esc("; ".join(r["changes"]))}</li>' for k, r in flags)
         legend = (f'<p style="margin-top:12px"><strong>Your changes:</strong></p>'
                   f'<ol style="font-size:13px;color:var(--ink2);margin:4px 0">{items}</ol>')
-    body = (f'<div class="viz-root"><h1>{esc(str(eq0))} surviving KB per dollar</h1>'
+    body = (f'<div class="viz-root"><h1>{esc(str(eq0))} functionality per Mtok</h1>'
             f'<p>Higher is better. Each numbered flag is a change you made to your '
             f'setup, so a move on the curve ties to a change, not noise.</p>'
             f'{"".join(parts)}{legend}'

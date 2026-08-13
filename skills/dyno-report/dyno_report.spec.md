@@ -48,9 +48,15 @@ dyno_report --harness <name> --repos <path>[,<path>...] [--since <git-approxidat
 
 The user sees three things and nothing else:
 
-1. **The topline EQ.** `surviving-KB per dollar` (total surviving chars / 1024,
-   over total dollars). Unbounded, higher is better, and a ratio, so volume
-   cannot game it. This is the meter.
+1. **The topline EQ.** `surviving functionality per Mtok` -- surviving complexity
+   (git decision points, a functionality proxy) over total tokens processed.
+   **Larger is better** (matching the high-score instinct), unbounded, and a
+   ratio so volume cannot game it -- burning tokens for no lasting functionality
+   lowers it (the inversion of naive tokenmaxxing). DORA change failure rate rides
+   alongside as the delivery-quality lens. This is the meter; surviving-KB and
+   dollars are depth lenses. Honest seam: functionality is git-side and tokens
+   session-side, so the window number is a straight ratio; scoping tokens to the
+   repos' own sessions (and slicing by model/effort) needs the git<->session join.
 2. **One lever.** The single fingerprint tweak with the largest predicted gain:
    the operator's worst same-shape cell versus the same-shape frontier entry that
    beats it. Reported as a plain tweak (the frontier entry's technique) plus a

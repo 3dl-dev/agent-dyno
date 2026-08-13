@@ -230,10 +230,14 @@ def main():
         # ---- (3b) topline EQ, the lever, and the surface ----
         # total surviving chars: s1 9216 + s2 14336 + s3 2048 + s4 14336 = 39936
         total_dollars = sum(costs)
-        total_survkb = 39936 / 1024  # = 39.0
-        eq_expected = round(total_survkb / total_dollars, 4)
+        total_survkb = 39936 / 1024  # = 39.0 (still drives the lever math below)
+        # topline is now functionality (git complexity) per Mtok, LARGER is better
+        total_tok = sum(sum(s["main_usage"][s["model"]].values()) for s in sessions)
+        eq_expected = round(6 / (total_tok / 1e6), 2)  # net_complexity 6 / Mtok
         if rep["topline"]["eq"] != eq_expected:
             fails.append(f"topline EQ {rep['topline']['eq']} != {eq_expected}")
+        if rep["topline"].get("larger_is_better") is not True:
+            fails.append("topline should be flagged larger-is-better")
 
         # lever must target workflow/high (the only cell a same-shape frontier
         # entry beats), reference fix-wf-high, and predict the counterfactual EQ
@@ -260,7 +264,7 @@ def main():
 
         # the surface (report.md) must be the simple coach view, not the wall
         md = open(os.path.join(out1, "report.md")).read()
-        if "surviving KB per dollar" not in md:
+        if "functionality per Mtok" not in md:
             fails.append("surface is missing the topline number")
         if "Efficiency vector by engine" in md or "Same-shape comparison" in md:
             fails.append("surface leaked the machinery (vector/same-shape tables)")
@@ -296,7 +300,7 @@ def main():
             fails.append("report.html was not written")
         else:
             hh = open(htmlp).read()
-            if "<svg" not in hh or "surviving KB per dollar" not in hh:
+            if "<svg" not in hh or "functionality per Mtok" not in hh:
                 fails.append("report.html is not the expected chart")
             if "Fuel and work over time" not in hh:
                 fails.append("report.html is missing the fuel-and-work small multiples")
