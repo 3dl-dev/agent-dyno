@@ -60,6 +60,15 @@ The user sees three things and nothing else:
 3. **Measure.** With `--baseline <prev report.json>`, show the actual EQ move
    since last run beside what was predicted. This closes the predict-then-measure
    loop: tweak the rig, re-run, see if the number moved as promised.
+3b. **The babysitting index.** Turn quality has an objective half that needs no
+   inference: how often you had to intervene rather than get clean value, as
+   interventions per 100 turns (nudges to continue + interrupts + hand-backs that
+   end on a needless question). Reported beside the topline and per week on the
+   timeline, and deliberately **not** folded into the EQ (pricing your attention
+   against tokens is a separate, operator-owned choice). Honest limit: these
+   counters do not capture verbosity, jargon, or unrequested work; the *misery*
+   half of turn quality (sentiment on your replies, handover quality) is the
+   inference layer below, and it can disagree with the babysitting counters.
 4. **EQ over time, annotated with the operator's own fingerprint changes.** Bin
    sessions by ISO week, compute the weekly EQ, and detect when the dominant
    fingerprint (engine, orchestrator model, effort) changed week-to-week. Each

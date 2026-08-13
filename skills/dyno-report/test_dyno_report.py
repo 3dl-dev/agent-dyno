@@ -38,10 +38,11 @@ def sess(sid, model, engine_kw, out, intok, cr, cw, day=DAY):
     return r
 
 
-def turn(sid, model, out, intok, cr, cw):
+def turn(sid, model, out, intok, cr, cw, nudge=0, interrupted=0, ends_q=0):
     return {"k": "turn", "sess": sid, "model": model, "effort": "high",
             "in_tok": intok, "out_tok": out, "cache_r_tok": cr, "cache_w_tok": cw,
-            "user_chars": 3, "n_asst": 1}
+            "user_chars": 3, "n_asst": 1,
+            "nudge": nudge, "interrupted": interrupted, "ends_q": ends_q}
 
 
 def build_snapshot(d):
@@ -59,10 +60,11 @@ def build_snapshot(d):
         sess("s3", "claude-opus-5", {"workflows": 1, "wf_agents": 4}, 1500, 150, 13500, 1350, day="2026-08-12"),
         sess("s4", "claude-fable-5", {"plain_agents": 2}, 2000, 200, 18000, 1800, day="2026-08-12"),
     ]
+    # 2 interventions over 4 turns -> babysitting index 50.0 per 100 turns
     turns = [
         turn("s1", "claude-opus-5", 1000, 100, 9000, 900),
-        turn("s2", "claude-opus-4-8", 2000, 200, 18000, 1800),
-        turn("s3", "claude-opus-5", 1500, 150, 13500, 1350),
+        turn("s2", "claude-opus-4-8", 2000, 200, 18000, 1800, nudge=1),
+        turn("s3", "claude-opus-5", 1500, 150, 13500, 1350, ends_q=1),
         turn("s4", "claude-fable-5", 2000, 200, 18000, 1800),
     ]
     with open(os.path.join(d, "mb-fix.jsonl"), "w") as f:
@@ -239,6 +241,11 @@ def main():
                              f"!= {new_eq}")
             if lever["predicted_delta"] <= 0:
                 fails.append("lever predicted_delta should be positive")
+
+        # babysitting index: 2 interventions (1 nudge + 1 ends_q) over 4 turns
+        bs = rep.get("babysitting")
+        if not bs or bs["per_100_turns"] != 50.0:
+            fails.append(f"babysitting index should be 50.0/100 turns, got {bs}")
 
         # the surface (report.md) must be the simple coach view, not the wall
         md = open(os.path.join(out1, "report.md")).read()

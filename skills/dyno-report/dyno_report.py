@@ -160,6 +160,13 @@ def session_metrics(sess, turns, code, survival, session_cost, usage_field):
         cache_r = sum(t.get("cache_r_tok", 0) for t in T)
         cache_w = sum(t.get("cache_w_tok", 0) for t in T)
     touches = sum(1 for t in T if t.get("user_chars", 0) > 0)
+    # babysitting signals: times you had to push it, and times it handed back
+    # asking. nudge = you told it to continue; interrupted = you had to stop it;
+    # ends_q = it ended a turn on a question rather than doing the obvious thing.
+    nudges = sum(1 for t in T if t.get("nudge"))
+    interrupts = sum(1 for t in T if t.get("interrupted"))
+    ends_q = sum(1 for t in T if t.get("ends_q"))
+    n_turns = len(T)
     effort = modal([t.get("effort") for t in T if t.get("effort")])
     c = code.get(sid) or {}
     orch_out = usage_field(c.get("orch") or {}, "out") if usage_field \
@@ -179,6 +186,10 @@ def session_metrics(sess, turns, code, survival, session_cost, usage_field):
         "cache_w": cache_w,
         "orch_out": orch_out,
         "touches": touches,
+        "nudges": nudges,
+        "interrupts": interrupts,
+        "ends_q": ends_q,
+        "n_turns": n_turns,
         "dollars": dollars,
     }
 
@@ -368,10 +379,31 @@ def timeline(metrics):
             for dim in ("engine", "orchestrator", "effort"):
                 if fp[dim] != prev[dim]:
                     changes.append(f"{dim}: {prev[dim]} to {fp[dim]}")
+        bs = babysitting(cells)
         rows.append({"week": _week_label(key), "eq": eq,
-                     "sessions": len(cells), "fingerprint": fp, "changes": changes})
+                     "sessions": len(cells), "fingerprint": fp, "changes": changes,
+                     "babysitting": bs["per_100_turns"] if bs else None})
         prev = fp
     return rows
+
+
+def babysitting(cells):
+    """How much you had to babysit: interventions per 100 turns. nudge (you told
+    it to continue) + interrupted (you had to stop it) + ends_q (it handed back on
+    a question). Lower is better. This is the attention cost survKB/$ is blind to;
+    it is reported beside the topline, not folded in (pricing your time against
+    tokens is a separate, deliberate choice)."""
+    turns = sum(m["n_turns"] for m in cells)
+    if not turns:
+        return None
+    nudges = sum(m["nudges"] for m in cells)
+    interrupts = sum(m["interrupts"] for m in cells)
+    ends_q = sum(m["ends_q"] for m in cells)
+    return {
+        "per_100_turns": round(100 * (nudges + interrupts + ends_q) / turns, 2),
+        "nudges": nudges, "interrupts": interrupts, "ends_q": ends_q,
+        "turns": turns,
+    }
 
 
 def frontier_eq(entry):
@@ -542,6 +574,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
     tl = {k: v for k, v in tl.items() if not k.startswith("_")}  # drop internals
     measure = measure_vs_baseline(tl["eq"], baseline_path)
     tline = timeline(metrics)
+    bs = babysitting(metrics)
 
     # provenance
     repo_prov = []
@@ -566,6 +599,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
             "constitution": "docs/governance.md",
         },
         "topline": tl,
+        "babysitting": bs,
         "lever": lever,
         "measure": measure,
         "timeline": tline,
@@ -592,6 +626,14 @@ def render_md(report):
     L.append("")
     L.append(f"Higher is better. That is durable code per dollar of tokens, over "
              f"{tl['sessions']} sessions. Nothing here leaves your machine.")
+    bs = report.get("babysitting")
+    if bs:
+        L.append("")
+        L.append(f"**Babysitting: {bs['per_100_turns']} per 100 turns** "
+                 f"({bs['nudges']} nudges, {bs['interrupts']} interrupts, "
+                 f"{bs['ends_q']} hand-backs on a question). Lower is better. This "
+                 f"is the attention cost the dollar number can't see; it is not "
+                 f"folded into the topline.")
     L.append("")
     if lever:
         L.append("## Your biggest lever")
@@ -631,8 +673,9 @@ def render_md(report):
         for r in tline:
             fill = int(round(12 * r["eq"] / hi))
             bar = "█" * fill + "·" * (12 - fill)
+            bsy = f" babysit={r['babysitting']}" if r.get("babysitting") is not None else ""
             note = ("  <- " + "; ".join(r["changes"])) if r["changes"] else ""
-            L.append(f"`{r['week']:<7} {r['eq']:<7} {bar}`{note}")
+            L.append(f"`{r['week']:<7} {r['eq']:<7} {bar}{bsy}`{note}")
         L.append("")
     L.append("---")
     L.append("_Full vector, fingerprint, per-repo survival, claim verdicts, and "
