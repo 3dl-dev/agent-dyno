@@ -83,11 +83,15 @@ def build_snapshot(d):
     return sessions
 
 
-def build_frontier(path):
+def build_frontier(path, wf_cost):
+    # Peg the same-shape workflow entry to ~2x the operator's own workflow/high
+    # efficiency (survKB 2.0 at wf_cost dollars), so a lever is guaranteed to
+    # exist regardless of the machine's real token prices.
+    dps = round((wf_cost / 2.0) / 2.0, 8)  # dollars per survKB, half the operator's
     fr = {"schema": "agent-dyno/frontier@2", "axes": {}, "entries": [
         {"id": "fix-wf-high", "engine": "workflow", "effort": "high",
          "model_roles": {"orchestrator": "strong", "worker": "strong"},
-         "vector": {"dollars_per_survkb": 1.15, "waste_pct": 30},
+         "vector": {"dollars_per_survkb": dps, "waste_pct": 30},
          "technique": "review pass behind fan-out", "proof": "tier-1-self-report"},
         {"id": "fix-solo-low", "engine": "solo", "effort": "low",
          "model_roles": {"orchestrator": "strong", "worker": None},
@@ -121,13 +125,15 @@ def approx(a, b, tol=0.02):
     return a is not None and abs(a - b) <= tol
 
 
-def run_driver(snap, repo, frontier, out, hashseed="0"):
+def run_driver(snap, repo, frontier, out, hashseed="0", baseline=None):
     env = dict(os.environ, PYTHONHASHSEED=hashseed)
-    subprocess.run([sys.executable, os.path.join(HERE, "dyno_report.py"),
-                    "--harness", "claude-code", "--snapshot", snap,
-                    "--repos", repo, "--since", "1.day.ago",
-                    "--frontier", frontier, "--now", "1754006400", "--out", out],
-                   check=True, capture_output=True, text=True, env=env)
+    cmd = [sys.executable, os.path.join(HERE, "dyno_report.py"),
+           "--harness", "claude-code", "--snapshot", snap,
+           "--repos", repo, "--since", "1.day.ago",
+           "--frontier", frontier, "--now", "1754006400", "--out", out]
+    if baseline:
+        cmd += ["--baseline", baseline]
+    subprocess.run(cmd, check=True, capture_output=True, text=True, env=env)
     return json.load(open(os.path.join(out, "report.json")))
 
 
@@ -140,7 +146,9 @@ def main():
         out1 = os.path.join(tmp, "out1"); out2 = os.path.join(tmp, "out2")
 
         sessions = build_snapshot(snap)
-        build_frontier(frontier)
+        prices = mb_cost.load_prices()
+        costs = [mb_cost.session_cost(s, prices) for s in sessions]  # s1..s4
+        build_frontier(frontier, costs[2])  # peg to s3 (workflow) cost
         build_repo(repo)
         rep = run_driver(snap, repo, frontier, out1)
 
@@ -165,8 +173,7 @@ def main():
                 fails.append(f"{e} cacheRd {v['cache_read_pct']} != {crd}")
 
         # dollars axis: driver must equal session_cost/survKB (wired, not invented)
-        prices = mb_cost.load_prices()
-        exp_solo_d = mb_cost.session_cost(sessions[0], prices)
+        exp_solo_d = costs[0]
         if not approx(veng["solo"]["d_per_survkb"], round(exp_solo_d / 9.0, 4), tol=0.01):
             fails.append(f"solo $/survKB {veng['solo']['d_per_survkb']} != "
                          f"{round(exp_solo_d / 9.0, 4)} (session_cost/survKB)")
@@ -203,6 +210,49 @@ def main():
         # numerator sanity: 10 added, 4 deleted -> 60%
         if not approx(rep["numerator"]["pct"], 60.0, tol=0.5):
             fails.append(f"numerator pct {rep['numerator']['pct']} != 60")
+
+        # ---- (3b) topline EQ, the lever, and the surface ----
+        # total surviving chars: s1 9216 + s2 14336 + s3 2048 + s4 14336 = 39936
+        total_dollars = sum(costs)
+        total_survkb = 39936 / 1024  # = 39.0
+        eq_expected = round(total_survkb / total_dollars, 4)
+        if rep["topline"]["eq"] != eq_expected:
+            fails.append(f"topline EQ {rep['topline']['eq']} != {eq_expected}")
+
+        # lever must target workflow/high (the only cell a same-shape frontier
+        # entry beats), reference fix-wf-high, and predict the counterfactual EQ
+        lever = rep.get("lever")
+        if not lever or (lever["engine"], lever["effort"]) != ("workflow", "high"):
+            fails.append(f"lever should target workflow/high, got {lever}")
+        elif lever["frontier_id"] != "fix-wf-high":
+            fails.append(f"lever cites wrong frontier entry: {lever['frontier_id']}")
+        else:
+            wf_cost = costs[2]  # s3 dollars; frontier $/survKB = (wf_cost/2)/2
+            frontier_eq = 1.0 / ((wf_cost / 2.0) / 2.0)
+            cf_dollars = 2.0 / frontier_eq  # cell survKB 2.0 at frontier efficiency
+            new_eq = round(total_survkb / (total_dollars - wf_cost + cf_dollars), 4)
+            if lever["predicted_topline_eq"] != new_eq:
+                fails.append(f"lever predicted EQ {lever['predicted_topline_eq']} "
+                             f"!= {new_eq}")
+            if lever["predicted_delta"] <= 0:
+                fails.append("lever predicted_delta should be positive")
+
+        # the surface (report.md) must be the simple coach view, not the wall
+        md = open(os.path.join(out1, "report.md")).read()
+        if "surviving KB per dollar" not in md:
+            fails.append("surface is missing the topline number")
+        if "Efficiency vector by engine" in md or "Same-shape comparison" in md:
+            fails.append("surface leaked the machinery (vector/same-shape tables)")
+
+        # ---- (3c) the measure loop: re-run with the first report as baseline ----
+        out3 = os.path.join(tmp, "out3")
+        rep3 = run_driver(snap, repo, frontier, out3,
+                          baseline=os.path.join(out1, "report.json"))
+        m = rep3.get("measure")
+        if not m or m["actual_delta"] != 0.0:
+            fails.append(f"measure loop: same inputs should show 0 move, got {m}")
+        elif lever and m["previously_predicted_delta"] != lever["predicted_delta"]:
+            fails.append("measure loop did not carry the prior prediction")
 
         # ---- (4) byte-identical re-run under a DIFFERENT hash seed ----
         # (out1 ran with PYTHONHASHSEED=0; run out2 with =1 so any set-iteration

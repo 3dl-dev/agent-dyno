@@ -13,6 +13,7 @@
       "harness": "claude-code",
       "engine": "solo",
       "technique": "One strong model does the whole task in-session, no delegation. Simple, low-waste baseline; keeps the most of what it writes.",
+      "lever": "Keep it in one strong-model session; drop the delegation for this kind of task.",
       "model_roles": {
         "orchestrator": "strong",
         "worker": null
@@ -35,6 +36,7 @@
       "harness": "claude-code",
       "engine": "delegate",
       "technique": "Orchestrator plans and reviews; a worker subagent does implementation. Higher throughput per output-token than solo, at more waste, best when the orchestrator reviews tightly.",
+      "lever": "Have the orchestrator review the worker's output tightly before accepting it.",
       "model_roles": {
         "orchestrator": "strong",
         "worker": "strong-or-cheap"
@@ -57,6 +59,7 @@
       "harness": "claude-code",
       "engine": "workflow",
       "technique": "Fan out independent parts as a parallel workflow, then synthesize. Fast and low human-attention, but the highest same-session waste in this seed, a candidate for pairing with a review pass to lift survival.",
+      "lever": "Add one review/cleanup pass after the fan-out, before you commit, to cut the wasted work.",
       "model_roles": {
         "orchestrator": "strong",
         "worker": "strong"

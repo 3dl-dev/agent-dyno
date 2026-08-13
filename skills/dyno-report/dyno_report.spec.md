@@ -44,15 +44,37 @@ dyno_report --harness <name> --repos <path>[,<path>...] [--since <git-approxidat
    bulk-import repos (single-commit or >Xk-line commits flagged as terrain),
    cells with N below a floor, non-overlapping fuel/git windows.
 
+## The functional surface: one number, one lever, a measurable delta
+
+The user sees three things and nothing else:
+
+1. **The topline EQ.** `surviving-KB per dollar` (total surviving chars / 1024,
+   over total dollars). Unbounded, higher is better, and a ratio, so volume
+   cannot game it. This is the meter.
+2. **One lever.** The single fingerprint tweak with the largest predicted gain:
+   the operator's worst same-shape cell versus the same-shape frontier entry that
+   beats it. Reported as a plain tweak (the frontier entry's technique) plus a
+   **predicted new topline** (recompute the blended EQ as if that cell ran at the
+   frontier entry's efficiency). If no same-shape entry beats the operator, there
+   is no lever; say so, never invent one.
+3. **Measure.** With `--baseline <prev report.json>`, show the actual EQ move
+   since last run beside what was predicted. This closes the predict-then-measure
+   loop: tweak the rig, re-run, see if the number moved as promised.
+
+Everything else (the full vector, per-cell same-shape, claims, confounds,
+numerator, fingerprint, provenance) is machinery. It lives in `report.json` for
+inspection, and is kept OUT of the default surface.
+
 ## Output
 
 Two artifacts under `--out`, both a pure function of inputs:
 
-- `report.json`: the structured bundle (vector, fingerprint, same-shape
-  comparison, claim verdicts, confounds, provenance: window, snapshot id, repo
-  SHAs, frontier SHA). This is the contract other tools and the skill consume.
-- `report.md`: a rendered, human-facing report generated from `report.json` by a
-  fixed template, no model in the loop.
+- `report.json`: the full structured bundle (topline, lever, measure, vector,
+  same-shape, claim verdicts, confounds, numerator, provenance). The contract
+  other tools consume, and the inspect layer.
+- `report.md`: the functional surface only, from a fixed template, no model in
+  the loop: the topline number, the one lever with its predicted delta, and the
+  measure line. Short by design.
 
 ## Governance (enforced in code, not left to the narrator)
 

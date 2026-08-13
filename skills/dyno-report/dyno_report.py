@@ -309,6 +309,71 @@ def _advice(axis, opv, matches):
     return {"frontier_id": best[0], "their_value": best[1], "technique": best[2]}
 
 
+def topline(metrics):
+    """The one meter: surviving-KB per dollar. Unbounded, higher is better."""
+    survc = sum(m["born"] - m["killed"] for m in metrics)
+    dollars = sum(m["dollars"] for m in metrics)
+    survkb = survc / 1024 if survc > 0 else 0.0
+    eq = round(survkb / dollars, 4) if dollars else None
+    return {"eq": eq, "unit": "surviving KB per dollar",
+            "surv_kb": round(survkb, 2), "dollars": round(dollars, 2),
+            "sessions": len(metrics), "_survkb": survkb, "_dollars": dollars}
+
+
+def frontier_eq(entry):
+    d = (entry.get("vector") or {}).get("dollars_per_survkb")
+    return (1.0 / d) if d else None
+
+
+def best_lever(by_ee_cells, frontier, total_survkb, total_dollars):
+    """The single tweak with the largest predicted topline gain: the operator's
+    worst same-shape cell vs the same-shape frontier entry that beats it. None if
+    nothing on the frontier beats the operator at their own shape."""
+    if not total_dollars:
+        return None
+    base_eq = total_survkb / total_dollars
+    # best frontier entry per (engine, effort)
+    fmap = {}
+    for e in frontier.get("entries", []):
+        key = (e.get("engine"), e.get("effort"))
+        feq = frontier_eq(e)
+        if feq is None:
+            continue
+        if key not in fmap or feq > frontier_eq(fmap[key]):
+            fmap[key] = e
+    best = None
+    for (engine, effort), cells in by_ee_cells.items():
+        fe = fmap.get((engine, effort))
+        if not fe:
+            continue
+        cell_survc = sum(m["born"] - m["killed"] for m in cells)
+        cell_survkb = cell_survc / 1024 if cell_survc > 0 else 0.0
+        cell_dollars = sum(m["dollars"] for m in cells)
+        if cell_survkb <= 0 or cell_dollars <= 0:
+            continue
+        cell_eq = cell_survkb / cell_dollars
+        feq = frontier_eq(fe)
+        if feq <= cell_eq:  # frontier does not beat you here: no lever
+            continue
+        # counterfactual: same surviving work, at the frontier's efficiency
+        cf_dollars = cell_survkb / feq
+        new_dollars = total_dollars - cell_dollars + cf_dollars
+        new_eq = total_survkb / new_dollars if new_dollars > 0 else None
+        if new_eq is None:
+            continue
+        cand = {"engine": engine, "effort": effort,
+                "frontier_id": fe.get("id"),
+                "tweak": fe.get("lever") or fe.get("technique"),
+                "proof": fe.get("proof"),
+                "your_cell_eq": round(cell_eq, 4),
+                "frontier_cell_eq": round(feq, 4),
+                "predicted_topline_eq": round(new_eq, 4),
+                "predicted_delta": round(new_eq - base_eq, 4)}
+        if best is None or cand["predicted_delta"] > best["predicted_delta"]:
+            best = cand
+    return best
+
+
 def claim_verdicts(by_engine, metrics):
     """Mechanical verdicts for the claims we have data for this run."""
     out = []
@@ -354,7 +419,22 @@ def confounds(metrics, numerator, since):
     return out
 
 
-def build_report(snapshot_dir, repos, since, frontier_path, harness, now):
+def measure_vs_baseline(current_eq, baseline_path):
+    """Close the loop: actual EQ move since a prior report, beside its prediction."""
+    if not baseline_path or not os.path.exists(baseline_path):
+        return None
+    prev = json.load(open(baseline_path))
+    prev_eq = (prev.get("topline") or {}).get("eq")
+    predicted = (prev.get("lever") or {}).get("predicted_delta")
+    if prev_eq is None or current_eq is None:
+        return None
+    return {"baseline_eq": prev_eq, "current_eq": current_eq,
+            "actual_delta": round(current_eq - prev_eq, 4),
+            "previously_predicted_delta": predicted}
+
+
+def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
+                 baseline_path=None):
     session_cost, usage_field = load_adapter_cost(harness)
     sessions, turns, code, survival = load_snapshot(snapshot_dir)
     metrics = []
@@ -403,6 +483,10 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now):
 
     frontier = json.load(open(frontier_path)) if os.path.exists(frontier_path) else {"entries": []}
     ss = same_shape(by_ee_cells, frontier)
+    tl = topline(metrics)
+    lever = best_lever(by_ee_cells, frontier, tl["_survkb"], tl["_dollars"])
+    tl = {k: v for k, v in tl.items() if not k.startswith("_")}  # drop internals
+    measure = measure_vs_baseline(tl["eq"], baseline_path)
 
     # provenance
     repo_prov = []
@@ -426,6 +510,9 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now):
             "assert": "engine-craft only; no individual-vs-product, no person-vs-person",
             "constitution": "docs/governance.md",
         },
+        "topline": tl,
+        "lever": lever,
+        "measure": measure,
         "vector_by_engine": vector_by_engine,
         "vector_by_engine_model": vector_by_engine_model,
         "numerator": numerator,
@@ -437,66 +524,50 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now):
 
 
 def render_md(report):
+    """The functional surface: one number, one lever, a measurable delta. Short
+    by design. All the machinery stays in report.json."""
+    tl = report["topline"]
+    lever = report.get("lever")
+    measure = report.get("measure")
     L = []
-    p = report["provenance"]
-    L.append("# Dyno report")
+    if tl["eq"] is None:
+        return "# Your setup\n\nNot enough surviving-work data in this window yet.\n"
+    L.append(f"# Your setup: {tl['eq']} surviving KB per dollar")
     L.append("")
-    L.append(f"harness={p['harness']}  window since {p['since']}  "
-             f"snapshot={p['snapshot']}  "
-             f"sessions-with-survival={p['sessions_with_survival']}")
+    L.append(f"Higher is better. That is durable code per dollar of tokens, over "
+             f"{tl['sessions']} sessions. Nothing here leaves your machine.")
     L.append("")
-    L.append("Governance: engine-craft only. This never ranks a person against "
-             "product outcomes or against other people. See docs/governance.md.")
-    L.append("")
-    L.append("## Efficiency vector by engine")
-    L.append("")
-    L.append("| engine | sess | $/survKB | survKB/Mtok-out | waste% | cacheRd% | pareto |")
-    L.append("|---|--:|--:|--:|--:|--:|:--:|")
-    for r in report["vector_by_engine"]:
-        L.append(f"| {r['engine']} | {r['sessions']} | {r['d_per_survkb']} | "
-                 f"{r['survkb_per_outmtok']} | {r['waste_pct']} | "
-                 f"{r['cache_read_pct']} | {'yes' if r['pareto'] else ''} |")
-    L.append("")
-    L.append("## Same-shape comparison (engine x effort)")
-    L.append("")
-    for s in report["same_shape"]:
-        head = f"### {s['engine']} / {s['effort']} ({s['operator_orchestrator_tier']} orchestrator)"
-        L.append(head)
-        ov = s["operator_vector"]
-        L.append(f"- you: $/survKB={ov['d_per_survkb']}, waste={ov['waste_pct']}%, "
-                 f"survKB/Mtok-out={ov['survkb_per_outmtok']} (N={ov['sessions']})")
-        if s["status"] == "no-same-shape-entry":
-            L.append("- no same-shape entry on the frontier yet; nothing to compare to.")
-        else:
-            for m in s["frontier_matches"]:
-                fv = m["vector"] or {}
-                L.append(f"- frontier `{m['id']}` ({m['orchestrator_tier']}, {m['proof']}): "
-                         f"$/survKB={fv.get('dollars_per_survkb')}, "
-                         f"waste={fv.get('waste_pct')}%")
-            adv = s.get("advice_from")
-            if adv:
-                L.append(f"- lever on your worst axis ({s['worst_axis']}): see `{adv['frontier_id']}` "
-                         f"({adv['their_value']}) -- {adv['technique']}")
+    if lever:
+        L.append("## Your biggest lever")
         L.append("")
-    L.append("## Surviving-work numerator (git)")
+        L.append(f"{lever['tweak']}")
+        L.append("")
+        L.append(f"Setups shaped like yours ({lever['engine']}, {lever['effort']} "
+                 f"effort) that do this run at about {lever['frontier_cell_eq']} "
+                 f"per dollar, against your {lever['your_cell_eq']}.")
+        L.append(f"**Predicted move: +{lever['predicted_delta']}** "
+                 f"(to about {lever['predicted_topline_eq']}). Try it, then run "
+                 f"this again with --baseline pointed at this report.json, and it "
+                 f"will tell you if the number actually moved.")
+    else:
+        L.append("You are at the frontier for every shape we can compare. No lever "
+                 "to suggest; contribute your result so the next person can learn "
+                 "from it.")
     L.append("")
-    L.append("| repo | commits | added | surviving | surv% |")
-    L.append("|---|--:|--:|--:|--:|")
-    for r in report["numerator"]["repos"]:
-        L.append(f"| {r['name']} | {r['commits']} | {r['added']:,} | "
-                 f"{r['surviving']:,} | {r['pct']} |")
-    n = report["numerator"]
-    L.append(f"| **total** | | {n['total_added']:,} | {n['total_surviving']:,} | {n['pct']} |")
-    L.append("")
-    L.append("## Claim verdicts")
-    L.append("")
-    for c in report["claims"]:
-        L.append(f"- **{c['id']}** {c['claim']}: {c['verdict']} ({c['metric']})")
-    L.append("")
-    L.append("## Confounds")
-    L.append("")
-    for c in report["confounds"]:
-        L.append(f"- {c}")
+    if measure:
+        L.append("## Since last time")
+        L.append("")
+        arrow = "up" if measure["actual_delta"] > 0 else \
+                ("flat" if measure["actual_delta"] == 0 else "down")
+        pred = measure["previously_predicted_delta"]
+        pred_s = f"predicted +{pred}, " if pred is not None else ""
+        L.append(f"{measure['baseline_eq']} to {measure['current_eq']} "
+                 f"({pred_s}actual {measure['actual_delta']:+}, {arrow}).")
+        L.append("")
+    L.append("---")
+    L.append("_Full vector, fingerprint, per-repo survival, claim verdicts, and "
+             "confounds are in report.json. Open it only if you want the "
+             "derivation._")
     L.append("")
     return "\n".join(L)
 
@@ -511,12 +582,16 @@ def main():
                                                        "reference-frontier.json"))
     ap.add_argument("--now", type=float, default=None,
                     help="fixed epoch for deterministic age buckets; default clock")
+    ap.add_argument("--baseline", default=None,
+                    help="a prior report.json; show the actual EQ move since it")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
     repos = [os.path.expanduser(r) for r in args.repos.split(",") if r]
     report = build_report(args.snapshot, repos, args.since, args.frontier,
-                          args.harness, args.now)
+                          args.harness, args.now,
+                          baseline_path=os.path.expanduser(args.baseline)
+                          if args.baseline else None)
     os.makedirs(args.out, exist_ok=True)
     with open(os.path.join(args.out, "report.json"), "w") as f:
         json.dump(report, f, indent=2, sort_keys=True)

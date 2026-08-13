@@ -44,21 +44,25 @@ python3 skills/dyno-report/dyno_report.py \
 each). It writes `report.json` (the contract) and `report.md` (a rendered
 report). Everything downstream reads `report.json`.
 
-## 4. Present (lead with the answer, then the comparison, then the confounds)
+## 4. Present the surface, and only the surface
 
-From `report.json`, in this order:
+The driver already wrote it: show `report.md`. It is three things and nothing
+else, so present those three and stop:
 
-1. **The efficiency vector by engine** (`vector_by_engine`): `$/survKB`,
-   `survKB/Mtok-out`, `waste%`, `cache-read%`, Pareto flag. No composite score.
-   The frontier is Pareto, not a rank.
-2. **The same-shape comparison** (`same_shape`): for each of the operator's
-   (engine, effort) cells, how they compare to frontier entries of the **same
-   shape**, or "no same-shape entry yet." This is the point of the report: you vs
-   setups built like yours, at your tier and effort, never you vs a person.
-3. **Claim verdicts** (`claims`) the run had data for, and **confounds**
-   (`confounds`) by name: horizon age, bulk-import terrain, small N.
-4. **The one change** to the *engine* that the same-shape comparison and the
-   vector most support. Survival is not value; say so.
+1. **The topline** (`topline.eq`): one number, `surviving-KB per dollar`, higher
+   is better. This is the meter.
+2. **The one lever** (`lever`): the single tweak with the largest predicted gain,
+   in plain language, with the predicted new topline. If `lever` is null, say
+   they are at the frontier for their shape and there is nothing to suggest; never
+   invent a lever.
+3. **The measure line** (`measure`, present only with `--baseline`): the actual
+   move since last run, beside what was predicted. This is the loop: tweak,
+   re-run, see if it moved.
+
+Do **not** narrate the vector, the same-shape cells, the claims, or the
+confounds. That is the machinery; it lives in `report.json` for anyone who asks
+to see the derivation. Survival is not value; if you add a caveat, that is the
+one. Keep it short.
 
 ## 5. Contribute (opt-in, with explicit consent)
 
