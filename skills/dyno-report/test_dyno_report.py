@@ -216,6 +216,13 @@ def check_confounds(fails):
         fails.append(f"confounds: effort-mix falsely named on uniform effort: {cf2}")
     if "Window mismatch" in j2:
         fails.append(f"confounds: window-mismatch falsely named on overlap: {cf2}")
+    if "Empty denominator" in j2:
+        fails.append(f"confounds: empty-denominator falsely named by default: {cf2}")
+    # denom_empty=True names the empty-denominator confound (null-topline case)
+    cf3 = dyno_report.confounds([mm("high", "sweeps", "2026-07-20")], num,
+                                "30.days.ago", now, denom_empty=True)
+    if "Empty denominator" not in " || ".join(cf3):
+        fails.append(f"confounds: empty-denominator not named when set: {cf3}")
 
 
 def main():
@@ -410,12 +417,14 @@ def main():
                 fails.append(f"fingerprint contract missing dimension: {dim}")
         if "pending" not in str(fpr.get("review_regime", "")):
             fails.append("review_regime should be a pending-classification slot")
-        else:
-            b0 = fw[0]
-            if b0["surv_kb"] != 23.0:  # (9216 + 14336) / 1024
-                fails.append(f"week1 net-code {b0['surv_kb']} != 23.0")
-            if b0["output_tok"] != 3000 or b0["read_tok"] != 300:
-                fails.append(f"week1 token streams wrong: {b0}")
+        # week-1 fuel/token streams: independent of the pending check above (must
+        # run unconditionally, not nested in its else, or they silently stop
+        # running if that precondition ever changes).
+        b0 = fw[0]
+        if b0["surv_kb"] != 23.0:  # (9216 + 14336) / 1024
+            fails.append(f"week1 net-code {b0['surv_kb']} != 23.0")
+        if b0["output_tok"] != 3000 or b0["read_tok"] != 300:
+            fails.append(f"week1 token streams wrong: {b0}")
 
         # ---- (item 1) the fingerprint labels cache fills the pattern dims ----
         # A run WITHOUT a cache keeps the three pattern dims pending (asserted

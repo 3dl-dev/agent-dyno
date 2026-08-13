@@ -670,11 +670,15 @@ def claim_verdicts(by_engine, metrics):
     return out
 
 
-def confounds(metrics, numerator, since, now):
+def confounds(metrics, numerator, since, now, denom_empty=False):
     out = []
     out.append(f"Horizon: survival here is same-session (killed within the run), "
                f"and the git numerator is measured at HEAD over '{since}'. Not a "
                f"durable day/week horizon.")
+    if denom_empty:
+        out.append("Empty denominator: sessions carry a project but none named a "
+                   "measured repo, so the topline output-token denominator is empty "
+                   "and eq is null. Check --repos matches the sessions' projects.")
     n = len(metrics)
     if n < 30:
         out.append(f"Small N: only {n} code-sessions with survival in the window; "
@@ -701,7 +705,8 @@ def confounds(metrics, numerator, since, now):
     days = sorted(m["day"] for m in metrics if m.get("day"))
     start = survival_git._since_to_date(since, now)
     if days and start:
-        now_date = datetime.datetime.utcfromtimestamp(now).strftime("%Y-%m-%d")
+        now_date = datetime.datetime.fromtimestamp(
+            now, datetime.timezone.utc).strftime("%Y-%m-%d")
         if days[-1] < start or days[0] > now_date:
             out.append(f"Window mismatch: fuel sessions span {days[0]}..{days[-1]} "
                        f"but the git numerator window is {start}..{now_date}; they "
@@ -872,6 +877,9 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
                          if any(rn and rn in m["proj"] for rn in repo_names)]
     else:
         denom_metrics = metrics
+    # sessions carry proj but none named a measured repo: the denominator is empty
+    # and eq is null. Name it, so a null topline is explained, not silent.
+    denom_empty = bool(metrics) and not denom_metrics
 
     frontier = json.load(open(frontier_path)) if os.path.exists(frontier_path) else {"entries": []}
     ss = same_shape(by_ee_cells, frontier)
@@ -926,7 +934,8 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
         "numerator": numerator,
         "same_shape": ss,
         "claims": claim_verdicts(by_engine, metrics),
-        "confounds": confounds(metrics, numerator, since, now_val),
+        "confounds": confounds(metrics, numerator, since, now_val,
+                               denom_empty=denom_empty),
     }
     return report
 

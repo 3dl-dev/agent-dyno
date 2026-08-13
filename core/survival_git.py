@@ -98,7 +98,8 @@ def _since_to_date(since, now):
         return None
     n, unit = int(m.group(1)), m.group(2)
     days = n * {"day": 1, "week": 7, "month": 30}[unit]
-    d = datetime.datetime.utcfromtimestamp(now) - datetime.timedelta(days=days)
+    d = (datetime.datetime.fromtimestamp(now, datetime.timezone.utc)
+         - datetime.timedelta(days=days))
     return d.strftime("%Y-%m-%d")
 
 
