@@ -139,6 +139,21 @@ turn-key guarantee. This deferral is deliberate: v1 covers the same-session vect
 the numerator, and the same-shape comparison end-to-end and tested; the git-side
 engine join needs commit-to-session matching that earns its own fixture.
 
+## The numerator's two units (volume and throughput)
+
+Surviving work is reported two ways, because they carry different signal:
+
+- **Surviving KB** (`survival_git`): code volume that lasts. A crude size proxy.
+- **DORA changes** (`survival_git.changes`): the accepted delivery vocabulary. A
+  *change* is a shipped unit of work (a merged PR), NOT a commit (an arbitrary
+  checkpoint). Throughput is deployment frequency; quality is *change failure
+  rate* (the share reverted/hotfixed, which our survival signal already
+  measures). Source order: the forge (merged PRs via `gh`, the faithful unit),
+  then git trunk integrations (first-parent, a labeled approximation that
+  degrades to commits when work lands straight on the trunk). Value is
+  unpredictable, so the goal is more changes shipped per dollar without raising
+  the failure rate, never a size- or value-weighted score.
+
 ## Acceptance
 
 `test_dyno_report.py` builds a fixture: a synthetic snapshot (a few sessions

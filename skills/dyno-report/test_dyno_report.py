@@ -215,15 +215,13 @@ def main():
         # numerator sanity: 10 added, 4 deleted -> 60%
         if not approx(rep["numerator"]["pct"], 60.0, tol=0.5):
             fails.append(f"numerator pct {rep['numerator']['pct']} != 60")
-        # attempts (commits): the code-adding commit survives -> internally consistent
+        # DORA changes: fixture repo has no forge, 2 trunk commits, none are fixes
         nn = rep["numerator"]
-        if not (nn["total_attempts"] >= 1 and 1 <= nn["total_surviving_attempts"]
-                <= nn["total_attempts"]):
-            fails.append(f"attempts numerator inconsistent: {nn['total_attempts']} / "
-                         f"{nn['total_surviving_attempts']}")
-        elif nn["attempt_survival_pct"] != round(
-                100 * nn["total_surviving_attempts"] / nn["total_attempts"], 2):
-            fails.append("attempt_survival_pct does not match its components")
+        if nn["total_changes"] != 2 or nn["change_failure_rate"] != 0.0:
+            fails.append(f"changes numerator wrong: {nn['total_changes']} changes, "
+                         f"cfr {nn['change_failure_rate']}")
+        if rep["numerator"]["repos"][0]["change_source"] != "git-trunk (approx)":
+            fails.append("fixture change source should be the git-trunk fallback")
 
         # ---- (3b) topline EQ, the lever, and the surface ----
         # total surviving chars: s1 9216 + s2 14336 + s3 2048 + s4 14336 = 39936

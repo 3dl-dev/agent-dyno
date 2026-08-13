@@ -594,32 +594,34 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
         vector_by_engine_model.append({"engine": e, "model": mdl,
                                        **vector(by_em_cells[(e, mdl)])})
 
-    # numerator per repo -- reported in two units: KB (volume) and attempts
-    # (count of committed swings at value). Attempts is the truer "shots on goal".
+    # numerator per repo -- reported in two units: surviving KB (volume) and DORA
+    # changes (shipped units of work: merged PRs, not commits) with change failure
+    # rate. Volume and throughput carry different signal.
     repo_rows = []
-    tot_add = tot_surv = tot_att = tot_satt = 0
+    tot_add = tot_surv = tot_ch = tot_fail = 0
     for repo in repos:
         r = survival_git.survival(repo, since, now=now)
+        ch = survival_git.changes(repo, since, now=now)
         name = os.path.basename(os.path.normpath(repo))
+        row = {"name": name, "changes": ch["changes"], "failed_changes": ch["failed"],
+               "change_source": ch["source"],
+               "change_failure_rate": ch["change_failure_rate"]}
+        tot_ch += ch["changes"]
+        tot_fail += ch["failed"]
         if r is None:
-            repo_rows.append({"name": name, "commits": 0, "added": 0,
-                              "surviving": 0, "pct": None,
-                              "attempts": 0, "surviving_attempts": 0})
-            continue
-        repo_rows.append({"name": name, "commits": r["commits"], "added": r["added"],
-                          "surviving": r["surviving"], "pct": round(r["pct"], 2),
-                          "attempts": r["attempts"],
-                          "surviving_attempts": r["surviving_attempts"]})
-        tot_add += r["added"]
-        tot_surv += r["surviving"]
-        tot_att += r["attempts"]
-        tot_satt += r["surviving_attempts"]
+            row.update({"commits": 0, "added": 0, "surviving": 0, "pct": None})
+        else:
+            row.update({"commits": r["commits"], "added": r["added"],
+                        "surviving": r["surviving"], "pct": round(r["pct"], 2)})
+            tot_add += r["added"]
+            tot_surv += r["surviving"]
+        repo_rows.append(row)
     numerator = {"repos": repo_rows, "total_added": tot_add,
                  "total_surviving": tot_surv,
                  "pct": round(100 * tot_surv / tot_add, 2) if tot_add else None,
-                 "total_attempts": tot_att, "total_surviving_attempts": tot_satt,
-                 "attempt_survival_pct": round(100 * tot_satt / tot_att, 2)
-                 if tot_att else None}
+                 "total_changes": tot_ch, "total_failed_changes": tot_fail,
+                 "change_failure_rate": round(100 * tot_fail / tot_ch, 2)
+                 if tot_ch else None}
 
     frontier = json.load(open(frontier_path)) if os.path.exists(frontier_path) else {"entries": []}
     ss = same_shape(by_ee_cells, frontier)
@@ -691,14 +693,13 @@ def render_md(report):
                  f"is the attention cost the dollar number can't see; it is not "
                  f"folded into the topline.")
     num = report.get("numerator") or {}
-    if num.get("total_attempts"):
+    if num.get("total_changes"):
         L.append("")
-        L.append(f"**Attempts: {num['total_attempts']} committed swings, "
-                 f"{num['total_surviving_attempts']} still alive "
-                 f"({num['attempt_survival_pct']}%).** An attempt is one commit -- "
-                 f"a login button and a neural net each count as one. Value is "
-                 f"unpredictable, so this counts shots on goal, not code volume; "
-                 f"more surviving attempts per dollar is the goal.")
+        L.append(f"**Changes shipped: {num['total_changes']}, change failure rate "
+                 f"{num['change_failure_rate']}%** (DORA). A change is a shipped "
+                 f"unit of work (a merged PR), not a commit. Value is unpredictable, "
+                 f"so throughput of changes is what to grow -- more shipped per "
+                 f"dollar, without raising the failure rate.")
     L.append("")
     if lever:
         L.append("## Your biggest lever")

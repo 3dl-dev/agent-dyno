@@ -24,6 +24,8 @@ Usage:
 No deps beyond git + Python stdlib.
 """
 import argparse
+import datetime
+import json
 import re
 import subprocess
 import sys
@@ -32,6 +34,7 @@ from collections import defaultdict
 
 SHA_RE = re.compile(r"^([0-9a-f]{40}) ")
 FIXY = re.compile(r"\b(fix|bug|revert|regression|hotfix|patch)\b", re.I)
+_SINCE_RE = re.compile(r"(\d+)\.(day|week|month)s?\.ago")
 
 
 def git(repo, *args):
@@ -74,6 +77,54 @@ def surviving_by_commit(repo, paths):
     return surviving
 
 
+def _since_to_date(since, now):
+    """Convert a git approxidate like '30.days.ago' to YYYY-MM-DD for a forge
+    query. Returns None if the form is not one we can convert."""
+    m = _SINCE_RE.match(since or "")
+    if not m:
+        return None
+    n, unit = int(m.group(1)), m.group(2)
+    days = n * {"day": 1, "week": 7, "month": 30}[unit]
+    d = datetime.datetime.utcfromtimestamp(now) - datetime.timedelta(days=days)
+    return d.strftime("%Y-%m-%d")
+
+
+def changes(repo, since, now=None):
+    """DORA change throughput + change failure rate, harness-neutral.
+
+    A 'change' is a merged pull request (the accepted unit of shipped work), NOT
+    a commit (an arbitrary checkpoint). Source, in order: the forge (merged PRs
+    via `gh`, the faithful unit) -> git trunk integrations (first-parent history,
+    a labeled approximation that degrades to commits when work lands straight on
+    the trunk). change_failure_rate = share of changes that are fixes/reverts, the
+    standard cheap proxy for DORA's 'changes that required remediation'.
+    """
+    now = time.time() if now is None else now
+    date = _since_to_date(since, now)
+    # 1. forge: merged PRs (the accepted unit) via gh, best-effort
+    if date and "github.com" in git(repo, "remote", "get-url", "origin"):
+        try:
+            out = subprocess.run(
+                ["gh", "pr", "list", "--state", "merged", "--limit", "1000",
+                 "--search", f"merged:>={date}", "--json", "title"],
+                cwd=repo, capture_output=True, text=True, timeout=30, check=True).stdout
+            prs = json.loads(out)
+            total = len(prs)
+            failed = sum(1 for p in prs if FIXY.search(p.get("title", "")))
+            return {"source": "github-pr", "changes": total, "failed": failed,
+                    "change_failure_rate": round(100 * failed / total, 2) if total else None}
+        except Exception:
+            pass
+    # 2. fallback: git trunk integrations (first-parent), labeled approximate
+    out = git(repo, "log", f"--since={since}", "--first-parent",
+              "--pretty=format:%s")
+    subs = [s for s in out.splitlines() if s.strip()]
+    total = len(subs)
+    failed = sum(1 for s in subs if FIXY.search(s))
+    return {"source": "git-trunk (approx)", "changes": total, "failed": failed,
+            "change_failure_rate": round(100 * failed / total, 2) if total else None}
+
+
 def survival(repo, since, now=None):
     """Compute horizon-survival for `repo` over the window `since`.
 
@@ -113,21 +164,12 @@ def survival(repo, since, now=None):
 
     total_added = sum(c["added"] for c in commits.values())
     total_surv = sum(surviving.get(s, 0) for s in commits)
-    # Attempts: a commit is one discrete swing at value (a login button and a
-    # neural net can each be one). Scope-agnostic on purpose: weighting by size
-    # would smuggle back the value-prediction the method rejects. A surviving
-    # attempt is one whose work is still alive at HEAD (not reverted or rebuilt).
-    attempts = sum(1 for c in commits.values() if c["added"] > 0)
-    surviving_attempts = sum(1 for sha, c in commits.items()
-                             if c["added"] > 0 and surviving.get(sha, 0) > 0)
     return {
         "repo": repo,
         "since": since,
         "commits": len(commits),
         "added": total_added,
         "surviving": total_surv,
-        "attempts": attempts,
-        "surviving_attempts": surviving_attempts,
         "pct": 100 * total_surv / max(1, total_added),
         "buckets": [(labels[i], agg[i][0], agg[i][1]) for i in range(len(labels))],
         "fix_added": fix_added,
@@ -149,9 +191,9 @@ def main():
     print(f"HORIZON-SURVIVAL  repo={args.repo}  window since {args.since}")
     print(f"commits={r['commits']}  lines added={r['added']:,}  "
           f"surviving at HEAD={r['surviving']:,}  ({r['pct']:.1f}%)")
-    print(f"attempts (commits w/ code)={r['attempts']}  "
-          f"surviving attempts={r['surviving_attempts']}  "
-          f"({100*r['surviving_attempts']/max(1,r['attempts']):.1f}%)")
+    ch = changes(args.repo, args.since)
+    print(f"changes (DORA, {ch['source']})={ch['changes']}  "
+          f"change failure rate={ch['change_failure_rate']}%")
     print(f"\n{'code age when added':22}{'added':>10}{'surviving%':>13}")
     print("-" * 45)
     for lbl, added, surv in r["buckets"]:
