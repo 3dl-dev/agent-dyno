@@ -4,7 +4,7 @@ description: Measure the fuel-efficiency of your AI coding setup from your own l
 argument-hint: [--repos <path,path>] [--since 30.days.ago]
 ---
 
-# Dyno report
+# Vibrant report
 
 The numbers come from a deterministic driver, not from you. Your job is three
 things a model cannot get wrong: read the constitution, run the driver, narrate
@@ -86,6 +86,43 @@ If they want the full fingerprint:
 4. Re-run the driver (step 3). It finds the cache alongside the snapshot (or pass
    `--labels <path>`), fills the three slots of `fingerprint`, and exposes
    `by_review_regime` / `by_knowledge_practice` slices.
+
+## 3c. Score misery, the second meter (optional, cached, cost-gated)
+
+Efficiency says whether your rig is cheap; misery says whether it is bearable. It
+is a second meter over the SAME fingerprint (the wrong topology is miserable, not
+just the wrong model), operator-relative, and never folded into the efficiency
+number. Like the pattern classifier it is an inference layer, so it is opt-in and
+cached; the driver consumes the cache deterministically. Full contract:
+`misery.spec.md`.
+
+If they want the misery meter:
+
+1. Package the evidence, BLIND: for each session, the operator's own reply texts in
+   order plus minimal handover context, under opaque ids, with NO model identity (so
+   the classifier scores your reactions, not a model's reputation) and no raw
+   assistant prose. The adapter's `misery_evidence.py` builds this bundle.
+2. Run the cascade cheap-first (Haiku triage, escalate to Sonnet). For each session
+   emit `{score: 0-100, tags, evidence}`: 0 is calm iteration, 100 is constant
+   fighting; tags from `frustration / course-correction / scope-complaint /
+   verbosity / repetition / instruction-drift / clean`; `evidence` a verbatim
+   operator quote. Score friction only, never productivity.
+3. Cost-gate exactly like 3b: express cost as tokens per model and a ratio to the
+   window's own output baseline; ask above ~1% of weekly output; report tokens
+   actually spent after.
+4. Write `<snap-dir>/misery-cache.json`, schema `vibrant/misery@1`:
+   ```
+   { "schema": "vibrant/misery@1",
+     "sessions": { "<sid>": { "score": 0-100, "tags": [...],
+                              "evidence": "<verbatim quote>" }, ... } }
+   ```
+   Scores + tags + one quote only, no raw transcript. The operator may hand-correct
+   any score; their experience is the ground truth.
+5. Re-run the driver. It reads the cache alongside the snapshot, puts misery beside
+   the topline on the card and surface, and slices it by every arm (`misery.by_engine`
+   / `by_model_roles` / ...) and per era, so the operator can find the cheap-AND-
+   bearable region of their fingerprint. Misery never leaves as a model verdict;
+   federation shares efficiency shape only.
 
 ## 4. Present the surface, and only the surface
 

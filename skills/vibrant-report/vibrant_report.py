@@ -223,6 +223,33 @@ def load_frontier(path_or_url):
         return {"entries": []}, b""
 
 
+def load_misery(snapshot_dir, path=None):
+    """Load the misery cache: {sid: {score, tags, evidence}} (schema vibrant/misery@1).
+    The inference layer (the skill's Haiku->Sonnet cascade) writes it out of band;
+    the driver consumes it as a pure function, so the report stays deterministic. An
+    absent cache yields {} and a no-misery run, leaving the efficiency meter untouched.
+    Default location: alongside the snapshot."""
+    p = path or os.path.join(snapshot_dir, "misery-cache.json")
+    if not os.path.exists(p):
+        return {}
+    try:
+        d = json.load(open(p))
+    except Exception:
+        return {}
+    return d.get("sessions", {}) if isinstance(d, dict) else {}
+
+
+def _misery_by(metrics, dim):
+    """Mean misery per cell of one fingerprint dimension: {value: mean_misery}.
+    Misery is a meter over the SAME parameter space as efficiency, so it slices by
+    every arm the efficiency meter does. Sessions with no score are ignored."""
+    g = defaultdict(list)
+    for m in metrics:
+        if m.get("misery") is not None:
+            g[m.get(dim, "unknown")].append(m["misery"])
+    return {k: round(sum(v) / len(v), 1) for k, v in sorted(g.items())}
+
+
 def load_snapshot(snapshot_dir):
     """Load sessions, turns-by-session, code-by-session, survival-by-session."""
     sessions, turns, code = {}, defaultdict(list), {}
@@ -680,12 +707,14 @@ def timeline(metrics, all_fp=None, gran="week", shipped=None, complexity=None,
         #  churn      = share of written code deleted in-session; ambiguous (an
         #               orchestrator discarding bad worker output is healthy), so it
         #               rides as data, not a verdict.
+        mis = [c["misery"] for c in cells if c.get("misery") is not None]
         rows.append({"week": labels[k], "eq": eq,
                      "sessions": len(cells), "fingerprint": fp,
                      "changes": chg.get(k, []), "born": born, "killed": killed,
                      "complexity": cxb.get(k, 0), "shipped": ship.get(k, 0),
                      "out_mtok": round(out_mtok, 4),
                      "churn_pct": round(100 * killed / born, 1) if born else None,
+                     "misery": round(sum(mis) / len(mis), 1) if mis else None,
                      "babysitting": bs["per_100_turns"] if bs else None})
     return rows
 
@@ -1186,10 +1215,15 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
                  coverage=None):
     session_cost, usage_field = load_adapter_cost(harness)
     sessions, turns, code, survival = load_snapshot(snapshot_dir)
+    misery = load_misery(snapshot_dir)  # {sid: {score, tags, evidence}}; {} if none
     metrics = []
     for sid, s in sessions.items():
         m = session_metrics(s, turns, code, survival, session_cost, usage_field)
         if m:
+            # the second meter: attach per-session misery (None if unscored), same
+            # as survival is attached. It never enters EQ (operator-owned tradeoff).
+            ms = misery.get(sid)
+            m["misery"] = ms.get("score") if isinstance(ms, dict) else None
             metrics.append(m)
     metrics.sort(key=lambda m: m["sid"])  # deterministic order
 
@@ -1319,6 +1353,22 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
     bs = babysitting(metrics)
     fuel = fuel_and_work(metrics, granularity)
 
+    # the second meter: misery over the SAME fingerprint parameter space as
+    # efficiency, sliced by every arm, never folded into EQ. None when unscored.
+    scored = [m for m in metrics if m.get("misery") is not None]
+    misery_block = None
+    if scored:
+        misery_block = {
+            "overall": round(sum(m["misery"] for m in scored) / len(scored), 1),
+            "n_scored": len(scored),
+            "by_model": _misery_by(metrics, "model"),
+            "by_worker": _misery_by(metrics, "worker"),
+            "by_model_roles": _misery_by(metrics, "model_roles"),
+            "by_effort": _misery_by(metrics, "effort"),
+            "by_engine": _misery_by(metrics, "engine"),
+            "by_routing": _misery_by(metrics, "routing"),
+        }
+
     # provenance
     repo_prov = []
     for repo in repos:
@@ -1342,6 +1392,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
             "constitution": "docs/governance.md",
         },
         "topline": tl,
+        "misery": misery_block,
         "coverage": coverage,
         "fingerprint": fingerprint_summary(metrics, numerator),
         "babysitting": bs,
@@ -1390,6 +1441,19 @@ def render_md(report):
              f"stuck, not what was typed, so in-chat churn does not inflate it. "
              f"Nothing leaves your machine.")
     L.append("")
+    mb = report.get("misery")
+    if mb:
+        # the second meter, beside the topline, never folded in. It is a function of
+        # the whole fingerprint (topology usually matters more than the model), and
+        # it is operator-relative: this is YOUR friction, comparable only across your
+        # own rigs, never a verdict about a model.
+        L.append(f"**Misery {mb['overall']}/100.** How much you fought your rig "
+                 f"(0 smooth, 100 constant fighting), from the sentiment of your own "
+                 f"replies. A second meter, never folded into efficiency: a rig can be "
+                 f"cheap and miserable at once. It is a function of your whole "
+                 f"fingerprint (topology usually more than the model) and relative to "
+                 f"you, so compare it only across your own rigs.")
+        L.append("")
     cov = report.get("coverage")
     if cov and cov.get("measured_pct") is not None and cov["measured_pct"] < 90:
         top = ", ".join(f"{u['proj']} ({u['sessions']})"
@@ -1478,6 +1542,10 @@ _CSS = """
  color:var(--accent);margin-top:2px;}
 .vibrant .unit{font-size:13.5px;font-weight:600;color:var(--ink2);margin-top:16px;}
 .vibrant .how{font-size:12px;color:var(--muted);margin-top:4px;}
+.vibrant .misery{margin-top:14px;display:flex;align-items:baseline;gap:8px;
+ border-top:1px solid var(--line);padding-top:12px;}
+.vibrant .misery .mnum{font-size:30px;font-weight:730;letter-spacing:-.02em;color:var(--s2);}
+.vibrant .misery .mlabel{font-size:12px;color:var(--ink2);font-weight:600;}
 .vibrant .hero-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none;}
 .vibrant .row-h{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
  color:var(--muted);margin:0 0 9px;}
@@ -1608,8 +1676,15 @@ def _hero_card(report):
          f'Mtok output, larger is better">{esc(str(tl["eq"]))}</div>',
          '<div class="unit">durable shipped work per Mtok</div>',
          '<div class="how">decision-logic that shipped and stuck in git, per million '
-         'output tokens</div>',
-         '</div>', trend, '</div>']
+         'output tokens</div>']
+    mb = report.get("misery")
+    if mb:
+        p.append(f'<div class="misery" title="operator friction, 0 smooth to 100 '
+                 f'fighting; a second meter over the same rig, never folded into '
+                 f'efficiency"><span class="mnum">{mb["overall"]}</span>'
+                 f'<span class="mlabel">misery / 100: how much you fought your '
+                 f'rig (not the same as cheap)</span></div>')
+    p += ['</div>', trend, '</div>']
     topo = fp.get("orchestration_topology") or {}
     if topo.get("blend"):
         p.append('<div class="rig"><div class="row-h">Your rig</div>'
@@ -1956,19 +2031,27 @@ def render_attribution(report):
         return ""
     esc = _html.escape
 
-    def table(title, first_col, d):
-        rows = "".join(
-            f"<tr><td>{esc(str(k))}</td><td>{v['surviving']:,}</td>"
-            f"<td>{v['net_complexity']:,}</td><td>{v['commits']}</td></tr>"
-            for k, v in d.items())
+    # the second meter joins the by-rig table: each rig shows work AND misery, the
+    # cost/bearability tradeoff in one row. Misery is keyed by the same rig string.
+    mis = ((report.get("misery") or {}).get("by_model_roles")) or {}
+
+    def table(title, first_col, d, mcol=None):
+        head = "<th>misery</th>" if mcol else ""
+        rows = ""
+        for k, v in d.items():
+            mc = (f"<td>{mcol.get(k)}</td>" if mcol and mcol.get(k) is not None
+                  else ("<td></td>" if mcol else ""))
+            rows += (f"<tr><td>{esc(str(k))}</td><td>{v['surviving']:,}</td>"
+                     f"<td>{v['net_complexity']:,}</td><td>{v['commits']}</td>{mc}</tr>")
         return (f"<h2>{esc(title)}</h2><table><thead><tr><th>{esc(first_col)}</th>"
-                f"<th>surviving lines</th><th>complexity</th><th>commits</th>"
+                f"<th>surviving lines</th><th>complexity</th><th>commits</th>{head}"
                 f"</tr></thead><tbody>{rows}</tbody></table>")
 
     parts = []
     if attr.get("by_model_roles"):
         parts.append(table("Surviving work by rig (orchestrator to worker)",
-                           "orchestrator to worker", attr["by_model_roles"]))
+                           "orchestrator to worker", attr["by_model_roles"],
+                           mcol=mis))
     if attr.get("by_orchestrator"):
         parts.append(table("Surviving work by orchestrator (direct agent)",
                            "orchestrator", attr["by_orchestrator"]))
