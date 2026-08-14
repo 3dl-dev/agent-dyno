@@ -93,7 +93,7 @@ you measured.
   "default_profile": "default",
   "operators": {
     "sha256": "93c02cedd7bd66a8afcfdd547fc95bb830fe6ce1699ca009917f8551b4200ad5",
-    "url": "https://github.com/3dl-dev/hoistable/releases/download/operators-v0.5.0/hoistable-operators-0.5.0.tgz",
+    "url": "https://raw.githubusercontent.com/3dl-dev/agent-dyno/main/plugins/hoist-agent-dyno/harness/hoistable-operators-0.5.0.tgz",
     "version": "0.5.0"
   },
   "profiles": {
