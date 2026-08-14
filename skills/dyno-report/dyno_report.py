@@ -1052,100 +1052,194 @@ def render_md(report):
     return "\n".join(L)
 
 
-def _surface_html(report):
-    """The functional surface as HTML: the plain-language number, the one lever with
-    its predicted move, and the measure line. This is the same surface as report.md,
-    rendered into report.html so the page is the whole experience, not just charts."""
+_CSS = """
+.dyno{color-scheme:light;
+ --surface:#f4f3ef;--card:#ffffff;--ink:#141310;--ink2:#57544d;--muted:#8f8c83;
+ --line:#e7e5dd;--grid:#e7e5dd;--axis:#cfcdc3;--accent:#2a78d6;--series:#2a78d6;
+ --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;
+ --c-cacheread:#2a78d6;--c-read:#eb6834;--c-output:#1baf7a;--c-work:#008300;
+ --good:#008300;--up:#008300;--down:#e34948;--shadow:20,19,16;
+ font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+ color:var(--ink);background:var(--surface);max-width:760px;margin:0 auto;
+ padding:28px 20px 40px;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+@media (prefers-color-scheme:dark){:root:where(:not([data-theme=light])) .dyno{
+ color-scheme:dark;--surface:#141412;--card:#1c1b19;--ink:#f6f5f0;--ink2:#c7c5bb;
+ --muted:#918e85;--line:#2e2d29;--grid:#2c2c2a;--axis:#3a3a36;--accent:#3987e5;
+ --series:#3987e5;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;
+ --c-cacheread:#3987e5;--c-read:#d95926;--c-output:#199e70;--c-work:#159015;
+ --good:#199e70;--up:#199e70;--down:#e66767;--shadow:0,0,0;}}
+:root[data-theme=dark] .dyno{color-scheme:dark;--surface:#141412;--card:#1c1b19;
+ --ink:#f6f5f0;--ink2:#c7c5bb;--muted:#918e85;--line:#2e2d29;--grid:#2c2c2a;
+ --axis:#3a3a36;--accent:#3987e5;--series:#3987e5;--s1:#3987e5;--s2:#d95926;
+ --s3:#199e70;--s4:#c98500;--s5:#d55181;--c-cacheread:#3987e5;--c-read:#d95926;
+ --c-output:#199e70;--c-work:#159015;--good:#199e70;--up:#199e70;--down:#e66767;--shadow:0,0,0;}
+.dyno *{box-sizing:border-box;}
+.dyno .card{background:var(--card);border:1px solid var(--line);border-radius:18px;
+ padding:30px 32px;box-shadow:0 1px 2px rgba(var(--shadow),.05),0 10px 34px rgba(var(--shadow),.07);}
+.dyno .brand{display:flex;align-items:center;gap:9px;font-size:11.5px;font-weight:700;
+ letter-spacing:.15em;color:var(--ink2);text-transform:uppercase;margin:0 0 22px;}
+.dyno .brand .mark{width:13px;height:13px;border-radius:3px;flex:none;
+ background:linear-gradient(135deg,var(--s1),var(--s3));}
+.dyno .brand .sub{font-weight:500;letter-spacing:.05em;color:var(--muted);text-transform:none;}
+.dyno .hero{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px 16px;margin:0 0 12px;}
+.dyno .num{font-size:66px;font-weight:680;letter-spacing:-.025em;line-height:.9;color:var(--ink);}
+.dyno .unit{font-size:14.5px;font-weight:600;color:var(--ink2);max-width:170px;line-height:1.25;}
+.dyno .sub{font-size:13.5px;color:var(--ink2);line-height:1.5;margin:0 0 26px;}
+.dyno .row-h{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+ color:var(--muted);margin:0 0 9px;}
+.dyno .stack{margin:0 0 26px;}
+.dyno .bar{display:flex;gap:2px;height:30px;}
+.dyno .seg{display:block;min-width:3px;}
+.dyno .seg:first-child{border-radius:8px 0 0 8px;}
+.dyno .seg:last-child{border-radius:0 8px 8px 0;}
+.dyno .seg:only-child{border-radius:8px;}
+.dyno .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:10px;font-size:12.5px;color:var(--ink2);}
+.dyno .lg{display:inline-flex;align-items:center;gap:6px;}
+.dyno .lg i{width:9px;height:9px;border-radius:2px;display:inline-block;flex:none;}
+.dyno .lg b{color:var(--ink);font-weight:650;}
+.dyno .lever{background:var(--surface);border-radius:12px;padding:15px 17px;margin:0 0 24px;
+ border-left:3px solid var(--accent);}
+.dyno .lever.ok{border-left-color:var(--good);}
+.dyno .lever-h{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+ color:var(--muted);margin:0 0 6px;}
+.dyno .lever-tweak{font-size:15px;font-weight:600;color:var(--ink);line-height:1.4;}
+.dyno .trend{display:flex;align-items:center;gap:16px;}
+.dyno .spark{width:200px;height:44px;flex:none;}
+.dyno .trend-cap{font-size:12.5px;color:var(--ink2);}
+.dyno .trend-cap .up{color:var(--up);font-weight:650;}
+.dyno .trend-cap .down{color:var(--down);font-weight:650;}
+.dyno .measure{font-size:12.5px;color:var(--ink2);margin:12px 0 0;}
+.dyno .foot{margin-top:24px;padding-top:15px;border-top:1px solid var(--line);
+ font-size:11px;letter-spacing:.03em;color:var(--muted);display:flex;justify-content:space-between;}
+.dyno h2{font-size:14px;font-weight:650;color:var(--ink);margin:34px 0 3px;letter-spacing:-.01em;}
+.dyno p{font-size:13px;color:var(--ink2);margin:0 0 14px;line-height:1.5;}
+.dyno svg{max-width:100%;height:auto;}
+.dyno table{border-collapse:collapse;font-size:13px;margin-top:14px;width:100%;
+ font-variant-numeric:tabular-nums;}
+.dyno th,.dyno td{text-align:left;padding:6px 14px 6px 0;border-bottom:1px solid var(--line);color:var(--ink2);}
+.dyno th{color:var(--muted);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;}
+.dyno td:first-child{color:var(--ink);}
+.dyno .flag{color:var(--accent);font-weight:650;}
+.dyno select{font:inherit;font-size:13px;padding:4px 9px;border:1px solid var(--line);
+ border-radius:8px;background:var(--card);color:var(--ink);cursor:pointer;}
+.dyno ol{font-size:12.5px;color:var(--ink2);margin:6px 0;padding-left:20px;}
+@media (max-width:560px){.dyno{padding:14px 10px 28px;}.dyno .card{padding:22px 20px;}
+ .dyno .num{font-size:50px;}.dyno .trend{flex-wrap:wrap;gap:8px;}}
+"""
+
+_STACK_COLORS = ("var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)", "var(--s5)")
+
+
+def _stack_bar(arm):
+    """A segmented bar of a fingerprint arm's blend, categorical colors in fixed
+    order with 2px surface gaps, and a dotted legend below (the stack at a glance)."""
+    esc = _html.escape
+    b = (arm or {}).get("blend") or []
+    if not b:
+        return ""
+    segs, legend = [], []
+    for i, s in enumerate(b[:5]):
+        c = _STACK_COLORS[i % len(_STACK_COLORS)]
+        segs.append(f'<span class="seg" style="flex:{s["sessions"]};background:{c}" '
+                    f'title="{esc(str(s["value"]))} {s["share"]}%"></span>')
+        legend.append(f'<span class="lg"><i style="background:{c}"></i>'
+                      f'{esc(str(s["value"]))} <b>{s["share"]:.0f}%</b></span>')
+    return (f'<div class="stack"><div class="bar">{"".join(segs)}</div>'
+            f'<div class="legend">{"".join(legend)}</div></div>')
+
+
+def _sparkline(eqs):
+    """Compact trend sparkline: accent line, faint area, a dot on the latest week."""
+    if len(eqs) < 2:
+        return ""
+    W, H, pad = 200, 44, 4
+    lo, hi = min(eqs), max(eqs)
+    if hi == lo:
+        hi, lo = hi + 1, lo - 1
+    n = len(eqs)
+
+    def X(i):
+        return pad + (W - 2 * pad) * i / (n - 1)
+
+    def Y(v):
+        return pad + (H - 2 * pad) * (1 - (v - lo) / (hi - lo))
+
+    line = " ".join(f"{X(i):.1f},{Y(v):.1f}" for i, v in enumerate(eqs))
+    area = f"{X(0):.1f},{H - pad:.1f} {line} {X(n - 1):.1f},{H - pad:.1f}"
+    return (f'<svg class="spark" viewBox="0 0 {W} {H}" role="img" aria-label="trend">'
+            f'<polygon points="{area}" fill="var(--accent)" opacity="0.10"/>'
+            f'<polyline points="{line}" fill="none" stroke="var(--accent)" '
+            f'stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
+            f'<circle cx="{X(n - 1):.1f}" cy="{Y(eqs[-1]):.1f}" r="3.4" '
+            f'fill="var(--accent)"/></svg>')
+
+
+def _hero_card(report):
+    """The shareable scorecard: wordmark, the hero number, the stack, the lever, and
+    a trend sparkline. Designed to be screenshotted and dropped into X / Slack /
+    Reddit as-is; the design is the share, there are no share buttons."""
+    esc = _html.escape
     tl = report["topline"]
+    fp = report.get("fingerprint") or {}
     lever = report.get("lever")
     measure = report.get("measure")
-    esc = _html.escape
+    eqs = [r["eq"] for r in report.get("timeline", []) if r["eq"] is not None]
     cfr = tl.get("change_failure_rate")
-    cfr_s = f" Change failure rate {cfr}% (DORA)." if cfr is not None else ""
-    out = [f'<p class="surface-lead">Larger is better. Surviving decision-logic (a '
-           f'complexity proxy) per million tokens the model generated, over '
-           f'{tl.get("sessions")} sessions.{esc(cfr_s)} Nothing leaves your '
-           f'machine.</p>']
+    p = ['<div class="card">',
+         '<div class="brand"><span class="mark"></span>AGENT DYNO'
+         '<span class="sub">engine efficiency</span></div>',
+         f'<div class="hero"><span class="num">{esc(str(tl["eq"]))}</span>'
+         f'<span class="unit">surviving functionality per Mtok output</span></div>']
+    chips = [f'{tl.get("sessions")} sessions']
+    if cfr is not None:
+        chips.append(f'{cfr}% change-failure')
+    p.append(f'<div class="sub">Larger is better. {" &middot; ".join(esc(c) for c in chips)} '
+             f'&middot; nothing leaves your machine.</div>')
+    topo = fp.get("orchestration_topology") or {}
+    if topo.get("blend"):
+        p.append('<div class="row-h">Your stack</div>' + _stack_bar(topo))
     if lever:
-        out.append(
-            f'<div class="lever"><div class="lever-h">Your biggest lever</div>'
-            f'<p class="lever-tweak">{esc(str(lever.get("tweak") or ""))}</p>'
-            f'<p class="lever-sub">Setups shaped like yours '
-            f'({esc(str(lever.get("engine", "")))}, {esc(str(lever.get("effort", "")))} '
-            f'effort) retain {lever.get("frontier_cell_efficiency")} surviving-KB per '
-            f'dollar, against your {lever.get("your_cell_efficiency")}. Adopt it, then '
-            f're-run with --baseline to see whether the number moved.</p></div>')
+        p.append(f'<div class="lever"><div class="lever-h">Your biggest lever</div>'
+                 f'<div class="lever-tweak">{esc(str(lever.get("tweak") or ""))}</div></div>')
     else:
-        out.append('<p class="lever-none">You are at the frontier for every shape we '
-                   'can compare. Nothing to suggest yet; contribute your result so the '
-                   'next person learns.</p>')
+        p.append('<div class="lever ok"><div class="lever-h">At the frontier</div>'
+                 '<div class="lever-tweak">Nothing shaped like your setup beats you yet. '
+                 'Contribute your result so the next person can learn from it.</div></div>')
+    if len(eqs) >= 2:
+        d = eqs[-1] - eqs[0]
+        arrow, cls = ("&#9650;", "up") if d > 0 else (("&#9660;", "down") if d < 0 else ("&#8212;", ""))
+        p.append(f'<div class="trend">{_sparkline(eqs)}'
+                 f'<div class="trend-cap">Efficiency, last {len(eqs)} weeks '
+                 f'<span class="{cls}">{arrow} {abs(d):.0f}</span></div></div>')
     if measure:
-        d = measure["actual_delta"]
-        arrow = "up" if d > 0 else ("flat" if d == 0 else "down")
-        out.append(f'<p class="measure"><strong>Since last time:</strong> '
-                   f'{measure["baseline_eq"]} to {measure["current_eq"]} '
-                   f'(actual {d:+}, {arrow}).</p>')
-    return "".join(out)
+        p.append(f'<div class="measure">Since last run: {measure["baseline_eq"]} to '
+                 f'{measure["current_eq"]} ({measure["actual_delta"]:+}).</div>')
+    p.append('<div class="foot"><span>agent-dyno</span><span>3dl-dev/agent-dyno</span></div>')
+    p.append('</div>')
+    return "".join(p)
 
 
 def render_html(report):
-    """Self-contained, theme-aware chart of EQ over time, annotated with the
-    operator's own fingerprint changes. Single series (blue), direct value
-    labels, recessive grid, numbered change-flags, native SVG tooltips, table
-    view. Stdlib string-building only, no external assets."""
-    tl = [r for r in report.get("timeline", []) if r["eq"] is not None]
-    eq0 = report["topline"]["eq"]
+    """Self-contained, theme-aware page: a shareable hero scorecard (number, stack,
+    lever, trend) over the detail charts (efficiency over time, fuel-and-work small
+    multiples, attribution). Stdlib string-building only, no external assets."""
     esc = _html.escape
-    head = (
-        "<style>\n"
-        ".viz-root{color-scheme:light;--surface:#fcfcfb;--ink:#0b0b0b;"
-        "--ink2:#52514e;--muted:#898781;--grid:#e1e0d9;--axis:#c3c2b7;"
-        "--series:#2a78d6;--c-cacheread:#2a78d6;--c-read:#eb6834;--c-output:#1baf7a;"
-        "--c-work:#0ca30c;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;"
-        "background:var(--surface);color:var(--ink);padding:24px;border-radius:8px;}\n"
-        "@media (prefers-color-scheme:dark){:root:where(:not([data-theme=light])) .viz-root{"
-        "color-scheme:dark;--surface:#1a1a19;--ink:#fff;--ink2:#c3c2b7;--muted:#898781;"
-        "--grid:#2c2c2a;--axis:#383835;--series:#3987e5;--c-cacheread:#3987e5;"
-        "--c-read:#d95926;--c-output:#199e70;--c-work:#0ca30c;}}\n"
-        ":root[data-theme=dark] .viz-root{color-scheme:dark;--surface:#1a1a19;--ink:#fff;"
-        "--ink2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--axis:#383835;--series:#3987e5;"
-        "--c-cacheread:#3987e5;--c-read:#d95926;--c-output:#199e70;--c-work:#0ca30c;}\n"
-        ".viz-root h2{font-size:15px;margin:24px 0 2px;font-weight:600;}\n"
-        ".viz-root h1{font-size:20px;margin:0 0 2px;font-weight:600;}\n"
-        ".viz-root p{color:var(--ink2);font-size:13px;margin:0 0 16px;}\n"
-        ".viz-root svg{max-width:100%;height:auto;}\n"
-        ".viz-root table{border-collapse:collapse;font-size:13px;margin-top:16px;"
-        "font-variant-numeric:tabular-nums;}\n"
-        ".viz-root th,.viz-root td{text-align:left;padding:4px 12px 4px 0;color:var(--ink2);"
-        "border-bottom:1px solid var(--grid);}\n"
-        ".viz-root th{color:var(--muted);font-weight:600;}\n"
-        ".viz-root .flag{color:var(--series);font-weight:600;}\n"
-        ".viz-root .surface-lead{font-size:14px;color:var(--ink2);margin:0 0 16px;}\n"
-        ".viz-root .lever{border:1px solid var(--grid);border-left:3px solid "
-        "var(--series);border-radius:6px;padding:12px 16px;margin:0 0 16px;}\n"
-        ".viz-root .lever-h{font-size:11px;text-transform:uppercase;"
-        "letter-spacing:.05em;color:var(--muted);font-weight:600;margin:0 0 4px;}\n"
-        ".viz-root .lever-tweak{font-size:15px;color:var(--ink);font-weight:600;"
-        "margin:0 0 4px;}\n"
-        ".viz-root .lever-sub,.viz-root .lever-none,.viz-root .measure{font-size:13px;"
-        "color:var(--ink2);margin:0 0 16px;}\n"
-        ".viz-root .lever-sub{margin:0;}\n"
-        "</style>\n")
+    head = "<style>\n" + _CSS + "</style>\n"
+    hero = _hero_card(report)
+    tl = [r for r in report.get("timeline", []) if r["eq"] is not None]
     if len(tl) < 2:
-        body = (f'<div class="viz-root"><h1>{esc(str(eq0))} functionality per Mtok output</h1>'
-                f'{_surface_html(report)}'
-                "<p>Not enough weeks of data to chart a trend yet.</p>"
-                f'{render_small_multiples(report)}</div>')
+        body = (f'<div class="dyno">{hero}'
+                f'{render_small_multiples(report)}{render_attribution(report)}</div>')
         return _page(head + body)
 
-    W, H = 760, 380
-    ml, mr, mt, mb = 52, 24, 44, 52
+    W, H = 760, 300
+    ml, mr, mt, mb = 46, 18, 26, 40
     pw, ph = W - ml - mr, H - mt - mb
     eqs = [r["eq"] for r in tl]
     ylo, yhi = min(eqs), max(eqs)
     if yhi == ylo:
         yhi, ylo = yhi + 1, 0.0
-    pad = (yhi - ylo) * 0.15
+    pad = (yhi - ylo) * 0.18
     ylo, yhi = ylo - pad, yhi + pad
     n = len(tl)
 
@@ -1155,71 +1249,58 @@ def render_html(report):
     def Y(v):
         return mt + ph * (1 - (v - ylo) / (yhi - ylo))
 
-    parts = [f'<svg viewBox="0 0 {W} {H}" role="img" '
-             f'aria-label="EQ over time">']
-    # horizontal gridlines + y labels (3 ticks)
+    parts = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="efficiency over time">']
     for t in range(3):
         v = ylo + (yhi - ylo) * t / 2
         y = Y(v)
         parts.append(f'<line x1="{ml}" y1="{y:.1f}" x2="{ml+pw}" y2="{y:.1f}" '
                      f'stroke="var(--grid)" stroke-width="1"/>')
         parts.append(f'<text x="{ml-8:.0f}" y="{y+4:.1f}" text-anchor="end" '
-                     f'font-size="11" fill="var(--muted)">{v:.2f}</text>')
-    # baseline
+                     f'font-size="11" fill="var(--muted)">{v:.0f}</text>')
     parts.append(f'<line x1="{ml}" y1="{mt+ph}" x2="{ml+pw}" y2="{mt+ph}" '
                  f'stroke="var(--axis)" stroke-width="1"/>')
-    # annotation flags (fingerprint changes): dashed verticals + numbered marks
-    flags = []
-    k = 0
+    flags, k = [], 0
     for i, r in enumerate(tl):
         if not r["changes"]:
             continue
         k += 1
         x = X(i)
-        parts.append(f'<line x1="{x:.1f}" y1="{mt-6}" x2="{x:.1f}" y2="{mt+ph}" '
-                     f'stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3"/>')
-        parts.append(f'<circle cx="{x:.1f}" cy="{mt-6}" r="8" fill="var(--surface)" '
-                     f'stroke="var(--series)" stroke-width="1.5"/>')
-        parts.append(f'<text x="{x:.1f}" y="{mt-2.5}" text-anchor="middle" '
-                     f'font-size="10" font-weight="600" fill="var(--series)">{k}</text>')
+        parts.append(f'<line x1="{x:.1f}" y1="{mt-4}" x2="{x:.1f}" y2="{mt+ph}" '
+                     f'stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" '
+                     f'opacity="0.6"/>')
+        parts.append(f'<circle cx="{x:.1f}" cy="{mt-4}" r="8" fill="var(--card)" '
+                     f'stroke="var(--accent)" stroke-width="1.5"/>')
+        parts.append(f'<text x="{x:.1f}" y="{mt-0.5}" text-anchor="middle" '
+                     f'font-size="10" font-weight="700" fill="var(--accent)">{k}</text>')
         flags.append((k, r))
-    # the line
-    pts = " ".join(f"{X(i):.1f},{Y(r['eq']):.1f}" for i, r in enumerate(tl))
-    parts.append(f'<polyline points="{pts}" fill="none" stroke="var(--series)" '
-                 f'stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>')
-    # points with native tooltips + direct value labels + x tick labels
+    pline = " ".join(f"{X(i):.1f},{Y(r['eq']):.1f}" for i, r in enumerate(tl))
+    parts.append(f'<polygon points="{X(0):.1f},{mt+ph:.1f} {pline} {X(n-1):.1f},{mt+ph:.1f}" '
+                 f'fill="var(--accent)" opacity="0.07"/>')
+    parts.append(f'<polyline points="{pline}" fill="none" stroke="var(--accent)" '
+                 f'stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>')
     for i, r in enumerate(tl):
         x, y = X(i), Y(r["eq"])
         tip = f"{r['week']}: {r['eq']} survKB per Mtok, {r['sessions']} sessions"
         if r["changes"]:
             tip += " | " + "; ".join(r["changes"])
-        parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4.5" fill="var(--surface)" '
-                     f'stroke="var(--series)" stroke-width="2"><title>{esc(tip)}</title></circle>')
-        parts.append(f'<text x="{x:.1f}" y="{y-10:.1f}" text-anchor="middle" '
-                     f'font-size="10" fill="var(--ink2)">{r["eq"]:.2f}</text>')
+        parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4" fill="var(--card)" '
+                     f'stroke="var(--accent)" stroke-width="2"><title>{esc(tip)}</title></circle>')
         parts.append(f'<text x="{x:.1f}" y="{mt+ph+16:.0f}" text-anchor="middle" '
                      f'font-size="10" fill="var(--muted)">{esc(r["week"])}</text>')
     parts.append("</svg>")
 
-    rows = "".join(
-        f"<tr><td>{esc(r['week'])}</td><td>{r['eq']}</td><td>{r['sessions']}</td>"
-        f"<td>{esc('; '.join(r['changes']) or '')}</td></tr>" for r in tl)
     legend = ""
     if flags:
         items = "".join(f'<li><span class="flag">{k}</span> {esc(r["week"])}: '
                         f'{esc("; ".join(r["changes"]))}</li>' for k, r in flags)
-        legend = (f'<p style="margin-top:12px"><strong>Your changes:</strong></p>'
-                  f'<ol style="font-size:13px;color:var(--ink2);margin:4px 0">{items}</ol>')
-    body = (f'<div class="viz-root"><h1>{esc(str(eq0))} functionality per Mtok output</h1>'
-            f'{_surface_html(report)}'
-            f'<h2>Surviving work per Mtok output, by week</h2>'
-            f'<p>Your efficiency over time, in the same per-output-token terms as the '
-            f'headline. Each numbered flag is a change you made to your setup, so a '
-            f'move on the curve ties to a change, not noise.</p>'
-            f'{"".join(parts)}{legend}'
-            f'<table><thead><tr><th>week</th><th>EQ</th><th>sessions</th>'
-            f'<th>changes</th></tr></thead><tbody>{rows}</tbody></table>'
-            f'{render_small_multiples(report)}</div>')
+        legend = f'<ol>{items}</ol>'
+    detail = (f'<h2>Efficiency over time</h2>'
+              f'<p>Surviving work per Mtok output by week, the same terms as the '
+              f'headline. A numbered flag marks a change you made to your setup, so a '
+              f'move ties to a change, not noise.</p>'
+              f'{"".join(parts)}{legend}'
+              f'{render_small_multiples(report)}{render_attribution(report)}')
+    body = f'<div class="dyno">{hero}{detail}</div>'
     return _page(head + body)
 
 
@@ -1333,7 +1414,7 @@ def render_small_multiples(report):
             f'<p>The three token streams that make up your fuel, against the code '
             f'that survived, each on its own scale. Slice by any dimension: '
             f'<select id="fw-sel">{"".join(groups)}</select></p>'
-            f'{"".join(blocks)}{js}{render_attribution(report)}')
+            f'{"".join(blocks)}{js}')
 
 
 def render_attribution(report):
