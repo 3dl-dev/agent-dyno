@@ -954,6 +954,17 @@ def coverage_for(snapshot_dir, repos, root):
     }
 
 
+# vendored / generated / lockfile / minified paths: excluded from the numerator so
+# imported bulk is not counted as the operator's authored, surviving logic.
+_VENDORED_RE = re.compile(
+    r"(^|/)(node_modules|vendor|third_party|third-party|dist|build|out|target|"
+    r"\.venv|venv|site-packages|bower_components|external|deps|generated|__generated__|"
+    r"testdata|fixtures|migrations)/|"
+    r"(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|Cargo\.lock|"
+    r"go\.sum|composer\.lock|Gemfile\.lock)$|"
+    r"\.(min\.js|min\.css|bundle\.js|map|lock)$|"
+    r"(\.pb\.go|_pb2\.py|\.g\.dart|\.generated\.[a-z]+)$", re.I)
+
 _BUCKETS = [(0, 1), (1, 3), (3, 7), (7, 14), (14, 30), (30, 90), (90, 10**6)]
 _BUCKET_LABELS = ["<1d", "1-3d", "3-7d", "7-14d", "14-30d", "30-90d", ">90d"]
 
@@ -1000,7 +1011,7 @@ def _repo_git(repo, since, now, cache_dir):
     name = os.path.basename(os.path.normpath(repo))
     head = survival_git.git(repo, "rev-parse", "HEAD").strip()
     cpath = os.path.join(cache_dir, f"gitcache-{name}.json") if cache_dir else None
-    key = f"{head}|{since}"
+    key = f"{head}|{since}|v2-vendored-filter"  # bump to invalidate on numerator change
     if cpath and os.path.exists(cpath):
         try:
             cached = json.load(open(cpath))
@@ -1021,6 +1032,12 @@ def _repo_git(repo, since, now, cache_dir):
     if commits:
         tracked = set(survival_git.git(repo, "ls-files").splitlines())
         paths = {p for c in commits.values() for p in c["paths"]} & tracked
+        # exclude vendored / generated / lockfile / minified paths: the complexity
+        # proxy counts decision points in ANY surviving line, so a single vendored
+        # import (node_modules, vendor/, a lockfile, a *.min.js) can add thousands of
+        # "decision points" that are not the operator's authored logic and would
+        # dominate the numerator. Measure authored code, not imported bulk.
+        paths = {p for p in paths if not _VENDORED_RE.search(p)}
         surviving, complexity = survival_git.surviving_by_commit(repo, paths)
     changes = survival_git.changes(repo, since, now=now)
     elapsed = time.time() - t0
