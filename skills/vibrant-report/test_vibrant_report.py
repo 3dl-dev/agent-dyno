@@ -558,9 +558,13 @@ def main():
             if "A lever to test (unverified)" not in hh or "unverified" not in hh:
                 fails.append("report.html presents an unverified lever as substantiated "
                              "advice (should be labeled a hypothesis to test)")
-            # and the churn caveat: efficiency must never be read as quality
-            if "churned" not in hh or "Efficiency is not quality" not in hh:
-                fails.append("report.html is missing the churn / not-quality caveat")
+            # velocity must sit beside efficiency: the topline (lines/token) inverts
+            # on tight, high-leverage work, so shipped-per-day is shown per era and
+            # the caveat states efficiency is neither velocity nor quality.
+            if "shipped" not in hh or "velocity" not in hh:
+                fails.append("report.html is missing the per-era velocity signal")
+            if "neither velocity nor quality" not in hh:
+                fails.append("report.html is missing the efficiency-is-not-velocity caveat")
             # ---- (item 3) the slicer cuts by every fingerprint dimension ----
             for lbl in ("by model", "by effort", "by engine", "by routing",
                         "by review regime", "by knowledge practice"):

@@ -572,11 +572,12 @@ def detect_changes(metrics, window=14, sustain=0.75):
     return sorted(out, key=lambda c: c["date"])
 
 
-def timeline(metrics, all_fp=None, gran="week"):
+def timeline(metrics, all_fp=None, gran="week", shipped=None):
     """Efficiency curve (surviving KB per Mtok output, the headline's unit) binned at
     `gran` (day / week / month), annotated with the operator's real, day-dated setup
-    changes (detect_changes). A change flag sits on the bucket that contains its date
-    and carries the exact date, so the claim is checkable.
+    changes (detect_changes) and their VELOCITY (shipped changes, from `shipped`, a
+    {day: count} map). A change flag sits on the bucket that contains its date and
+    carries the exact date, so the claim is checkable.
 
     The curve uses `metrics` (survival-having sessions, since EQ needs survival), but
     change detection uses `all_fp`, the day/engine/model/effort of EVERY session, so
@@ -599,6 +600,13 @@ def timeline(metrics, all_fp=None, gran="week"):
         except Exception:
             continue
         chg[k].append(f'{c["dim"]}: {c["from"]} to {c["to"]} ({_daylabel(c["date"])})')
+    ship = defaultdict(int)
+    for day, cnt in (shipped or {}).items():
+        try:
+            k, _ = _bucket(day, gran)
+        except Exception:
+            continue
+        ship[k] += cnt
     rows = []
     for k in sorted(buckets):
         cells = buckets[k]
@@ -612,13 +620,18 @@ def timeline(metrics, all_fp=None, gran="week"):
               "orchestrator": modal([c["model"] for c in cells]),
               "effort": modal([c["effort"] for c in cells])}
         bs = babysitting(cells)
-        # churn: the share of what the model wrote that it deleted or rewrote in
-        # the same session. eq (surviving work per token) is blind to this, so a
-        # high-churn era can look efficient while being a lot of motion for the
-        # yield. Surfaced so the topline is never misread as quality.
+        # Two axes the eq level is blind to, carried per bucket so the topline is
+        # never mistaken for velocity or quality:
+        #  shipped  = changes that landed (velocity); tight high-leverage work ships
+        #             more while surviving FEWER lines, so eq can rank it low exactly
+        #             when velocity is high.
+        #  churn    = share of written code deleted in-session; ambiguous (an
+        #             orchestrator discarding bad worker output is healthy), so it is
+        #             data, not a verdict.
         rows.append({"week": labels[k], "eq": eq,
                      "sessions": len(cells), "fingerprint": fp,
                      "changes": chg.get(k, []), "born": born, "killed": killed,
+                     "shipped": ship.get(k, 0),
                      "churn_pct": round(100 * killed / born, 1) if born else None,
                      "babysitting": bs["per_100_turns"] if bs else None})
     return rows
@@ -846,6 +859,28 @@ def measure_vs_baseline(current_eq, baseline_path):
                     "different unit, not a headline forecast."}
 
 
+def shipped_by_day(repos, since):
+    """Shipped changes per calendar day across the operator's repos: non-merge
+    commits (the same DORA-throughput proxy the numerator falls back to), keyed by
+    the commit date, with the fix/revert share split out.
+
+    This is VELOCITY -- units of work that landed and stuck -- a different axis from
+    surviving-lines-per-token, and often the one the operator actually feels. A
+    setup that writes tight, high-leverage changes ships more while generating fewer
+    surviving lines, so lines-per-token can rank it low exactly when velocity is
+    high. Deterministic: commit times are fixed at HEAD. Returns ({day: shipped},
+    {day: fixes})."""
+    shipped, fixes = defaultdict(int), defaultdict(int)
+    for repo in repos:
+        for _sha, c in survival_git.window_commits(repo, since).items():
+            day = datetime.datetime.fromtimestamp(
+                c["ts"], datetime.timezone.utc).strftime("%Y-%m-%d")
+            shipped[day] += 1
+            if survival_git.FIXY.search(c["subj"]):
+                fixes[day] += 1
+    return dict(shipped), dict(fixes)
+
+
 def attribute_work(repos, since, snapshot_dir, tail=900.0):
     """Join surviving git work to the (model, effort) that authored it.
 
@@ -1012,7 +1047,8 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
             granularity = "day" if span <= 70 else ("week" if span <= 550 else "month")
         else:
             granularity = "week"
-    tline = timeline(metrics, all_fp, granularity)
+    shipped_map, _fixes_map = shipped_by_day(repos, since)
+    tline = timeline(metrics, all_fp, granularity, shipped=shipped_map)
     bs = babysitting(metrics)
     fuel = fuel_and_work(metrics, granularity)
 
@@ -1369,16 +1405,17 @@ def render_html(report):
     # average that never smears across a real setup change), and the level SHIFT at
     # each change is the signal the daily noise otherwise buries. This is the
     # thesis made visible: an arrangement has a level, and tuning moves the level.
+    gran = (report.get("fuel_and_work") or {}).get("granularity", "day")
+    vunit = {"day": "day", "week": "wk", "month": "mo"}.get(gran, "bucket")
     change_idx = [i for i, r in enumerate(tl) if r["changes"]]
     bounds = [0] + change_idx + [n]
     eras = []
     for a, b in zip(bounds, bounds[1:]):
         if b > a:
             seg = eqs[a:b]
-            born = sum(r.get("born") or 0 for r in tl[a:b])
-            killed = sum(r.get("killed") or 0 for r in tl[a:b])
-            churn = round(100 * killed / born) if born else None
-            eras.append((a, b, sum(seg) / len(seg), churn))
+            shipped = sum(r.get("shipped") or 0 for r in tl[a:b])
+            vel = shipped / (b - a)  # shipped changes per bucket (per day at day gran)
+            eras.append((a, b, sum(seg) / len(seg), vel))
 
     # flags: dashed verticals + numbered pins at each change
     flags, k = [], 0
@@ -1409,26 +1446,26 @@ def render_html(report):
         parts.append(f'<circle cx="{X(i):.1f}" cy="{Y(r["eq"]):.1f}" r="2.2" '
                      f'fill="var(--accent)" opacity="0.34"><title>{esc(tip)}</title></circle>')
 
-    # era-mean step line, bold: the readable signal. Each era also carries its
-    # CHURN (share of written code deleted in-session), which eq is blind to, so a
-    # high level bought with a lot of thrown-away work reads honestly.
+    # era-mean step line, bold, is the eq level; under it each era carries its
+    # VELOCITY (shipped changes per day), the axis eq inverts on tight work. The two
+    # diverging is the whole point: a lower level that ships far more is the better
+    # rig, not the worse one.
     step = []
-    for (a, b, mean, churn) in eras:
+    for (a, b, mean, vel) in eras:
         x0, x1 = X(a), (X(b) if b < n else X(n - 1))
         step += [f"{x0:.1f},{Y(mean):.1f}", f"{x1:.1f},{Y(mean):.1f}"]
     if step:
         parts.append(f'<polyline points="{" ".join(step)}" fill="none" '
                      f'stroke="var(--accent)" stroke-width="3" stroke-linejoin="round" '
                      f'stroke-linecap="round"/>')
-        for (a, b, mean, churn) in eras:
+        for (a, b, mean, vel) in eras:
             xm = (X(a) + (X(b) if b < n else X(n - 1))) / 2
             parts.append(f'<text x="{xm:.1f}" y="{Y(mean)-9:.1f}" text-anchor="middle" '
                          f'font-size="12.5" font-weight="700" fill="var(--accent)">'
                          f'{mean:.0f}</text>')
-            if churn is not None:
-                parts.append(f'<text x="{xm:.1f}" y="{Y(mean)+15:.1f}" '
-                             f'text-anchor="middle" font-size="10.5" font-weight="600" '
-                             f'fill="var(--down)">{churn}% churned</text>')
+            parts.append(f'<text x="{xm:.1f}" y="{Y(mean)+16:.1f}" '
+                         f'text-anchor="middle" font-size="11" font-weight="700" '
+                         f'fill="var(--good)">{vel:.1f}/{vunit} shipped</text>')
 
     # thin x-labels to ~8 so a daily axis does not collide
     lstep = max(1, round(n / 8))
@@ -1444,16 +1481,17 @@ def render_html(report):
                         f'{esc("; ".join(r["changes"]))}</li>' for k, r in flags)
         legend = f'<ol>{items}</ol>'
     detail = (f'{_lever_html(report)}'
-              f'<h2>Efficiency over time</h2>'
-              f'<p>The bold line is your average surviving work per Mtok for each '
-              f'configuration era; the faint line is the daily actuals it averages. A '
-              f'numbered flag marks a real setup change, dated to the day, so the level '
-              f'between two flags is what that arrangement was worth.</p>'
-              f'<p>Read the level with the <b>churn</b> under it: efficiency counts the '
-              f'code that survived per token, and is blind to code the model wrote and '
-              f'then deleted in the same session. A high level bought at high churn is a '
-              f'lot of motion for the yield, so a cheaper-looking era can be the one that '
-              f'was worse to work in. Efficiency is not quality.</p>'
+              f'<h2>Efficiency vs velocity over time</h2>'
+              f'<p>The bold line is your average surviving work per Mtok (a lines-and-'
+              f'complexity measure) for each configuration era; the faint line is the '
+              f'daily actuals. A numbered flag marks a real setup change, dated to the '
+              f'day.</p>'
+              f'<p>Read the level against the <b>velocity</b> under it, the changes you '
+              f'shipped per day. Surviving lines reward verbose generation, so the two '
+              f'can pull apart: a rig that writes tight, high-leverage changes ships more '
+              f'while surviving fewer lines, and the level ranks it low exactly when it is '
+              f'winning. When efficiency and velocity disagree, velocity is the one you '
+              f'felt. Efficiency per token is neither velocity nor quality.</p>'
               f'{"".join(parts)}{legend}'
               f'{render_small_multiples(report)}{render_attribution(report)}')
     body = f'<div class="vibrant">{hero}{detail}</div>'
