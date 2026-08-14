@@ -1533,7 +1533,7 @@ def render_attribution(report):
 def _page(inner):
     return ("<!doctype html><html><head><meta charset=utf-8>"
             "<meta name=viewport content=\"width=device-width,initial-scale=1\">"
-            "<title>Dyno: your efficiency over time</title></head>"
+            "<title>Vibrant: your efficiency over time</title></head>"
             f"<body>{inner}</body></html>\n")
 
 
