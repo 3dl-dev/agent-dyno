@@ -1,10 +1,15 @@
 # Federation and trust: run your own, share if you want
 
-Agent Dyno has no central service and no signup. It works like Slack workspaces:
-one tool, and everybody runs their own. Your project, your team, your company, or
-a public community each keep their own leaderboard, on whatever surface they
-already use, and connect upward only if they choose to. The goal is a thousand
-leaderboards, not one.
+Agent Dyno has no central service and no signup. A leaderboard is a file you host,
+so there is nothing to run and nobody to register with. Third Division Labs keeps
+one public, curated frontier; anyone can keep their own for a project, team, or
+company and share upward by hand. The design is many frontiers, not one central
+board.
+
+Be clear about what that means today. What ships is the file format, a viewer, the
+`dyno-contribute` step, and the curated public frontier. The tree of frontiers is a
+convention you run by hand, not a system that runs itself: see "Federation" below
+for exactly what is automated and what is not.
 
 ## A frontier is just a file
 
@@ -15,33 +20,35 @@ no server to run.
 
 - **Local / solo:** keep the file on your machine, view it with `leaderboard/dyno.html`
   pointed at it. Nothing leaves your box.
-- **Team / company:** keep it in a private repo or shared location; your team's
-  entries land there and your leaderboard reflects your group.
+- **Team / company:** keep it in a private repo or shared location; your team
+  writes their entries there and the viewer reflects your group.
 - **Public:** Third Division Labs runs one public frontier at
   `3dl-dev/agent-dyno`. It is just another frontier, with no special status beyond
   being the shared one.
 
 ## Surfaces
 
-Render your frontier wherever your people already look:
+One surface ships: the web viewer, `leaderboard/dyno.html`, which reads any
+`reference-frontier.json` you point it at. Host your own copy.
 
-- **Web:** `leaderboard/dyno.html` reads any `reference-frontier.json` you point it
-  at. Host your own copy.
-- **Slack / Discord:** format the standings and POST them to an incoming webhook.
-  A webhook URL is all it takes, no bot to deploy.
-- **Terminal / CI:** print the table in a job. A frontier is plain JSON.
+Because a frontier is plain JSON, two more surfaces are a few lines you write, not
+features we ship: post the standings to a Slack or Discord incoming webhook, or
+print the table in a CI job. If those become common we may ship helpers; today they
+are yours to wire.
 
-## Federation: upward, opt-in, never automatic
+## Federation: upward, opt-in, by hand
 
-Frontiers form a tree by choice, never by default. Your entry stays in your scope
-unless you push it up. Pushing up a tier is one explicit action:
+Frontiers form a tree only by choice, and today only by hand. Your entry stays in
+your scope unless you move it up, and moving it up is one explicit action:
 
-- to a team or org frontier: write to (or PR against) that frontier's file.
+- to a team or org frontier: write to (or open a PR against) that frontier's file.
 - to the public frontier: open a PR against `3dl-dev/agent-dyno`, curated by Third
   Division Labs.
 
 Nothing auto-shares. `dyno-contribute` writes to your local frontier by default and
-only reaches a parent when you tell it to.
+reaches a parent only when you tell it to. There is no automated rollup or subscribe
+yet: a parent frontier is populated by its owner merging what they trust, and you
+compare against a frontier by pointing the report at its file.
 
 ## Trust, kept simple on purpose
 

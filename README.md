@@ -44,8 +44,10 @@ the model generated, over 4 sessions. Change failure rate 50.0% (DORA).
 
 Under the number sits your biggest lever: the single change most likely to raise
 it, taken from setups shaped like yours on the shared frontier, with the gain it is
-predicted to buy. Change your setup, run it again, and the report shows whether the
-number moved as predicted.
+predicted to buy. The frontier is young, so when nothing shaped like your setup
+beats you yet, the report says so plainly instead of inventing a suggestion. Change
+your setup, run it again, and the report shows whether the number moved as
+predicted.
 
 `report.html` is a self-contained page with two charts. The first is your
 efficiency over time, with the changes you made to your own setup flagged on the
@@ -76,12 +78,14 @@ numbers travel, your identity and your code do not. See
 
 ## A commons, not a service
 
-The frontier is a living record of what works. When one person's setup finds a gain,
-the technique behind it becomes something you can try on your next run, with the
-evidence attached. There is no central service: everyone runs their own frontier for
-their project, team, or company, and federates up only if they choose. Third
-Division Labs runs the public one. See [docs/federation.md](docs/federation.md) and
-[frontier/](frontier/).
+The frontier is a shared record of what works, and it grows as people contribute.
+When one person's setup finds a gain, the technique behind it becomes something you
+can try on your next run, with the evidence attached. It is early: the public
+frontier is small and seeded, so it gets more useful to you as setups like yours
+land on it. There is no central service. A frontier is a JSON file plus a viewer;
+you keep your own for a project, team, or company, and share upward by hand if you
+choose. Third Division Labs keeps the public one. See
+[docs/federation.md](docs/federation.md) and [frontier/](frontier/).
 
 ## Harness-agnostic by design
 
