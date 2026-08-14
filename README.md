@@ -14,20 +14,22 @@ In Claude Code, add the marketplace and install the plugin:
 /plugin install agent-dyno@agent-dyno
 ```
 
-Then run:
+Then measure your setup:
 
 ```
-/agent-dyno:deploy
+/agent-dyno:run
 ```
 
-Your agent fetches a checksum-verified harness, clones Agent Dyno onto your
-machine, renders an example report, and grades the install, telling you plainly if
-anything did not transfer. It runs on the Python standard library, with no other
-install and no keys.
+It reads your local Claude Code logs and your git history for the repos you code in,
+and writes three files: `report.md`, `report.html`, and `report.json`. On first use
+it fetches Agent Dyno onto your machine and checks the install; after that it just
+measures. It runs on the Python standard library, with no other install and no keys.
+Nothing is uploaded.
 
-To measure your own setup, run the `dyno-report` skill (it ships with the clone)
-against the repos you actually code in. It reads your local Claude Code logs and
-git history and writes three files: `report.md`, `report.html`, and `report.json`.
+When you want to share a result, `/agent-dyno:contribute` drafts an anonymized entry
+(engine fingerprint and numbers only, no code or identities) and adds it to a
+frontier you choose, or prints the pull request for you to open. Publishing is
+always a separate, deliberate step.
 
 ## What you get
 

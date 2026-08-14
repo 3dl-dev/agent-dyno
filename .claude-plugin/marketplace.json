@@ -1,11 +1,11 @@
 {
   "name": "agent-dyno",
-  "description": "Install and run agent-dyno.",
+  "description": "Agent Dyno: measure how efficiently your AI coding setup turns tokens into work that lasts, from your own logs and git history, on your machine.",
   "plugins": [
     {
       "name": "agent-dyno",
       "source": "./plugins/agent-dyno",
-      "description": "Set up and run Agent Dyno: measure the token-efficiency of your AI coding setup from your own logs and git history, harness-neutral, on your machine. Self-extracts a verified harness, then sets it up and grades. Nothing uploaded.",
+      "description": "Measure your AI coding setup (/agent-dyno:run), and if you choose, contribute an anonymized result to a frontier (/agent-dyno:contribute). Standard library only, nothing uploaded.",
       "version": "0.1.0"
     }
   ],
