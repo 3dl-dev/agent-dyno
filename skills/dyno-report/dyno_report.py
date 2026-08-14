@@ -1115,19 +1115,17 @@ _CSS = """
 .dyno *{box-sizing:border-box;}
 .dyno .card{background:var(--card);border:1px solid var(--line);border-radius:18px;
  padding:30px 32px;box-shadow:0 1px 2px rgba(var(--shadow),.05),0 10px 34px rgba(var(--shadow),.07);}
-.dyno .brand{display:flex;align-items:center;gap:9px;font-size:11.5px;font-weight:700;
- letter-spacing:.15em;color:var(--ink2);text-transform:uppercase;margin:0 0 22px;}
-.dyno .brand .mark{width:13px;height:13px;border-radius:3px;flex:none;
+.dyno .brand{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:800;
+ letter-spacing:.19em;color:var(--ink);text-transform:uppercase;margin:0 0 18px;}
+.dyno .brand .mark{width:15px;height:15px;border-radius:4px;flex:none;
  background:linear-gradient(135deg,var(--s1),var(--s3));}
-.dyno .brand .sub{font-weight:500;letter-spacing:.05em;color:var(--muted);text-transform:none;}
-.dyno .hero{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px 16px;margin:0 0 12px;}
-.dyno .num{font-size:66px;font-weight:680;letter-spacing:-.025em;line-height:.9;color:var(--ink);}
-.dyno .unit{font-size:14.5px;font-weight:600;color:var(--ink2);max-width:170px;line-height:1.25;}
-.dyno .sub{font-size:13.5px;color:var(--ink2);line-height:1.5;margin:0 0 26px;}
+.dyno .hero{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 16px;margin:0 0 22px;}
+.dyno .num{font-size:78px;font-weight:720;letter-spacing:-.03em;line-height:.85;color:var(--ink);}
+.dyno .unit{font-size:13px;font-weight:600;color:var(--muted);line-height:1.2;text-transform:lowercase;}
 .dyno .row-h{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
  color:var(--muted);margin:0 0 9px;}
-.dyno .stack{margin:0 0 26px;}
-.dyno .bar{display:flex;gap:2px;height:30px;}
+.dyno .stack{margin:0 0 22px;}
+.dyno .bar{display:flex;gap:2px;height:34px;}
 .dyno .seg{display:block;min-width:3px;}
 .dyno .seg:first-child{border-radius:8px 0 0 8px;}
 .dyno .seg:last-child{border-radius:0 8px 8px 0;}
@@ -1215,32 +1213,32 @@ def _sparkline(eqs):
 
 
 def _hero_card(report):
-    """The shareable scorecard: wordmark, the hero number, the stack, a trend
-    sparkline. Every element is a fact about the operator's own runs (the number,
-    the blend of their sessions, their trend), so nothing here is a falsifiable
-    claim. The lever and advice live below, in the detail; the card is the share,
-    kept sparse, with no share buttons."""
+    """The shareable scorecard, sparse by design: the VIBRANT wordmark, the hero
+    number, the rig as a bar, a trend. Every element is a fact about the operator's
+    own runs, so nothing here is falsifiable. The precise unit lives in the number's
+    tooltip; the lever and advice live below in the detail. No share buttons, the
+    card is the share."""
     esc = _html.escape
     tl = report["topline"]
     fp = report.get("fingerprint") or {}
     eqs = [r["eq"] for r in report.get("timeline", []) if r["eq"] is not None]
     p = ['<div class="card">',
-         '<div class="brand"><span class="mark"></span>AGENT DYNO'
-         '<span class="sub">engine efficiency</span></div>',
-         f'<div class="hero"><span class="num">{esc(str(tl["eq"]))}</span>'
-         f'<span class="unit">surviving functionality per Mtok output</span></div>',
-         f'<div class="sub">Larger is better &middot; {tl.get("sessions")} sessions '
-         f'&middot; nothing leaves your machine</div>']
+         '<div class="brand"><span class="mark"></span>VIBRANT</div>',
+         f'<div class="hero"><span class="num" '
+         f'title="surviving functionality per Mtok output, larger is better">'
+         f'{esc(str(tl["eq"]))}</span>'
+         f'<span class="unit">surviving work<br>per Mtok</span></div>']
     topo = fp.get("orchestration_topology") or {}
     if topo.get("blend"):
-        p.append('<div class="row-h">Your stack</div>' + _stack_bar(topo))
+        p.append('<div class="row-h">Your rig</div>' + _stack_bar(topo))
     if len(eqs) >= 2:
         d = eqs[-1] - eqs[0]
         arrow, cls = ("&#9650;", "up") if d > 0 else (("&#9660;", "down") if d < 0 else ("&#8212;", ""))
         p.append(f'<div class="trend">{_sparkline(eqs)}'
-                 f'<div class="trend-cap">Last {len(eqs)} weeks '
-                 f'<span class="{cls}">{arrow}&#8202;{abs(d):.0f}</span></div></div>')
-    p.append('<div class="foot"><span>agent-dyno</span><span>3dl-dev/agent-dyno</span></div>')
+                 f'<div class="trend-cap"><span class="{cls}">{arrow}&#8202;'
+                 f'{abs(d):.0f}</span> over {len(eqs)} wk</div></div>')
+    p.append(f'<div class="foot"><span>{tl.get("sessions")} sessions</span>'
+             f'<span>vibrant &middot; 3dl-dev/vibrant</span></div>')
     p.append('</div>')
     return "".join(p)
 
