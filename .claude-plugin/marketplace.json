@@ -1,16 +1,16 @@
 {
   "name": "agent-dyno",
+  "description": "Install and run agent-dyno.",
+  "plugins": [
+    {
+      "name": "agent-dyno",
+      "source": "./plugins/agent-dyno",
+      "description": "Set up and run Agent Dyno: measure the token-efficiency of your AI coding setup from your own logs and git history, harness-neutral, on your machine. Self-extracts a verified harness, then hoists and grades. Nothing uploaded.",
+      "version": "0.1.0"
+    }
+  ],
   "owner": {
     "name": "Chris Baron",
     "email": "baron@3dl.dev"
-  },
-  "description": "Agent Dyno, self-hoisting: install the plugin and your agent clones, deploys, and grades Agent Dyno on your target, reporting an honest transfer score. Measures the token-efficiency of an AI coding setup, harness-neutral.",
-  "plugins": [
-    {
-      "name": "hoist-agent-dyno",
-      "source": "./plugins/hoist-agent-dyno",
-      "description": "Hoist Agent Dyno onto your target: self-extract the sha256-verified hoistable harness, clone, render a report, and grade. Agent-first; no commands.",
-      "version": "0.1.0"
-    }
-  ]
+  }
 }

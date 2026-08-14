@@ -1,0 +1,4 @@
+{
+  "name": "agent-dyno",
+  "description": "Set up and run Agent Dyno: measure the token-efficiency of your AI coding setup from your own logs and git history, harness-neutral, on your machine. Self-extracts a verified harness, then hoists and grades. Nothing uploaded."
+}
