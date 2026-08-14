@@ -25,6 +25,7 @@ they are honest and repeatable:
 ## Interface
 
 ```
+frontier.py init <path> [--note "..."] [--force]
 frontier.py validate <frontier.json>
 frontier.py merge --into <parent.json> <child.json> [<child.json> ...] [--out <path>]
 frontier.py summarize <frontier.json> [--date YYYY-MM-DD] [--min-samples N] [--out <path>]
@@ -32,10 +33,20 @@ frontier.py summarize <frontier.json> [--date YYYY-MM-DD] [--min-samples N] [--o
 
 Importable (the deterministic core other tools consume):
 
+- `new_frontier(note="") -> frontier` : an empty, valid frontier skeleton.
 - `validate(frontier) -> list[str]` : tier-0 sanity issues, empty if clean.
 - `merge(parent, children) -> frontier` : parent with children's entries folded in.
 - `summarize(entries, date, min_samples=1) -> list[entry]` : anonymized aggregate
   entries, one per shape.
+
+### init (stand up a board, so setup is not a scavenger hunt)
+
+`init` writes a fresh, valid empty frontier (`{schema, note, axes:{}, entries:[]}`)
+to `<path>`, refusing to overwrite an existing file unless `--force`, and prints the
+two next steps a user would otherwise have to discover: point the viewer
+(`leaderboard/dyno.html`) at the file, and set `$DYNO_FRONTIER=<path-or-url>` so
+`dyno-report` compares against it and `dyno-contribute` writes to it by default. This
+is the whole "run your own leaderboard" setup: a file plus a config line, no server.
 
 ## Method (every step deterministic)
 
@@ -102,8 +113,8 @@ keys). Same inputs, same bytes.
 ## Acceptance
 
 `test_frontier.py` builds a fixture frontier with known entries across two shapes
-and asserts: (1) `validate` flags an out-of-range `waste_pct` and passes a clean
-file; (2) `merge` folds children in, skips duplicate ids, and is idempotent
+and asserts: (0) `new_frontier` is a valid, empty board; (1) `validate` flags an
+out-of-range `waste_pct` and passes a clean file; (2) `merge` folds children in, skips duplicate ids, and is idempotent
 (merging twice equals merging once); (3) `summarize` emits one entry per shape with
 the median vector and summed samples, marks it `aggregate` / `tier-1-aggregate`,
 carries no source id or technique prose, and honors `--min-samples`; (4) a second

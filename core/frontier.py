@@ -28,10 +28,17 @@ import datetime
 import hashlib
 import json
 import math
+import os
 import sys
 
 SCHEMA = "agent-dyno/frontier@2"
 _PCT_AXES = ("waste_pct", "cache_read_pct")
+
+
+def new_frontier(note=""):
+    """An empty, valid frontier skeleton. The whole of a new board: a file, no
+    server."""
+    return {"schema": SCHEMA, "note": note, "axes": {}, "entries": []}
 
 
 def _num_ok(v):
@@ -148,6 +155,9 @@ def _emit(obj, out_path):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="frontier federation engine")
     sub = ap.add_subparsers(dest="cmd", required=True)
+    i = sub.add_parser("init")
+    i.add_argument("path"); i.add_argument("--note", default="")
+    i.add_argument("--force", action="store_true")
     v = sub.add_parser("validate"); v.add_argument("frontier")
     m = sub.add_parser("merge")
     m.add_argument("--into", required=True); m.add_argument("children", nargs="+")
@@ -159,6 +169,21 @@ def main(argv=None):
     s.add_argument("--out", default=None)
     args = ap.parse_args(argv)
 
+    if args.cmd == "init":
+        if os.path.exists(args.path) and not args.force:
+            print(f"refusing to overwrite {args.path} (use --force)")
+            return 1
+        with open(args.path, "w") as f:
+            json.dump(new_frontier(args.note), f, indent=2)
+            f.write("\n")
+        ap_path = os.path.abspath(args.path)
+        print(f"created your frontier: {args.path}")
+        print("that is the whole setup, no server. two steps to use it:")
+        print(f"  1. make it your default:  export DYNO_FRONTIER={ap_path}")
+        print("  2. view it: open leaderboard/dyno.html and point it at this file")
+        print("now dyno-report compares against it and contributions land here by "
+              "default; share upward only when you choose (merge / summarize).")
+        return 0
     if args.cmd == "validate":
         issues = validate(_load(args.frontier))
         if issues:

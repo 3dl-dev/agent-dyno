@@ -14,6 +14,16 @@ Same as `/agent-dyno:run` step 1: run from the current agent-dyno checkout, the
 marketplace clone at `~/.claude/plugins/marketplaces/agent-dyno`, or a fresh
 `git clone https://github.com/3dl-dev/agent-dyno`.
 
+## 1b. First time? Stand up their board (offer it, do not make them hunt)
+
+If the operator has no `$DYNO_FRONTIER` set and no local frontier file, they have
+nowhere to contribute to yet. Do not send them to read docs. Offer to set it up in
+one step: `python3 core/frontier.py init <path> [--note "my team"]` creates the
+board (an empty JSON file, no server), and the command prints the two lines to
+finish, set `DYNO_FRONTIER` and point the viewer. Ask where it should live (a local
+file for solo, a shared/private repo path for a team), run it, and tell them the
+`export DYNO_FRONTIER=...` line to keep. Then contribute into it.
+
 ## 2. Follow the contribute skill
 
 Read and follow `skills/dyno-contribute/SKILL.md` in that checkout. It drafts an

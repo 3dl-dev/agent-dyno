@@ -117,6 +117,14 @@ def main():
     if ("delegate", "high") in shapes or ("solo", "high") not in shapes:
         fails.append(f"summarize --min-samples floor wrong: {sorted(shapes)}")
 
+    # ---- (5) new_frontier / init: a valid empty board ----
+    nf = frontier.new_frontier(note="my team")
+    if nf.get("schema") != "agent-dyno/frontier@2" or nf.get("entries") != [] \
+            or nf.get("note") != "my team":
+        fails.append(f"new_frontier skeleton wrong: {nf}")
+    if frontier.validate(nf):
+        fails.append(f"new_frontier is not valid: {frontier.validate(nf)}")
+
     # ---- (4) determinism ----
     if json.dumps(frontier.summarize(src, date="2026-08-14"), sort_keys=True) != \
        json.dumps(summ, sort_keys=True):
