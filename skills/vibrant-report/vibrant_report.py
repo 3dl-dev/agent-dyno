@@ -1115,16 +1115,23 @@ _CSS = """
 .vibrant *{box-sizing:border-box;}
 .vibrant .card{background:var(--card);border:1px solid var(--line);border-radius:18px;
  padding:30px 32px;box-shadow:0 1px 2px rgba(var(--shadow),.05),0 10px 34px rgba(var(--shadow),.07);}
+.vibrant .top{display:flex;justify-content:space-between;align-items:center;margin:0 0 22px;}
 .vibrant .brand{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:800;
- letter-spacing:.19em;color:var(--ink);text-transform:uppercase;margin:0 0 18px;}
+ letter-spacing:.19em;color:var(--ink);text-transform:uppercase;}
 .vibrant .brand .mark{width:15px;height:15px;border-radius:4px;flex:none;
  background:linear-gradient(135deg,var(--s1),var(--s3));}
-.vibrant .hero{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 16px;margin:0 0 22px;}
-.vibrant .num{font-size:78px;font-weight:720;letter-spacing:-.03em;line-height:.85;color:var(--ink);}
-.vibrant .unit{font-size:13px;font-weight:600;color:var(--muted);line-height:1.2;text-transform:lowercase;}
+.vibrant .meta{font-size:12px;color:var(--muted);letter-spacing:.02em;font-variant-numeric:tabular-nums;}
+.vibrant .mid{display:flex;justify-content:space-between;align-items:flex-end;
+ gap:20px 28px;flex-wrap:wrap;margin:0 0 28px;}
+.vibrant .hero-left{min-width:0;}
+.vibrant .num{font-size:82px;font-weight:730;letter-spacing:-.035em;line-height:.8;color:var(--ink);}
+.vibrant .unit{font-size:13.5px;font-weight:600;color:var(--ink2);margin-top:12px;}
+.vibrant .how{font-size:12px;color:var(--muted);margin-top:3px;}
+.vibrant .hero-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none;}
 .vibrant .row-h{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
  color:var(--muted);margin:0 0 9px;}
-.vibrant .stack{margin:0 0 22px;}
+.vibrant .rig{margin:0 0 4px;}
+.vibrant .stack{margin:0;}
 .vibrant .bar{display:flex;gap:2px;height:34px;}
 .vibrant .seg{display:block;min-width:3px;}
 .vibrant .seg:first-child{border-radius:8px 0 0 8px;}
@@ -1141,8 +1148,7 @@ _CSS = """
  color:var(--muted);margin:0 0 6px;}
 .vibrant .lever-tweak{font-size:15px;font-weight:600;color:var(--ink);line-height:1.4;}
 .vibrant .lever-sub{font-size:12.5px;color:var(--ink2);margin-top:6px;line-height:1.45;}
-.vibrant .trend{display:flex;align-items:center;gap:16px;}
-.vibrant .spark{width:200px;height:44px;flex:none;}
+.vibrant .spark{width:224px;height:58px;display:block;}
 .vibrant .trend-cap{font-size:12.5px;color:var(--ink2);}
 .vibrant .trend-cap .up{color:var(--up);font-weight:650;}
 .vibrant .trend-cap .down{color:var(--down);font-weight:650;}
@@ -1186,11 +1192,11 @@ def _stack_bar(arm):
             f'<div class="legend">{"".join(legend)}</div></div>')
 
 
-def _sparkline(eqs):
+def _sparkline(eqs, W=224, H=58):
     """Compact trend sparkline: accent line, faint area, a dot on the latest week."""
     if len(eqs) < 2:
         return ""
-    W, H, pad = 200, 44, 4
+    pad = 4
     lo, hi = min(eqs), max(eqs)
     if hi == lo:
         hi, lo = hi + 1, lo - 1
@@ -1222,23 +1228,27 @@ def _hero_card(report):
     tl = report["topline"]
     fp = report.get("fingerprint") or {}
     eqs = [r["eq"] for r in report.get("timeline", []) if r["eq"] is not None]
-    p = ['<div class="card">',
-         '<div class="brand"><span class="mark"></span>VIBRANT</div>',
-         f'<div class="hero"><span class="num" '
-         f'title="surviving functionality per Mtok output, larger is better">'
-         f'{esc(str(tl["eq"]))}</span>'
-         f'<span class="unit">surviving work<br>per Mtok</span></div>']
-    topo = fp.get("orchestration_topology") or {}
-    if topo.get("blend"):
-        p.append('<div class="row-h">Your rig</div>' + _stack_bar(topo))
+    trend = ""
     if len(eqs) >= 2:
         d = eqs[-1] - eqs[0]
         arrow, cls = ("&#9650;", "up") if d > 0 else (("&#9660;", "down") if d < 0 else ("&#8212;", ""))
-        p.append(f'<div class="trend">{_sparkline(eqs)}'
+        trend = (f'<div class="hero-right">{_sparkline(eqs)}'
                  f'<div class="trend-cap"><span class="{cls}">{arrow}&#8202;'
-                 f'{abs(d):.0f}</span> over {len(eqs)} wk</div></div>')
-    p.append(f'<div class="foot"><span>{tl.get("sessions")} sessions</span>'
-             f'<span>vibrant &middot; 3dl-dev/vibrant</span></div>')
+                 f'{abs(d):.0f}</span> over {len(eqs)} weeks</div></div>')
+    p = ['<div class="card">',
+         '<div class="top"><div class="brand"><span class="mark"></span>VIBRANT</div>',
+         f'<div class="meta">{tl.get("sessions")} sessions</div></div>',
+         '<div class="mid"><div class="hero-left">',
+         f'<div class="num" title="surviving functionality per Mtok output, '
+         f'larger is better">{esc(str(tl["eq"]))}</div>',
+         '<div class="unit">surviving work per Mtok</div>',
+         '<div class="how">logic that survived in git, per million output tokens</div>',
+         '</div>', trend, '</div>']
+    topo = fp.get("orchestration_topology") or {}
+    if topo.get("blend"):
+        p.append('<div class="rig"><div class="row-h">Your rig</div>'
+                 + _stack_bar(topo) + '</div>')
+    p.append('<div class="foot"><span>vibrant</span><span>3dl-dev/vibrant</span></div>')
     p.append('</div>')
     return "".join(p)
 
