@@ -24,8 +24,27 @@ open.
 
 ## 3. Federated by default
 
-The entry goes to the operator's **own** frontier (local file, team repo, or
-company location) and reaches a public one only if they explicitly push it there
-(`--push public`). Never submit anywhere without their consent, and never include
-anything the anonymizer would strip. Cite `docs/governance.md` if asked to publish
-something that would rank people or tie efficiency to product outcomes.
+The entry goes to the operator's **configured frontier**, `$DYNO_FRONTIER` (a path
+or a URL to their own, their team's, or their company's board), else the local
+`./frontier/reference-frontier.json`. It reaches a public frontier only if they
+explicitly push it there (`--push public`). Never submit anywhere without their
+consent, and never include anything the anonymizer would strip. Cite
+`docs/governance.md` if asked to publish something that would rank people or tie
+efficiency to product outcomes.
+
+## 4. Enterprise and teams: internal, no mandatory push-up
+
+An organization runs its own frontier and keeps it internal. Set `$DYNO_FRONTIER`
+to the org's shared file or URL; members' runs and contributions land there, their
+same-shape comparisons are drawn from their own group, and **nothing is pushed to a
+parent unless they choose to**. Two deterministic operations (in
+`core/frontier.py`) support this without a service:
+
+- **Roll up a team's boards:** `python3 core/frontier.py merge --into <team.json>
+  <member.json> ...` folds members' frontiers into the team's, deduplicated and
+  idempotent. The team owner runs it; it is never an automatic push.
+- **Share only an anonymized summary upward:** `python3 core/frontier.py summarize
+  <internal.json> --min-samples <k>` emits one aggregate entry per shape (median
+  vector plus counts, no ids, no technique prose, no identity), with a k-anonymity
+  floor. That summary is what an org PRs to the public frontier when it wants to,
+  handing over aggregates, never individual runs. Always with explicit consent.

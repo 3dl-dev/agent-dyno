@@ -52,6 +52,13 @@ python3 skills/dyno-report/dyno_report.py --harness claude-code \
 Reuse a recent snapshot dir if one exists. The driver writes `report.json` (the
 contract), `report.md` (the surface), and `report.html` (the charts).
 
+The report compares the operator against their **configured frontier**: the driver
+reads `$DYNO_FRONTIER` (a path or a URL) when `--frontier` is not passed, else the
+repo's own. An operator on a team or in an enterprise sets `$DYNO_FRONTIER` to their
+internal frontier (a shared file or a URL), so the same-shape comparison and the
+lever are drawn from their own group, and nothing about their repos leaves to get
+that comparison.
+
 ## 5. Present the surface, and only the surface
 
 Show `report.md`: the one number (`topline.eq`), the one lever, the measure line if
@@ -63,8 +70,13 @@ not value; if you add one caveat, that is the one. Keep it short.
 To rerun after a change and see if the number moved, run again with
 `--baseline <prev report.json>`.
 
-## 6. Contribute (opt-in, separate)
+## 6. Offer to contribute (in the flow, opt-in)
 
-Publishing is never a side effect of a run. If the operator wants to add an
-anonymized result to a frontier, that is the deliberate `/agent-dyno:contribute`
-step, with their explicit consent.
+Contributing is part of using Agent Dyno, not a separate errand. After you show the
+surface, ask the operator plainly: "Want to add this run to your frontier? It is
+anonymized, engine fingerprint and numbers only, and it goes to your own frontier,
+not a public one, unless you say so." If they say yes, do the
+`/agent-dyno:contribute` steps inline against their configured frontier
+(`$DYNO_FRONTIER`, else the local file). If they say no, stop; publishing is never a
+side effect of a run. The default target is always their own scope; a push to any
+parent is a separate, explicit choice.
