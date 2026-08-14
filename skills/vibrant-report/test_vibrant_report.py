@@ -432,7 +432,7 @@ def main():
 
         # the surface (report.md) must be the simple coach view, not the wall
         md = open(os.path.join(out1, "report.md")).read()
-        if "functionality per Mtok" not in md:
+        if "durable shipped complexity per Mtok" not in md:
             fails.append("surface is missing the topline number")
         if "Efficiency vector by engine" in md or "Same-shape comparison" in md:
             fails.append("surface leaked the machinery (vector/same-shape tables)")
@@ -539,7 +539,7 @@ def main():
             fails.append("report.html was not written")
         else:
             hh = open(htmlp).read()
-            if "<svg" not in hh or "functionality per Mtok" not in hh:
+            if "<svg" not in hh or "durable shipped complexity" not in hh:
                 fails.append("report.html is not the expected chart")
             if "Fuel and work over time" not in hh:
                 fails.append("report.html is missing the fuel-and-work small multiples")
@@ -563,8 +563,8 @@ def main():
             # the caveat states efficiency is neither velocity nor quality.
             if "shipped" not in hh or "velocity" not in hh:
                 fails.append("report.html is missing the per-era velocity signal")
-            if "neither velocity nor quality" not in hh:
-                fails.append("report.html is missing the efficiency-is-not-velocity caveat")
+            if "efficiency, not quality" not in hh:
+                fails.append("report.html is missing the efficiency-is-not-quality caveat")
             # ---- (item 3) the slicer cuts by every fingerprint dimension ----
             for lbl in ("by model", "by effort", "by engine", "by routing",
                         "by review regime", "by knowledge practice"):

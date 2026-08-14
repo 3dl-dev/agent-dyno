@@ -443,10 +443,17 @@ def topline(metrics, numerator, denom_metrics=None):
     out_mtok = sum(m["out_tok"] for m in denom) / 1e6
     total_mtok = sum(m["in_tok"] + m["cache_r"] + m["cache_w"] + m["out_tok"]
                      for m in denom) / 1e6
-    functionality = numerator.get("net_complexity", 0)
+    # functionality = DURABLE shipped complexity: decision points that landed in
+    # non-reverted commits and still survive at HEAD. Falls back to raw surviving
+    # complexity only if the durable cut was not computed (e.g. a caller that did
+    # not run shipped_by_day). This is what makes the meter track shipped work, not
+    # in-chat verbosity: a rig that generates a mountain but commits little that
+    # sticks scores low.
+    functionality = numerator.get("durable_complexity",
+                                  numerator.get("net_complexity", 0))
     eq = round(functionality / out_mtok, 2) if out_mtok else None
     return {"eq": eq,
-            "unit": "surviving functionality (decision points) per Mtok output",
+            "unit": "durable shipped complexity (decision points) per Mtok output",
             "larger_is_better": True,
             "functionality": functionality, "output_mtok": round(out_mtok, 3),
             "total_mtok": round(total_mtok, 3),
@@ -572,7 +579,8 @@ def detect_changes(metrics, window=14, sustain=0.75):
     return sorted(out, key=lambda c: c["date"])
 
 
-def timeline(metrics, all_fp=None, gran="week", shipped=None):
+def timeline(metrics, all_fp=None, gran="week", shipped=None, complexity=None,
+             out_by_day=None):
     """Efficiency curve (surviving KB per Mtok output, the headline's unit) binned at
     `gran` (day / week / month), annotated with the operator's real, day-dated setup
     changes (detect_changes) and their VELOCITY (shipped changes, from `shipped`, a
@@ -600,13 +608,29 @@ def timeline(metrics, all_fp=None, gran="week", shipped=None):
         except Exception:
             continue
         chg[k].append(f'{c["dim"]}: {c["from"]} to {c["to"]} ({_daylabel(c["date"])})')
-    ship = defaultdict(int)
+    ship, cxb = defaultdict(int), defaultdict(int)
     for day, cnt in (shipped or {}).items():
         try:
             k, _ = _bucket(day, gran)
         except Exception:
             continue
         ship[k] += cnt
+    for day, cx in (complexity or {}).items():
+        try:
+            k, _ = _bucket(day, gran)
+        except Exception:
+            continue
+        cxb[k] += cx
+    # scoped denominator: output tokens of the sessions that worked the measured
+    # repos, bucketed by day, so the chart's eq matches the headline (which scopes
+    # the same way) and is not diluted by fuel spent in repos we did not measure.
+    obk = defaultdict(float)
+    for day, ot in (out_by_day or {}).items():
+        try:
+            k, _ = _bucket(day, gran)
+        except Exception:
+            continue
+        obk[k] += ot
     rows = []
     for k in sorted(buckets):
         cells = buckets[k]
@@ -614,24 +638,28 @@ def timeline(metrics, all_fp=None, gran="week", shipped=None):
         killed = sum(c["killed"] for c in cells)
         survc = born - killed
         survkb = survc / 1024 if survc > 0 else 0.0
-        out_mtok = sum(c["out_tok"] for c in cells) / 1e6
-        eq = round(survkb / out_mtok, 2) if out_mtok else None
+        # denominator: scoped output (measured-repo sessions) when provided, else all
+        # cells' output. eq is the HEADLINE measure: durable shipped complexity (git
+        # decision points that landed and stuck) per Mtok output, so the chart and the
+        # number agree. survkb stays a depth field, not the meter.
+        out_mtok = (obk.get(k, 0.0) if out_by_day is not None
+                    else sum(c["out_tok"] for c in cells)) / 1e6
+        eq = round(cxb.get(k, 0) / out_mtok, 2) if out_mtok else None
         fp = {"engine": modal([c["engine"] for c in cells]),
               "orchestrator": modal([c["model"] for c in cells]),
               "effort": modal([c["effort"] for c in cells])}
         bs = babysitting(cells)
-        # Two axes the eq level is blind to, carried per bucket so the topline is
-        # never mistaken for velocity or quality:
-        #  shipped  = changes that landed (velocity); tight high-leverage work ships
-        #             more while surviving FEWER lines, so eq can rank it low exactly
-        #             when velocity is high.
-        #  churn    = share of written code deleted in-session; ambiguous (an
-        #             orchestrator discarding bad worker output is healthy), so it is
-        #             data, not a verdict.
+        # Companions to eq, carried per bucket:
+        #  complexity = durable shipped decision points (the eq numerator).
+        #  shipped    = durable shipped changes (throughput / velocity).
+        #  churn      = share of written code deleted in-session; ambiguous (an
+        #               orchestrator discarding bad worker output is healthy), so it
+        #               rides as data, not a verdict.
         rows.append({"week": labels[k], "eq": eq,
                      "sessions": len(cells), "fingerprint": fp,
                      "changes": chg.get(k, []), "born": born, "killed": killed,
-                     "shipped": ship.get(k, 0),
+                     "complexity": cxb.get(k, 0), "shipped": ship.get(k, 0),
+                     "out_mtok": round(out_mtok, 4),
                      "churn_pct": round(100 * killed / born, 1) if born else None,
                      "babysitting": bs["per_100_turns"] if bs else None})
     return rows
@@ -860,25 +888,36 @@ def measure_vs_baseline(current_eq, baseline_path):
 
 
 def shipped_by_day(repos, since):
-    """Shipped changes per calendar day across the operator's repos: non-merge
-    commits (the same DORA-throughput proxy the numerator falls back to), keyed by
-    the commit date, with the fix/revert share split out.
+    """The numerator's raw material, per calendar day, from git.
 
-    This is VELOCITY -- units of work that landed and stuck -- a different axis from
-    surviving-lines-per-token, and often the one the operator actually feels. A
-    setup that writes tight, high-leverage changes ships more while generating fewer
-    surviving lines, so lines-per-token can rank it low exactly when velocity is
-    high. Deterministic: commit times are fixed at HEAD. Returns ({day: shipped},
-    {day: fixes})."""
-    shipped, fixes = defaultdict(int), defaultdict(int)
+    For each non-merge commit in the window: it is a shipped change, and if its
+    subject is NOT a fix/revert it is a DURABLE shipped change (it landed and was not
+    later remediated). A durable change carries surviving COMPLEXITY: the decision
+    points it added that are still blamed to it at HEAD. The headline is that durable
+    shipped complexity per Mtok output, so a rig that churns a lot in-chat but
+    commits little that sticks scores low, and a rig that ships tight, high-leverage
+    changes scores high, regardless of how many lines either generated.
+
+    Returns ({day: durable_shipped_changes}, {day: fix_or_revert_changes},
+    {day: durable_surviving_complexity}). Deterministic: commit times and blame are
+    fixed at HEAD."""
+    shipped, fixes, complexity = defaultdict(int), defaultdict(int), defaultdict(int)
     for repo in repos:
-        for _sha, c in survival_git.window_commits(repo, since).items():
+        commits = survival_git.window_commits(repo, since)
+        if not commits:
+            continue
+        tracked = set(survival_git.git(repo, "ls-files").splitlines())
+        paths = {p for c in commits.values() for p in c["paths"]} & tracked
+        _surv, cx = survival_git.surviving_by_commit(repo, paths)
+        for sha, c in commits.items():
             day = datetime.datetime.fromtimestamp(
                 c["ts"], datetime.timezone.utc).strftime("%Y-%m-%d")
-            shipped[day] += 1
             if survival_git.FIXY.search(c["subj"]):
-                fixes[day] += 1
-    return dict(shipped), dict(fixes)
+                fixes[day] += 1  # remediation: shipped, but not durable
+                continue
+            shipped[day] += 1
+            complexity[day] += cx.get(sha, 0)
+    return dict(shipped), dict(fixes), dict(complexity)
 
 
 def attribute_work(repos, since, snapshot_dir, tail=900.0):
@@ -1030,6 +1069,11 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
     # and eq is null. Name it, so a null topline is explained, not silent.
     denom_empty = bool(metrics) and not denom_metrics
 
+    # durable shipped complexity (the headline numerator): decision points that
+    # landed in non-reverted commits and still survive at HEAD, per Mtok output.
+    shipped_map, fixes_map, complexity_map = shipped_by_day(repos, since)
+    numerator["durable_complexity"] = sum(complexity_map.values())
+
     frontier, fbytes = load_frontier(frontier_path)
     ss = same_shape(by_ee_cells, frontier)
     tl = topline(metrics, numerator, denom_metrics)
@@ -1047,8 +1091,14 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
             granularity = "day" if span <= 70 else ("week" if span <= 550 else "month")
         else:
             granularity = "week"
-    shipped_map, _fixes_map = shipped_by_day(repos, since)
-    tline = timeline(metrics, all_fp, granularity, shipped=shipped_map)
+    # The chart's per-day denominator is the day's output tokens (all survival-having
+    # sessions), which is dense and smooth; the headline scopes its denominator to
+    # measured-repo sessions, so its absolute value differs, but the chart's job is
+    # the trend and the era ranking, and the durable-complexity numerator is what
+    # separates the eras. (A per-day scoped denominator is too sparse: it divides by
+    # near-zero on days the measured repos were quiet and spikes into the thousands.)
+    tline = timeline(metrics, all_fp, granularity,
+                     shipped=shipped_map, complexity=complexity_map)
     bs = babysitting(metrics)
     fuel = fuel_and_work(metrics, granularity)
 
@@ -1109,23 +1159,37 @@ def render_md(report):
     L = []
     if tl["eq"] is None:
         return "# Your setup\n\nNot enough surviving-work data in this window yet.\n"
-    L.append(f"# Your setup: {tl['eq']} functionality per Mtok output")
+    L.append(f"# Your setup: {tl['eq']} durable shipped complexity per Mtok output")
     L.append("")
     cfr = tl.get("change_failure_rate")
     cfr_s = f" Change failure rate {cfr}% (DORA)." if cfr is not None else ""
-    L.append(f"Larger is better. Surviving decision-logic (a complexity proxy) per "
-             f"million tokens the model generated, over {tl['sessions']} sessions."
-             f"{cfr_s} Nothing leaves your machine.")
+    L.append(f"Larger is better. Decision-logic that landed in non-reverted commits "
+             f"and still survives at HEAD, per million tokens the model generated, "
+             f"over {tl['sessions']} sessions.{cfr_s} It counts what shipped and "
+             f"stuck, not what was typed, so in-chat churn does not inflate it. "
+             f"Nothing leaves your machine.")
     L.append("")
     if lever:
-        L.append("## Your biggest lever")
+        verified = any(t in str(lever.get("proof") or "").lower()
+                       for t in ("reproduced", "tier-2", "tier-3", "git-verif"))
+        L.append("## Your biggest lever" if verified
+                 else "## A lever to test (unverified)")
         L.append("")
         L.append(f"{lever['tweak']}")
         L.append("")
-        L.append(f"Setups shaped like yours ({lever['engine']}, {lever['effort']} "
-                 f"effort) retain {lever['frontier_cell_efficiency']} surviving-KB "
-                 f"per dollar, against your {lever['your_cell_efficiency']}. Adopt "
-                 f"it, then re-run with --baseline to see whether the topline moved.")
+        if verified:
+            L.append(f"A reproduced setup shaped like yours ({lever['engine']}, "
+                     f"{lever['effort']} effort) retains "
+                     f"{lever['frontier_cell_efficiency']} surviving-KB per dollar, "
+                     f"against your {lever['your_cell_efficiency']}. Re-run with "
+                     f"--baseline to confirm the move on your own data.")
+        else:
+            L.append(f"An unverified frontier claim (proof: {lever.get('proof')}) "
+                     f"reports {lever['frontier_cell_efficiency']} surviving-KB per "
+                     f"dollar for a setup shaped like yours ({lever['engine']}, "
+                     f"{lever['effort']} effort), against your "
+                     f"{lever['your_cell_efficiency']}. Reproduce it before trusting "
+                     f"the number; a self-reported cell is a hypothesis, not a target.")
     else:
         L.append("You are at the frontier for every shape we can compare. Nothing "
                  "to suggest; contribute your result so the next person learns.")
@@ -1304,10 +1368,11 @@ def _hero_card(report):
          f'<div class="top"><div class="brand">{mark}VIBRANT</div>',
          f'<div class="meta">{tl.get("sessions")} sessions</div></div>',
          '<div class="mid"><div class="hero-left">',
-         f'<div class="num" title="surviving functionality per Mtok output, '
-         f'larger is better">{esc(str(tl["eq"]))}</div>',
-         '<div class="unit">surviving work per Mtok</div>',
-         '<div class="how">logic that survived in git, per million output tokens</div>',
+         f'<div class="num" title="durable shipped complexity (decision points) per '
+         f'Mtok output, larger is better">{esc(str(tl["eq"]))}</div>',
+         '<div class="unit">durable shipped work per Mtok</div>',
+         '<div class="how">decision-logic that shipped and stuck in git, per million '
+         'output tokens</div>',
          '</div>', trend, '</div>']
     topo = fp.get("orchestration_topology") or {}
     if topo.get("blend"):
@@ -1412,10 +1477,16 @@ def render_html(report):
     eras = []
     for a, b in zip(bounds, bounds[1:]):
         if b > a:
-            seg = eqs[a:b]
+            # era level is the AGGREGATE efficiency (total durable complexity / total
+            # scoped output over the era), not the mean of noisy daily ratios: a day
+            # with one commit and few tokens must not spike the level. This aggregates
+            # cleanly toward the headline.
+            era_cx = sum(r.get("complexity") or 0 for r in tl[a:b])
+            era_out = sum(r.get("out_mtok") or 0 for r in tl[a:b])
+            level = era_cx / era_out if era_out else 0.0
             shipped = sum(r.get("shipped") or 0 for r in tl[a:b])
             vel = shipped / (b - a)  # shipped changes per bucket (per day at day gran)
-            eras.append((a, b, sum(seg) / len(seg), vel))
+            eras.append((a, b, level, vel))
 
     # flags: dashed verticals + numbered pins at each change
     flags, k = [], 0
@@ -1481,17 +1552,19 @@ def render_html(report):
                         f'{esc("; ".join(r["changes"]))}</li>' for k, r in flags)
         legend = f'<ol>{items}</ol>'
     detail = (f'{_lever_html(report)}'
-              f'<h2>Efficiency vs velocity over time</h2>'
-              f'<p>The bold line is your average surviving work per Mtok (a lines-and-'
-              f'complexity measure) for each configuration era; the faint line is the '
-              f'daily actuals. A numbered flag marks a real setup change, dated to the '
-              f'day.</p>'
-              f'<p>Read the level against the <b>velocity</b> under it, the changes you '
-              f'shipped per day. Surviving lines reward verbose generation, so the two '
-              f'can pull apart: a rig that writes tight, high-leverage changes ships more '
-              f'while surviving fewer lines, and the level ranks it low exactly when it is '
-              f'winning. When efficiency and velocity disagree, velocity is the one you '
-              f'felt. Efficiency per token is neither velocity nor quality.</p>'
+              f'<h2>Efficiency over time</h2>'
+              f'<p>The bold line is your headline meter for each configuration era: '
+              f'durable shipped complexity per Mtok, the decision-logic that landed in '
+              f'non-reverted commits and stuck, per million output tokens. The faint '
+              f'line is the daily actuals; a numbered flag marks a real setup change, '
+              f'dated to the day, so the level between two flags is what that arrangement '
+              f'was worth.</p>'
+              f'<p>Under each level is that era\'s <b>velocity</b>, the durable changes '
+              f'you shipped per day. Because the meter counts what shipped and stuck, not '
+              f'what was typed, a rig that churns a mountain in chat but commits little '
+              f'that lasts scores low, while a tight rig that ships a lot scores high. '
+              f'The meter is efficiency, not quality: it says nothing about whether the '
+              f'work was good, only that it lasted.</p>'
               f'{"".join(parts)}{legend}'
               f'{render_small_multiples(report)}{render_attribution(report)}')
     body = f'<div class="vibrant">{hero}{detail}</div>'
