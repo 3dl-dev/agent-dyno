@@ -1,6 +1,6 @@
 ---
-name: hoist
-description: "Set up and run Agent Dyno: measure the token-efficiency of your AI coding setup from your own logs and git history, harness-neutral, on your machine. Self-extracts a verified harness, then hoists and grades. Nothing uploaded."
+name: deploy
+description: "Set up and run Agent Dyno: measure the token-efficiency of your AI coding setup from your own logs and git history, harness-neutral, on your machine. Self-extracts a verified harness, then sets it up and grades. Nothing uploaded."
 ---
 
 # This skill sets agent-dyno up before it reports agent-dyno is up
@@ -8,7 +8,7 @@ description: "Set up and run Agent Dyno: measure the token-efficiency of your AI
 You are about to bring **agent-dyno** up from a *recipe*, not from a finished instance. The
 skill ships agent-dyno as source: a carried recipe plus the pin to the code that runs it, like
 a self-extracting archive that carries both its contents and the unpacker. Before you tell
-anyone agent-dyno is running, hoist it against **this** target and GRADE it honestly. You do
+anyone agent-dyno is running, deploy it against **this** target and GRADE it honestly. You do
 the work in-loop; nobody runs a command line. The material is the carried recipe, the
 binds, the checks, and the acceptance in the sections below.
 
@@ -74,7 +74,7 @@ you measured.
 
 ```json
 {
-  "_comment": "Layer 2 hoistable config for agent-dyno (see ~/projects/hoistable). This is the formula that ships agent-dyno: on install it clones the repo and renders a report with zero setup. Canonical home is here, in agent-dyno; the hoistable index points across at this file (point don't embed, single source of truth). source.clone is the repo location (swap for the public URL to distribute publicly).",
+  "_comment": "Agent Dyno's Layer 2 recipe: what 'install and run agent-dyno' means. The distributable marketplace under plugins/agent-dyno is scaffolded from this by the hoistable build tool (/hoistable:build); the compiled skill carries this recipe inlined and self-pinning. source.clone names the public home (local grading overrides it). Nothing of the harness is repo'd; it is pinned by URL.",
   "app": "agent-dyno",
   "binds": [
     {
@@ -164,11 +164,11 @@ you measured.
 - `python3` (required), probe: `python3 --version`
 - isolation substrate: none required, this profile is hermetic (hermetic: everything runs inside a throwaway clone. demo.py fabricates its own synthetic snapshot and a throwaway git repo under .hoist-report/_demo and renders the report there; it starts no daemons, binds no host ports, and writes no state outside the clone. Nothing leaves the machine.).
 
-## Checks (invariants every hoist obeys)
+## Checks (invariants every deploy obeys)
 
-- **Non-destructive onboarding.** The hoist lands in a runner-owned isolated namespace (its own name, ports, storage); a deploying profile that declares no isolation is refused; teardown always runs. You never re-run agent-dyno's own singular deployment onto a live host.
-- **No silent success.** agent-dyno is graded on the real target; a hoist that cannot say it worked says what did not transfer. A design never reads as a running system.
-- **Verified harness.** The operator kit is run only after its sha256 matches the carried pin; a tampered or unreachable kit is cannot-build, named.
+- **Non-destructive.** The deploy lands in a runner-owned isolated namespace (its own name, ports, storage); a profile that declares no isolation is refused; teardown always runs. It never re-runs agent-dyno's own singular deployment onto a live host.
+- **No silent success.** agent-dyno is graded on the real target; a run that cannot say it worked says what did not transfer. A design never reads as a running system.
+- **Verified runtime.** The fetched kit is run only after its sha256 matches the carried pin; a tampered or unreachable kit is cannot-build, named.
 
 ## Acceptance (the held-back transfer test; the honest score)
 

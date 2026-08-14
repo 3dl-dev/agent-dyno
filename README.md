@@ -70,7 +70,7 @@ no manual commands and no setup of your own. In Claude Code:
 /plugin install agent-dyno@agent-dyno
 ```
 
-Then run `/agent-dyno:hoist`. Your agent self-extracts a sha256-verified harness,
+Then run `/agent-dyno:deploy`. Your agent self-extracts a sha256-verified harness,
 clones Agent Dyno onto your machine, renders an example report, and grades the
 install honestly, naming anything that did not transfer. Everything runs locally
 on the standard library; nothing leaves your machine.
