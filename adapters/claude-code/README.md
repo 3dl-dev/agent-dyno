@@ -23,7 +23,7 @@ Python 3, stdlib only. No install.
 - `harness-switchcost.py`: mid-session model-switch tax.
 - `harness-subagenttax.py`: per-subagent cold-prefill tax.
 - `run-engine.py` + `run-arm.py`: the dynamometer: one task through every engine
-  (see `skills/dyno-dynamometer`). `--dry-run` plans the matrix and spends nothing.
+  (see `skills/vibrant-dynamometer`). `--dry-run` plans the matrix and spends nothing.
 
 ## Common schema (what every adapter must emit)
 

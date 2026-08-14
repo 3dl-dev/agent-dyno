@@ -1,5 +1,5 @@
 ---
-name: dyno-tune
+name: vibrant-tune
 description: Help someone get more out of their own AI coding setup. Reads their recent efficiency data, leads with what their engine already does well, then surfaces one opportunity their own numbers reveal, pointing at a technique that worked for setups like theirs, so they can try it and watch their number move. Warm, generous, honest; you against your own past self, and the shared frontier of what's possible.
 argument-hint: [--since 30.days.ago] [--compare <prior>]
 ---
@@ -15,7 +15,7 @@ efficiency to product outcomes, and never lecture.
 
 ## How to run it
 
-1. **Get the picture.** Run `dyno-report` for the recent window to get the
+1. **Get the picture.** Run `vibrant-report` for the recent window to get the
    efficiency vector and fingerprint.
 
 2. **Lead with what's working, and mean it.** Open with two or three things their

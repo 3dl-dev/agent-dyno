@@ -43,7 +43,7 @@ The curator agent's job is to keep the board honest, in proportion to the claim:
    `core/survival_git.py` against it and confirm the surviving-work number.
 3. **Tier 3, reproduced:** a claim that would top the public frontier must be
    reproduced. Re-run the stated engine configuration on a standard task with the
-   dynamometer (`adapters/claude-code/run-engine.py` and `skills/dyno-dynamometer`)
+   dynamometer (`adapters/claude-code/run-engine.py` and `skills/vibrant-dynamometer`)
    and confirm the number holds before merging. Do not take a top claim on trust.
 4. **Merge or comment.** Merge confirmed entries with their proof tier recorded.
    For the rest, comment with what would raise the tier. Reproduction cost is the

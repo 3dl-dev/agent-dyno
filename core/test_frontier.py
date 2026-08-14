@@ -42,7 +42,7 @@ def B(eid, spm, waste, crd, dps, samples):
 
 
 def fr(entries):
-    return {"schema": "agent-dyno/frontier@2", "note": "fixture", "axes": {},
+    return {"schema": "vibrant/frontier@2", "note": "fixture", "axes": {},
             "entries": entries}
 
 
@@ -80,7 +80,7 @@ def main():
     if [e["id"] for e in twice["entries"]] != ids:
         fails.append("merge is not idempotent")
     # schema/axes preserved
-    if merged["schema"] != "agent-dyno/frontier@2":
+    if merged["schema"] != "vibrant/frontier@2":
         fails.append("merge dropped the schema")
 
     # ---- (3) summarize: one entry per shape, median vector, summed samples ----
@@ -119,7 +119,7 @@ def main():
 
     # ---- (5) new_frontier / init: a valid empty board ----
     nf = frontier.new_frontier(note="my team")
-    if nf.get("schema") != "agent-dyno/frontier@2" or nf.get("entries") != [] \
+    if nf.get("schema") != "vibrant/frontier@2" or nf.get("entries") != [] \
             or nf.get("note") != "my team":
         fails.append(f"new_frontier skeleton wrong: {nf}")
     if frontier.validate(nf):

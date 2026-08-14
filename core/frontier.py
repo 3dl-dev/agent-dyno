@@ -14,7 +14,7 @@ deterministic operations, no network and no policy:
   summarize  turn a frontier into one anonymized aggregate entry per shape: what an
              enterprise shares upward without handing over individual runs.
 
-A frontier is `{schema, note, axes, entries[]}` (agent-dyno/frontier@2). Stdlib
+A frontier is `{schema, note, axes, entries[]}` (vibrant/frontier@2). Stdlib
 only, harness-neutral, deterministic: output is a pure function of the inputs (and,
 for summarize, a caller-supplied date; the library never reads a clock).
 
@@ -31,7 +31,7 @@ import math
 import os
 import sys
 
-SCHEMA = "agent-dyno/frontier@2"
+SCHEMA = "vibrant/frontier@2"
 _PCT_AXES = ("waste_pct", "cache_read_pct")
 
 
@@ -47,7 +47,7 @@ def _num_ok(v):
 
 
 def validate(frontier):
-    """Tier-0 sanity issues, sorted, empty if clean. The same floor dyno-contribute
+    """Tier-0 sanity issues, sorted, empty if clean. The same floor vibrant-contribute
     applies, reused so a merged or summarized frontier is checkable in one call."""
     issues = []
     for e in frontier.get("entries", []):
@@ -179,9 +179,9 @@ def main(argv=None):
         ap_path = os.path.abspath(args.path)
         print(f"created your frontier: {args.path}")
         print("that is the whole setup, no server. two steps to use it:")
-        print(f"  1. make it your default:  export DYNO_FRONTIER={ap_path}")
-        print("  2. view it: open leaderboard/dyno.html and point it at this file")
-        print("now dyno-report compares against it and contributions land here by "
+        print(f"  1. make it your default:  export VIBRANT_FRONTIER={ap_path}")
+        print("  2. view it: open leaderboard/vibrant.html and point it at this file")
+        print("now vibrant-report compares against it and contributions land here by "
               "default; share upward only when you choose (merge / summarize).")
         return 0
     if args.cmd == "validate":

@@ -1,5 +1,5 @@
 ---
-name: dyno-report
+name: vibrant-report
 description: Measure the fuel-efficiency of your AI coding setup from your own logs and git history, surviving work per token, split by engine / model / effort / review regime, compared against same-shape setups on the frontier. Runs on your machine, nothing uploaded. Self-improvement, never a ranking of people against product. Use for "how efficient is my setup" or "which engine is cheapest per surviving line".
 argument-hint: [--repos <path,path>] [--since 30.days.ago]
 ---
@@ -35,7 +35,7 @@ so.
 ## 3. Run the driver
 
 ```
-python3 skills/dyno-report/dyno_report.py \
+python3 skills/vibrant-report/vibrant_report.py \
     --harness claude-code --snapshot <snap-dir> \
     --repos <repo1,repo2,...> --since 30.days.ago --out <out-dir>
 ```
@@ -78,7 +78,7 @@ If they want the full fingerprint:
    `<snap-dir>/fingerprint-labels.json`:
 
    ```
-   { "schema": "agent-dyno/fingerprint-labels@1",
+   { "schema": "vibrant/fingerprint-labels@1",
      "rigs": { "delegate/none/high": { "fine_topology": "orchestrator-workers",
        "review_regime": "agentic review pass", "knowledge_practice": "skills" } } }
    ```
@@ -117,7 +117,7 @@ one. Keep it short.
 
 Offer to emit an anonymized entry (engine fingerprint + vector only; no
 identities, repo names, or code) that the operator can PR into
-`frontier/reference-frontier.json`. Follow `skills/dyno-contribute/SKILL.md`.
+`frontier/reference-frontier.json`. Follow `skills/vibrant-contribute/SKILL.md`.
 Never submit without explicit consent.
 
 ## Deferred (not yet turn-key)

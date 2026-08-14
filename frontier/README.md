@@ -6,7 +6,7 @@
 
 `reference-frontier.json` is where the field gets better together. It isn't a
 scoreboard. It's a living collection of techniques that turn tokens into durable
-work, each carried with the evidence that it worked. When you run `dyno-tune`,
+work, each carried with the evidence that it worked. When you run `vibrant-tune`,
 this is what lets it say "setups like yours that tried this saw that," pointing at
 something someone actually did rather than an opinion.
 
@@ -20,7 +20,7 @@ Generosity is the growth engine, and the frontier rises as anyone rises.
 
 ## Contributing (opt-in, anonymized)
 
-Run `dyno-report` or `dyno-tune`, let it draft an entry, and open a PR. An entry
+Run `vibrant-report` or `vibrant-tune`, let it draft an entry, and open a PR. An entry
 carries the part that transfers:
 
 - the **technique**, the engine configuration that produced the result, described

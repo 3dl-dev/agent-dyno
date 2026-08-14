@@ -1,6 +1,6 @@
 ---
-name: dyno-contribute
-description: Turn a dyno run into a leaderboard entry and add it to a frontier. Federated by default: your entry goes to your own frontier (local, team, or company), and only reaches a public one if you explicitly push it up. Drafts an anonymized entry, stamps its proof tier, and either writes it to your frontier file or prints the exact PR for you to open. No signup, no keys, no dependency.
+name: vibrant-contribute
+description: Turn a Vibrant run into a leaderboard entry and add it to a frontier. Federated by default: your entry goes to your own frontier (local, team, or company), and only reaches a public one if you explicitly push it up. Drafts an anonymized entry, stamps its proof tier, and either writes it to your frontier file or prints the exact PR for you to open. No signup, no keys, no dependency.
 argument-hint: [--frontier <path-or-url>] [--push public|team] [--repo <public-repo-for-tier-2>]
 ---
 
@@ -15,12 +15,12 @@ parent unless told to. Nothing is shared without an explicit push.
 
 ## Steps
 
-1. **Take a run.** Use the latest `dyno-report` result (efficiency vector,
+1. **Take a run.** Use the latest `vibrant-report` result (efficiency vector,
    fingerprint, engine, effort, review regime, survival horizon, sample size). If
-   there isn't one, run `dyno-report` first.
+   there isn't one, run `vibrant-report` first.
 
 2. **Draft the entry, anonymized.** Build the JSON object for the frontier schema
-   (`frontier/reference-frontier.json`, `agent-dyno/frontier@2`): the transferable
+   (`frontier/reference-frontier.json`, `vibrant/frontier@2`): the transferable
    **technique** (the engine configuration that produced the result, described so
    someone else can adopt it), the **fingerprint**, the **vector**, the
    **horizon**, the **samples**, and a **date**. Include **nothing** that
@@ -45,7 +45,7 @@ parent unless told to. Nothing is shared without an explicit push.
      steps to open a pull request against `3dl-dev/vibrant`, curated by Third
      Division Labs. Show the operator the entry and get a yes before doing it.
 
-5. **Render, optionally.** Point `leaderboard/dyno.html` at the frontier file, or
+5. **Render, optionally.** Point `leaderboard/vibrant.html` at the frontier file, or
    POST the formatted standings to a Slack or Discord incoming webhook if the
    operator gives one. A frontier is plain JSON; any surface works.
 

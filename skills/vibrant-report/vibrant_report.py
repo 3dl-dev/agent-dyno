@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# REFERENCE BUILD. Source of truth: dyno_report.spec.md (what it must do)
-# + test_dyno_report.py (the verification). Code is a regenerable artifact:
+# REFERENCE BUILD. Source of truth: vibrant_report.spec.md (what it must do)
+# + test_vibrant_report.py (the verification). Code is a regenerable artifact:
 # rebuild it from the spec and the acceptance test must still pass. See SOURCE.md.
 """
-dyno_report.py, the turn-key driver behind the dyno-report skill.
+vibrant_report.py, the turn-key driver behind the vibrant-report skill.
 
 Reason to exist: the efficiency report must be accurate and IDENTICAL whatever
 model or harness runs the skill. An LLM assembling the pipeline by hand cannot
@@ -18,7 +18,7 @@ data for, and the named confounds. Output is report.json (the contract) and
 report.md (rendered by a fixed template, no model in the loop).
 
 Usage:
-  dyno_report --harness claude-code --repos <path>[,<path>...] \
+  vibrant_report --harness claude-code --repos <path>[,<path>...] \
       --snapshot <dir> [--since <git-approxidate>] [--frontier <path>] \
       [--now <epoch>] --out <dir>
 
@@ -1010,7 +1010,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
             "sessions_with_survival": len(metrics),
             "repos": repo_prov,
             "frontier_sha256": hashlib.sha256(fbytes).hexdigest() if fbytes else None,
-            "driver": "dyno_report/1",
+            "driver": "vibrant_report/1",
         },
         "governance": {
             "clean": True,
@@ -1092,7 +1092,7 @@ def render_md(report):
 
 
 _CSS = """
-.dyno{color-scheme:light;
+.vibrant{color-scheme:light;
  --surface:#f4f3ef;--card:#ffffff;--ink:#141310;--ink2:#57544d;--muted:#8f8c83;
  --line:#e7e5dd;--grid:#e7e5dd;--axis:#cfcdc3;--accent:#2a78d6;--series:#2a78d6;
  --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;
@@ -1101,68 +1101,68 @@ _CSS = """
  font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
  color:var(--ink);background:var(--surface);max-width:760px;margin:0 auto;
  padding:28px 20px 40px;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
-@media (prefers-color-scheme:dark){:root:where(:not([data-theme=light])) .dyno{
+@media (prefers-color-scheme:dark){:root:where(:not([data-theme=light])) .vibrant{
  color-scheme:dark;--surface:#141412;--card:#1c1b19;--ink:#f6f5f0;--ink2:#c7c5bb;
  --muted:#918e85;--line:#2e2d29;--grid:#2c2c2a;--axis:#3a3a36;--accent:#3987e5;
  --series:#3987e5;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;
  --c-cacheread:#3987e5;--c-read:#d95926;--c-output:#199e70;--c-work:#159015;
  --good:#199e70;--up:#199e70;--down:#e66767;--shadow:0,0,0;}}
-:root[data-theme=dark] .dyno{color-scheme:dark;--surface:#141412;--card:#1c1b19;
+:root[data-theme=dark] .vibrant{color-scheme:dark;--surface:#141412;--card:#1c1b19;
  --ink:#f6f5f0;--ink2:#c7c5bb;--muted:#918e85;--line:#2e2d29;--grid:#2c2c2a;
  --axis:#3a3a36;--accent:#3987e5;--series:#3987e5;--s1:#3987e5;--s2:#d95926;
  --s3:#199e70;--s4:#c98500;--s5:#d55181;--c-cacheread:#3987e5;--c-read:#d95926;
  --c-output:#199e70;--c-work:#159015;--good:#199e70;--up:#199e70;--down:#e66767;--shadow:0,0,0;}
-.dyno *{box-sizing:border-box;}
-.dyno .card{background:var(--card);border:1px solid var(--line);border-radius:18px;
+.vibrant *{box-sizing:border-box;}
+.vibrant .card{background:var(--card);border:1px solid var(--line);border-radius:18px;
  padding:30px 32px;box-shadow:0 1px 2px rgba(var(--shadow),.05),0 10px 34px rgba(var(--shadow),.07);}
-.dyno .brand{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:800;
+.vibrant .brand{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:800;
  letter-spacing:.19em;color:var(--ink);text-transform:uppercase;margin:0 0 18px;}
-.dyno .brand .mark{width:15px;height:15px;border-radius:4px;flex:none;
+.vibrant .brand .mark{width:15px;height:15px;border-radius:4px;flex:none;
  background:linear-gradient(135deg,var(--s1),var(--s3));}
-.dyno .hero{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 16px;margin:0 0 22px;}
-.dyno .num{font-size:78px;font-weight:720;letter-spacing:-.03em;line-height:.85;color:var(--ink);}
-.dyno .unit{font-size:13px;font-weight:600;color:var(--muted);line-height:1.2;text-transform:lowercase;}
-.dyno .row-h{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+.vibrant .hero{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 16px;margin:0 0 22px;}
+.vibrant .num{font-size:78px;font-weight:720;letter-spacing:-.03em;line-height:.85;color:var(--ink);}
+.vibrant .unit{font-size:13px;font-weight:600;color:var(--muted);line-height:1.2;text-transform:lowercase;}
+.vibrant .row-h{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
  color:var(--muted);margin:0 0 9px;}
-.dyno .stack{margin:0 0 22px;}
-.dyno .bar{display:flex;gap:2px;height:34px;}
-.dyno .seg{display:block;min-width:3px;}
-.dyno .seg:first-child{border-radius:8px 0 0 8px;}
-.dyno .seg:last-child{border-radius:0 8px 8px 0;}
-.dyno .seg:only-child{border-radius:8px;}
-.dyno .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:10px;font-size:12.5px;color:var(--ink2);}
-.dyno .lg{display:inline-flex;align-items:center;gap:6px;}
-.dyno .lg i{width:9px;height:9px;border-radius:2px;display:inline-block;flex:none;}
-.dyno .lg b{color:var(--ink);font-weight:650;}
-.dyno .lever{background:var(--surface);border-radius:12px;padding:15px 17px;margin:0 0 24px;
+.vibrant .stack{margin:0 0 22px;}
+.vibrant .bar{display:flex;gap:2px;height:34px;}
+.vibrant .seg{display:block;min-width:3px;}
+.vibrant .seg:first-child{border-radius:8px 0 0 8px;}
+.vibrant .seg:last-child{border-radius:0 8px 8px 0;}
+.vibrant .seg:only-child{border-radius:8px;}
+.vibrant .legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:10px;font-size:12.5px;color:var(--ink2);}
+.vibrant .lg{display:inline-flex;align-items:center;gap:6px;}
+.vibrant .lg i{width:9px;height:9px;border-radius:2px;display:inline-block;flex:none;}
+.vibrant .lg b{color:var(--ink);font-weight:650;}
+.vibrant .lever{background:var(--surface);border-radius:12px;padding:15px 17px;margin:0 0 24px;
  border-left:3px solid var(--accent);}
-.dyno .lever.ok{border-left-color:var(--good);}
-.dyno .lever-h{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+.vibrant .lever.ok{border-left-color:var(--good);}
+.vibrant .lever-h{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
  color:var(--muted);margin:0 0 6px;}
-.dyno .lever-tweak{font-size:15px;font-weight:600;color:var(--ink);line-height:1.4;}
-.dyno .lever-sub{font-size:12.5px;color:var(--ink2);margin-top:6px;line-height:1.45;}
-.dyno .trend{display:flex;align-items:center;gap:16px;}
-.dyno .spark{width:200px;height:44px;flex:none;}
-.dyno .trend-cap{font-size:12.5px;color:var(--ink2);}
-.dyno .trend-cap .up{color:var(--up);font-weight:650;}
-.dyno .trend-cap .down{color:var(--down);font-weight:650;}
-.dyno .measure{font-size:12.5px;color:var(--ink2);margin:12px 0 0;}
-.dyno .foot{margin-top:24px;padding-top:15px;border-top:1px solid var(--line);
+.vibrant .lever-tweak{font-size:15px;font-weight:600;color:var(--ink);line-height:1.4;}
+.vibrant .lever-sub{font-size:12.5px;color:var(--ink2);margin-top:6px;line-height:1.45;}
+.vibrant .trend{display:flex;align-items:center;gap:16px;}
+.vibrant .spark{width:200px;height:44px;flex:none;}
+.vibrant .trend-cap{font-size:12.5px;color:var(--ink2);}
+.vibrant .trend-cap .up{color:var(--up);font-weight:650;}
+.vibrant .trend-cap .down{color:var(--down);font-weight:650;}
+.vibrant .measure{font-size:12.5px;color:var(--ink2);margin:12px 0 0;}
+.vibrant .foot{margin-top:24px;padding-top:15px;border-top:1px solid var(--line);
  font-size:11px;letter-spacing:.03em;color:var(--muted);display:flex;justify-content:space-between;}
-.dyno h2{font-size:14px;font-weight:650;color:var(--ink);margin:34px 0 3px;letter-spacing:-.01em;}
-.dyno p{font-size:13px;color:var(--ink2);margin:0 0 14px;line-height:1.5;}
-.dyno svg{max-width:100%;height:auto;}
-.dyno table{border-collapse:collapse;font-size:13px;margin-top:14px;width:100%;
+.vibrant h2{font-size:14px;font-weight:650;color:var(--ink);margin:34px 0 3px;letter-spacing:-.01em;}
+.vibrant p{font-size:13px;color:var(--ink2);margin:0 0 14px;line-height:1.5;}
+.vibrant svg{max-width:100%;height:auto;}
+.vibrant table{border-collapse:collapse;font-size:13px;margin-top:14px;width:100%;
  font-variant-numeric:tabular-nums;}
-.dyno th,.dyno td{text-align:left;padding:6px 14px 6px 0;border-bottom:1px solid var(--line);color:var(--ink2);}
-.dyno th{color:var(--muted);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;}
-.dyno td:first-child{color:var(--ink);}
-.dyno .flag{color:var(--accent);font-weight:650;}
-.dyno select{font:inherit;font-size:13px;padding:4px 9px;border:1px solid var(--line);
+.vibrant th,.vibrant td{text-align:left;padding:6px 14px 6px 0;border-bottom:1px solid var(--line);color:var(--ink2);}
+.vibrant th{color:var(--muted);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;}
+.vibrant td:first-child{color:var(--ink);}
+.vibrant .flag{color:var(--accent);font-weight:650;}
+.vibrant select{font:inherit;font-size:13px;padding:4px 9px;border:1px solid var(--line);
  border-radius:8px;background:var(--card);color:var(--ink);cursor:pointer;}
-.dyno ol{font-size:12.5px;color:var(--ink2);margin:6px 0;padding-left:20px;}
-@media (max-width:560px){.dyno{padding:14px 10px 28px;}.dyno .card{padding:22px 20px;}
- .dyno .num{font-size:50px;}.dyno .trend{flex-wrap:wrap;gap:8px;}}
+.vibrant ol{font-size:12.5px;color:var(--ink2);margin:6px 0;padding-left:20px;}
+@media (max-width:560px){.vibrant{padding:14px 10px 28px;}.vibrant .card{padding:22px 20px;}
+ .vibrant .num{font-size:50px;}.vibrant .trend{flex-wrap:wrap;gap:8px;}}
 """
 
 _STACK_COLORS = ("var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)", "var(--s5)")
@@ -1275,7 +1275,7 @@ def render_html(report):
     hero = _hero_card(report)
     tl = [r for r in report.get("timeline", []) if r["eq"] is not None]
     if len(tl) < 2:
-        body = (f'<div class="dyno">{hero}{_lever_html(report)}'
+        body = (f'<div class="vibrant">{hero}{_lever_html(report)}'
                 f'{render_small_multiples(report)}{render_attribution(report)}</div>')
         return _page(head + body)
 
@@ -1348,7 +1348,7 @@ def render_html(report):
               f'day it happened, so a move ties to a change and not noise.</p>'
               f'{"".join(parts)}{legend}'
               f'{render_small_multiples(report)}{render_attribution(report)}')
-    body = f'<div class="dyno">{hero}{detail}</div>'
+    body = f'<div class="vibrant">{hero}{detail}</div>'
     return _page(head + body)
 
 
@@ -1509,7 +1509,7 @@ def main():
     ap.add_argument("--since", default="30.days.ago")
     ap.add_argument("--frontier", default=None,
                     help="frontier to compare against: a path or a URL "
-                         "(http/https/file). Default: $DYNO_FRONTIER, else the "
+                         "(http/https/file). Default: $VIBRANT_FRONTIER, else the "
                          "repo's frontier/reference-frontier.json")
     ap.add_argument("--now", type=float, default=None,
                     help="fixed epoch for deterministic age buckets; default clock")
@@ -1525,8 +1525,8 @@ def main():
 
     repos = [os.path.expanduser(r) for r in args.repos.split(",") if r]
     # frontier resolution: explicit --frontier, else the operator's configured
-    # $DYNO_FRONTIER (their team/org/public board), else the repo's own.
-    frontier_ref = args.frontier or os.environ.get("DYNO_FRONTIER") or \
+    # $VIBRANT_FRONTIER (their team/org/public board), else the repo's own.
+    frontier_ref = args.frontier or os.environ.get("VIBRANT_FRONTIER") or \
         os.path.join(ROOT, "frontier", "reference-frontier.json")
     report = build_report(args.snapshot, repos, args.since, frontier_ref,
                           args.harness, args.now,

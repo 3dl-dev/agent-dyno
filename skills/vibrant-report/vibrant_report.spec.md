@@ -1,6 +1,6 @@
-# spec: dyno_report (the turn-key driver)
+# spec: vibrant_report (the turn-key driver)
 
-The one-shot driver behind the `dyno-report` skill. Its reason to exist: the
+The one-shot driver behind the `vibrant-report` skill. Its reason to exist: the
 report must be **accurate and identical whatever model or harness runs the
 skill**. An LLM assembling the pipeline by hand cannot promise that; a
 deterministic driver can. The model does zero computation. It reads governance,
@@ -9,7 +9,7 @@ invokes this driver, and narrates the bundle the driver returns.
 ## Interface
 
 ```
-dyno_report --harness <name> --repos <path>[,<path>...] [--since <git-approxidate>]
+vibrant_report --harness <name> --repos <path>[,<path>...] [--since <git-approxidate>]
             [--snapshot <dir>] [--frontier <path>] --out <dir>
 ```
 
@@ -20,7 +20,7 @@ dyno_report --harness <name> --repos <path>[,<path>...] [--since <git-approxidat
 - `--frontier` is the commons to compare against: a path **or a URL**
   (`http`/`https`/`file`), so a user can read their team's or the public frontier
   without cloning it (the federated read side). When `--frontier` is not given, the
-  driver uses `$DYNO_FRONTIER` if set (the operator's configured frontier), else the
+  driver uses `$VIBRANT_FRONTIER` if set (the operator's configured frontier), else the
   repo's `frontier/reference-frontier.json`. A URL that cannot be fetched degrades to
   an empty frontier (no same-shape comparison), never an error.
 - Reads only local git + local transcripts + the frontier file. No network. No
@@ -150,10 +150,10 @@ result to a cache the driver then consumes deterministically. This keeps the
 driver a pure function (the determinism invariant) while still filling the axes.
 
 The cache is `fingerprint-labels.json` (default: alongside the snapshot), schema
-`agent-dyno/fingerprint-labels@1`:
+`vibrant/fingerprint-labels@1`:
 
 ```
-{ "schema": "agent-dyno/fingerprint-labels@1",
+{ "schema": "vibrant/fingerprint-labels@1",
   "rigs": { "<rig-key>": { "fine_topology": "...", "review_regime": "...",
                             "knowledge_practice": "..." }, ... } }
 ```
@@ -273,10 +273,10 @@ Surviving work is reported two ways, because they carry different signal:
 
 ## Acceptance
 
-`test_dyno_report.py` builds a fixture: a synthetic snapshot (a few sessions
+`test_vibrant_report.py` builds a fixture: a synthetic snapshot (a few sessions
 across solo/delegate/workflow at known tokens and known born/killed chars), a
 throwaway git repo whose commits map to those sessions, and a fixture frontier
-with one same-shape and one different-shape entry. It runs `dyno_report` and
+with one same-shape and one different-shape entry. It runs `vibrant_report` and
 asserts:
 
 1. the per-engine vector equals hand-computed values;

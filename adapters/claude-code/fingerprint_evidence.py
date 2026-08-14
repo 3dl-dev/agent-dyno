@@ -5,7 +5,7 @@ fingerprint_evidence.py, package per-rig evidence for the pattern classifier.
 Three of the six taxonomy dimensions (docs/taxonomy.md) are patterns, not counts:
 fine topology, review regime, knowledge practice. A counter cannot place them, so
 the in-session model classifies them once and caches the result in
-fingerprint-labels.json, which the dyno_report driver consumes deterministically.
+fingerprint-labels.json, which the vibrant_report driver consumes deterministically.
 
 This extractor produces the INPUT to that classification: a compact evidence
 bundle per RIG (the driver's join key, engine/routing/effort), so the model reads
@@ -34,7 +34,7 @@ import tempfile
 from collections import defaultdict, Counter
 
 DEFAULT_PROJECTS = os.path.expanduser("~/.claude/projects")
-SCHEMA = "agent-dyno/fingerprint-evidence@1"
+SCHEMA = "vibrant/fingerprint-evidence@1"
 MAX_TASKS = 20        # deduped sample of subagent prompts per rig
 TASK_CHARS = 140      # truncate each prompt to keep the bundle compact
 

@@ -18,7 +18,7 @@ windows; it is NOT required and NOT part of this kit.
 
 Usage:
     python3 snapshot.py                       # -> ./snapshots/<date>/
-    python3 snapshot.py --out ~/.agent-dyno/snapshots
+    python3 snapshot.py --out ~/.vibrant/snapshots
 Runs the sibling extractors and writes their JSONL. Stdlib only.
 """
 import argparse

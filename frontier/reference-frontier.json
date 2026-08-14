@@ -1,5 +1,5 @@
 {
-  "schema": "agent-dyno/frontier@2",
+  "schema": "vibrant/frontier@2",
   "note": "A living commons of validated leverage. Each entry carries the transferable technique behind a result, not just the number, so setups like yours can adopt what worked. Opt-in, anonymized: technique + numbers travel; identities, repos, and code never do. See frontier/README.md. Each entry carries a proof tier (see docs/federation.md): tier-0 sanity, tier-1 self-report, tier-2 git-verifiable, tier-3 reproduced.",
   "axes": {
     "dollars_per_survkb": "USD per surviving KB (lower better)",

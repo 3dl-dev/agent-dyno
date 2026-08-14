@@ -7,7 +7,7 @@ company and share upward by hand. The design is many frontiers, not one central
 board.
 
 Be clear about what that means today. What ships is the file format, a viewer, the
-`dyno-contribute` step, the `$DYNO_FRONTIER` config, and three deterministic
+`vibrant-contribute` step, the `$VIBRANT_FRONTIER` config, and three deterministic
 operations in `core/frontier.py` (merge, summarize, validate). There is still no
 service and no daemon: the tree of frontiers is opt-in and owner-triggered, never
 automatic. See "Federation" for what each tool does.
@@ -19,7 +19,7 @@ is the whole architecture. You host the file wherever you already keep things: a
 git repo, a gist, a shared drive, a pinned Slack message. There is no database and
 no server to run.
 
-- **Local / solo:** keep the file on your machine, view it with `leaderboard/dyno.html`
+- **Local / solo:** keep the file on your machine, view it with `leaderboard/vibrant.html`
   pointed at it. Nothing leaves your box.
 - **Team / company:** keep it in a private repo or shared location; your team
   writes their entries there and the viewer reflects your group.
@@ -29,7 +29,7 @@ no server to run.
 
 ## Surfaces
 
-One surface ships: the web viewer, `leaderboard/dyno.html`, which reads any
+One surface ships: the web viewer, `leaderboard/vibrant.html`, which reads any
 `reference-frontier.json` you point it at. Host your own copy.
 
 Because a frontier is plain JSON, two more surfaces are a few lines you write, not
@@ -46,12 +46,12 @@ your scope unless you move it up, and moving it up is one explicit action:
 - to the public frontier: open a PR against `3dl-dev/vibrant`, curated by Third
   Division Labs.
 
-Nothing auto-shares. `dyno-contribute` writes to your local frontier by default and
+Nothing auto-shares. `vibrant-contribute` writes to your local frontier by default and
 reaches a parent only when you tell it to. Three tools make the tree real without a
 service, and every one is owner-triggered, never automatic:
 
-- **Subscribe / compare:** `dyno-report --frontier <path-or-url>` (or set
-  `$DYNO_FRONTIER` once) reads any frontier, so you compare against your team's or
+- **Subscribe / compare:** `vibrant-report --frontier <path-or-url>` (or set
+  `$VIBRANT_FRONTIER` once) reads any frontier, so you compare against your team's or
   the public board without cloning it, and without your repos leaving to do it.
 - **Roll up a team:** `core/frontier.py merge --into <team.json> <member.json> ...`
   folds member boards into the team's, deduplicated and idempotent. The owner runs

@@ -14,7 +14,7 @@ yourself. If a number is not in `report.json`, do not report it.
 
 Find an Vibrant checkout to run from, in this order:
 
-1. The current directory, if it is the agent-dyno repo (it has `core/survival_git.py`).
+1. The current directory, if it is the Vibrant repo (it has `core/survival_git.py`).
 2. The marketplace clone at `~/.claude/plugins/marketplaces/vibrant` (the whole
    repo lands there when the operator adds the marketplace).
 3. Otherwise clone it: `git clone https://github.com/3dl-dev/vibrant ~/.cache/vibrant`.
@@ -23,7 +23,7 @@ Then verify the install once, silently, from that checkout:
 
 ```
 python3 core/test_survival_git.py
-python3 skills/dyno-report/test_dyno_report.py
+python3 skills/vibrant-report/test_vibrant_report.py
 ```
 
 If either fails, stop and say the install did not verify (name the failure). Do not
@@ -45,7 +45,7 @@ to the current git repo if they are in one. Ask the window (default `30.days.ago
 
 ```
 python3 adapters/claude-code/snapshot.py --out <snap-parent>
-python3 skills/dyno-report/dyno_report.py --harness claude-code \
+python3 skills/vibrant-report/vibrant_report.py --harness claude-code \
     --snapshot <snap-dir> --repos <their-repos> --since <window> --out <out-dir>
 ```
 
@@ -53,8 +53,8 @@ Reuse a recent snapshot dir if one exists. The driver writes `report.json` (the
 contract), `report.md` (the surface), and `report.html` (the charts).
 
 The report compares the operator against their **configured frontier**: the driver
-reads `$DYNO_FRONTIER` (a path or a URL) when `--frontier` is not passed, else the
-repo's own. An operator on a team or in an enterprise sets `$DYNO_FRONTIER` to their
+reads `$VIBRANT_FRONTIER` (a path or a URL) when `--frontier` is not passed, else the
+repo's own. An operator on a team or in an enterprise sets `$VIBRANT_FRONTIER` to their
 internal frontier (a shared file or a URL), so the same-shape comparison and the
 lever are drawn from their own group, and nothing about their repos leaves to get
 that comparison.
@@ -77,6 +77,6 @@ surface, ask the operator plainly: "Want to add this run to your frontier? It is
 anonymized, engine fingerprint and numbers only, and it goes to your own frontier,
 not a public one, unless you say so." If they say yes, do the
 `/vibrant:contribute` steps inline against their configured frontier
-(`$DYNO_FRONTIER`, else the local file). If they say no, stop; publishing is never a
+(`$VIBRANT_FRONTIER`, else the local file). If they say no, stop; publishing is never a
 side effect of a run. The default target is always their own scope; a push to any
 parent is a separate, explicit choice.

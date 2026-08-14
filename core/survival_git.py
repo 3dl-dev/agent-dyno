@@ -143,7 +143,7 @@ def survival(repo, since, now=None):
     """Compute horizon-survival for `repo` over the window `since`.
 
     Returns a structured dict (or None if the window is empty). This is the
-    importable numerator other tools (e.g. the dyno_report driver) consume, so
+    importable numerator other tools (e.g. the vibrant_report driver) consume, so
     they need not scrape stdout. main() renders this same dict. Totals
     (added / surviving / pct / fix-share) are clock-independent; only the age
     buckets depend on `now`, so callers that want deterministic output can pass a

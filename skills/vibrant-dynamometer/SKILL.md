@@ -1,5 +1,5 @@
 ---
-name: dyno-dynamometer
+name: vibrant-dynamometer
 description: Run one real task through every engine (solo, orchestrator+worker, cross-model, workflow fan-out, at controlled effort) on identical terrain, then measure which engine turned the fewest tokens into the most surviving work. The clean, terrain-controlled comparison, the only way to settle "opus-drives-sonnet vs just-opus" or "wide fan-out vs sequential" with numbers instead of anecdote. Runs on your own machine and repos.
 argument-hint: [a repo path + git ref + task prompt + a check command]
 ---
@@ -46,7 +46,7 @@ and get explicit go before running.** Never launch a matrix unprompted.
 
 ## Measure and present
 
-Apply `dyno-report` to each session. Because terrain is constant, differences are
+Apply `vibrant-report` to each session. Because terrain is constant, differences are
 the engine. Report the vector per engine (Pareto), which engine passed `check` at
 the lowest $/surviving-KB and waste, and the model×harness read. Vary **effort as
 a controlled factor** (the catalog has solo-max), do not leave it at default.

@@ -2,7 +2,7 @@
 
 The deterministic operations that make a frontier a *federated* commons instead of
 a single file people hand-edit. A frontier is a `reference-frontier.json`
-(`agent-dyno/frontier@2`): `{schema, note, axes, entries[]}`. This tool never talks
+(`vibrant/frontier@2`): `{schema, note, axes, entries[]}`. This tool never talks
 to a network and never decides policy; it transforms frontier files so a team or an
 enterprise can run their own board, keep it internal, and share upward only a
 summary they choose. Stdlib only, harness-neutral, deterministic.
@@ -44,8 +44,8 @@ Importable (the deterministic core other tools consume):
 `init` writes a fresh, valid empty frontier (`{schema, note, axes:{}, entries:[]}`)
 to `<path>`, refusing to overwrite an existing file unless `--force`, and prints the
 two next steps a user would otherwise have to discover: point the viewer
-(`leaderboard/dyno.html`) at the file, and set `$DYNO_FRONTIER=<path-or-url>` so
-`dyno-report` compares against it and `dyno-contribute` writes to it by default. This
+(`leaderboard/vibrant.html`) at the file, and set `$VIBRANT_FRONTIER=<path-or-url>` so
+`vibrant-report` compares against it and `vibrant-contribute` writes to it by default. This
 is the whole "run your own leaderboard" setup: a file plus a config line, no server.
 
 ## Method (every step deterministic)
@@ -56,7 +56,7 @@ For each entry: `waste_pct` in [0,100]; `cache_read_pct` in [0,100]; every prese
 vector number finite and non-negative; `samples` a positive integer; required keys
 (`engine`, `vector`, `date`) present. Return a stable, sorted list of human-readable
 issues naming the offending entry id and field. This is the same floor
-`dyno-contribute` applies before writing, reused so a merged or summarized frontier
+`vibrant-contribute` applies before writing, reused so a merged or summarized frontier
 is checkable in one call.
 
 ### merge (local roll-up, never a push)

@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Acceptance test for dyno_report (the spec made executable).
+Acceptance test for vibrant_report (the spec made executable).
 
 Builds a fixture snapshot (three sessions, one per engine, known tokens and
 known born/killed chars), a throwaway git repo with a known survival answer, and
 a fixture frontier with one same-shape and one different-shape entry. Runs the
 driver and asserts the vector, the same-shape logic, provenance + governance
-stamp, and byte-identical re-runs. Regenerate dyno_report.py from
-dyno_report.spec.md and this test must still pass.
+stamp, and byte-identical re-runs. Regenerate vibrant_report.py from
+vibrant_report.spec.md and this test must still pass.
 
-    python3 skills/dyno-report/test_dyno_report.py    # exits 0 on pass, 1 on fail
+    python3 skills/vibrant-report/test_vibrant_report.py    # exits 0 on pass, 1 on fail
 Stdlib only. Needs git on PATH.
 """
 import json
@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "adapters", "claude-code"))
 import mb_cost  # noqa: E402  (to compute expected dollars the same way the driver does)
 sys.path.insert(0, HERE)
-import dyno_report  # noqa: E402  (to unit-test the pure confounds() function directly)
+import vibrant_report  # noqa: E402  (to unit-test the pure confounds() function directly)
 
 DAY = "2026-08-01"
 
@@ -112,7 +112,7 @@ def build_frontier(path, wf_cost):
     # efficiency (survKB 2.0 at wf_cost dollars), so a lever is guaranteed to
     # exist regardless of the machine's real token prices.
     dps = round((wf_cost / 2.0) / 2.0, 8)  # dollars per survKB, half the operator's
-    fr = {"schema": "agent-dyno/frontier@2", "axes": {}, "entries": [
+    fr = {"schema": "vibrant/frontier@2", "axes": {}, "entries": [
         {"id": "fix-wf-high", "engine": "workflow", "effort": "high",
          "model_roles": {"orchestrator": "strong", "worker": "strong"},
          "vector": {"dollars_per_survkb": dps, "waste_pct": 30},
@@ -155,7 +155,7 @@ def build_labels(path):
     empty submix -> routing 'none', all high effort). Modal review_regime across
     the four sessions is 'agentic review pass' (s2+s4 delegate); modal fine is
     'orchestrator-workers'; modal knowledge_practice is 'skills'."""
-    labels = {"schema": "agent-dyno/fingerprint-labels@1", "rigs": {
+    labels = {"schema": "vibrant/fingerprint-labels@1", "rigs": {
         "solo/none/high": {"fine_topology": "single-agent",
                            "review_regime": "spec + acceptance",
                            "knowledge_practice": "skills"},
@@ -171,7 +171,7 @@ def build_labels(path):
 
 def run_driver(snap, repo, frontier, out, hashseed="0", baseline=None, labels=None):
     env = dict(os.environ, PYTHONHASHSEED=hashseed)
-    cmd = [sys.executable, os.path.join(HERE, "dyno_report.py"),
+    cmd = [sys.executable, os.path.join(HERE, "vibrant_report.py"),
            "--harness", "claude-code", "--snapshot", snap,
            "--repos", repo, "--since", "1.day.ago",
            "--frontier", frontier, "--now", "1754006400", "--out", out]
@@ -194,7 +194,7 @@ def check_confounds(fails):
 
     num = {"repos": []}
     # mixed effort + mixed regime + Jan sessions against a Jul-Aug git window
-    cf = dyno_report.confounds(
+    cf = vibrant_report.confounds(
         [mm("high", "sweeps", "2026-01-05"), mm("low", "manual", "2026-01-06")],
         num, "30.days.ago", now)
     j = " || ".join(cf)
@@ -206,7 +206,7 @@ def check_confounds(fails):
         fails.append(f"confounds: non-overlapping fuel/git window not named: {cf}")
     # uniform effort + all-unclassified regime + overlapping window: only the
     # 'uncontrolled review regime' confound should fire (not effort/window/mix).
-    cf2 = dyno_report.confounds(
+    cf2 = vibrant_report.confounds(
         [mm("high", "unclassified", "2026-07-20"),
          mm("high", "unclassified", "2026-07-21")], num, "30.days.ago", now)
     j2 = " || ".join(cf2)
@@ -219,7 +219,7 @@ def check_confounds(fails):
     if "Empty denominator" in j2:
         fails.append(f"confounds: empty-denominator falsely named by default: {cf2}")
     # denom_empty=True names the empty-denominator confound (null-topline case)
-    cf3 = dyno_report.confounds([mm("high", "sweeps", "2026-07-20")], num,
+    cf3 = vibrant_report.confounds([mm("high", "sweeps", "2026-07-20")], num,
                                 "30.days.ago", now, denom_empty=True)
     if "Empty denominator" not in " || ".join(cf3):
         fails.append(f"confounds: empty-denominator not named when set: {cf3}")
@@ -230,20 +230,20 @@ def check_frontier_loading(fails):
     degrades to an empty frontier when unfetchable, never raising."""
     d = tempfile.mkdtemp()
     p = os.path.join(d, "fr.json")
-    payload = {"schema": "agent-dyno/frontier@2",
+    payload = {"schema": "vibrant/frontier@2",
                "entries": [{"id": "x", "engine": "solo", "vector": {},
                             "date": "2026-08-01"}]}
     json.dump(payload, open(p, "w"))
-    fr, raw = dyno_report.load_frontier(p)
+    fr, raw = vibrant_report.load_frontier(p)
     if [e["id"] for e in fr.get("entries", [])] != ["x"] or not raw:
         fails.append("load_frontier: path form failed")
-    fr2, raw2 = dyno_report.load_frontier("file://" + p)
+    fr2, raw2 = vibrant_report.load_frontier("file://" + p)
     if [e["id"] for e in fr2.get("entries", [])] != ["x"] or raw2 != raw:
         fails.append("load_frontier: file:// URL did not resolve to the same bytes")
-    fr3, raw3 = dyno_report.load_frontier(os.path.join(d, "nope.json"))
+    fr3, raw3 = vibrant_report.load_frontier(os.path.join(d, "nope.json"))
     if fr3 != {"entries": []} or raw3 != b"":
         fails.append(f"load_frontier: missing path should degrade to empty, got {fr3}")
-    fr4, _ = dyno_report.load_frontier("http://127.0.0.1:9/nope")
+    fr4, _ = vibrant_report.load_frontier("http://127.0.0.1:9/nope")
     if fr4 != {"entries": []}:
         fails.append("load_frontier: unfetchable URL should degrade to empty")
 
@@ -263,7 +263,7 @@ def check_detect_changes(fails):
     # a real sustained regime change: 10 days majority-solo, then 10 majority-delegate
     ms = ([mm(day(i), "solo") for i in range(10)]
           + [mm(day(i), "delegate") for i in range(10, 20)])
-    eng = [c for c in dyno_report.detect_changes(ms) if c["dim"] == "engine"]
+    eng = [c for c in vibrant_report.detect_changes(ms) if c["dim"] == "engine"]
     if not (len(eng) == 1 and eng[0]["from"] == "solo" and eng[0]["to"] == "delegate"
             and eng[0]["date"] == day(10)):
         fails.append(f"detect_changes should date one solo->delegate change to "
@@ -273,9 +273,9 @@ def check_detect_changes(fails):
     for i in range(24):
         maj, minr = ("solo", "delegate") if i % 2 == 0 else ("delegate", "solo")
         alt += [mm(day(i), maj)] * 3 + [mm(day(i), minr)] * 2
-    if [c for c in dyno_report.detect_changes(alt) if c["dim"] == "engine"]:
+    if [c for c in vibrant_report.detect_changes(alt) if c["dim"] == "engine"]:
         fails.append(f"detect_changes invented a change on blended/alternating data: "
-                     f"{dyno_report.detect_changes(alt)}")
+                     f"{vibrant_report.detect_changes(alt)}")
 
 
 def main():
@@ -347,7 +347,7 @@ def main():
 
         # ---- (3) provenance + governance stamp ----
         prov = rep["provenance"]
-        if not prov.get("frontier_sha256") or prov.get("driver") != "dyno_report/1":
+        if not prov.get("frontier_sha256") or prov.get("driver") != "vibrant_report/1":
             fails.append("provenance incomplete")
         if not prov["repos"] or not prov["repos"][0].get("head"):
             fails.append("provenance missing repo HEAD")
@@ -588,11 +588,11 @@ def main():
                 fails.append(f"{name} is not byte-identical across runs / hash seeds")
 
     if fails:
-        print("FAIL  dyno_report:")
+        print("FAIL  vibrant_report:")
         for f in fails:
             print("  -", f)
         return 1
-    print("PASS  dyno_report: vector, same-shape, provenance, determinism all hold")
+    print("PASS  vibrant_report: vector, same-shape, provenance, determinism all hold")
     return 0
 
 

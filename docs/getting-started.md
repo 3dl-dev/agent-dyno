@@ -7,7 +7,7 @@ every command reads your local git and your local logs.
 
 ```bash
 git clone https://github.com/3dl-dev/vibrant
-cd agent-dyno
+cd vibrant
 ```
 
 Python 3, stdlib only. Nothing to install.
@@ -27,8 +27,8 @@ window).
 ## 2. Freeze your fuel snapshot (Claude Code adapter, ~30-40s)
 
 ```bash
-python3 adapters/claude-code/snapshot.py --out /tmp/dyno
-SNAP=$(ls -d /tmp/dyno/*/ | tail -1)
+python3 adapters/claude-code/snapshot.py --out /tmp/vibrant
+SNAP=$(ls -d /tmp/vibrant/*/ | tail -1)
 ```
 
 Writes two small JSONL files (mb = turns/sessions, mc = code) under a dated dir.
@@ -83,13 +83,13 @@ python3 core/test_survival_git.py     # builds a fixture repo, asserts 60% survi
 
 ## 6. See a leaderboard
 
-Open `leaderboard/dyno.html` in a browser. It renders the seed frontier. Point it
+Open `leaderboard/vibrant.html` in a browser. It renders the seed frontier. Point it
 at your own `frontier/reference-frontier.json` to see your own board.
 
 ## 7. Contribute (optional, federated)
 
 Draft an anonymized entry for your frontier following
-`skills/dyno-contribute/SKILL.md`: the technique, the fingerprint, the vector, the
+`skills/vibrant-contribute/SKILL.md`: the technique, the fingerprint, the vector, the
 horizon, the proof tier. Append it to your own `frontier/reference-frontier.json`
 for internal use, or open a PR against `3dl-dev/vibrant` to go public.
 

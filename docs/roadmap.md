@@ -1,30 +1,30 @@
 # Roadmap and handoff: completing the fingerprint and the join
 
 A clean session resumes from here. This is an execution pointer, not a belief:
-read it, read `skills/dyno-report/dyno_report.spec.md`, run the tests to confirm
+read it, read `skills/vibrant-report/vibrant_report.spec.md`, run the tests to confirm
 the baseline is green. Do not re-litigate the decisions logged below; they were
 made deliberately.
 
-**Items 1-5 are complete** (branch `dyno-report-driver`, commits `2937ed0`
+**Items 1-5 are complete** (branch `vibrant-report-driver`, commits `2937ed0`
 through `fa2142e`); see the per-item DONE notes under "The plan" below. To confirm
 the baseline, run every test:
 
 ```
 python3 core/test_survival_git.py
 python3 core/test_frontier.py
-python3 skills/dyno-report/test_dyno_report.py
+python3 skills/vibrant-report/test_vibrant_report.py
 python3 adapters/claude-code/fingerprint_evidence.py --selftest
 ```
 
-Branch: `dyno-report-driver`. Baseline is committed and green.
+Branch: `vibrant-report-driver`. Baseline is committed and green.
 
 ```
 python3 core/test_survival_git.py
-python3 skills/dyno-report/test_dyno_report.py
+python3 skills/vibrant-report/test_vibrant_report.py
 # run the real report:
-python3 adapters/claude-code/snapshot.py --out /tmp/dyno
-python3 skills/dyno-report/dyno_report.py --harness claude-code \
-    --snapshot $(ls -d /tmp/dyno/*/ | tail -1) \
+python3 adapters/claude-code/snapshot.py --out /tmp/vibrant
+python3 skills/vibrant-report/vibrant_report.py --harness claude-code \
+    --snapshot $(ls -d /tmp/vibrant/*/ | tail -1) \
     --repos <comma-separated repos you code in> --since 30.days.ago --out /tmp/rep
 ```
 
@@ -128,7 +128,7 @@ same pipe. The surface stays one number; everything else is depth you descend in
 ## The plan: items 1-5 (DONE)
 
 All five landed source-first (spec + acceptance test first, then code), each its
-own commit on `dyno-report-driver`. The per-item outcomes below are kept as the
+own commit on `vibrant-report-driver`. The per-item outcomes below are kept as the
 record of what was built; the "DONE" line on each says where it lives.
 
 ### 1. Wire the LLM classifier as a cached fingerprint layer
@@ -208,13 +208,13 @@ is deployed. The distribution now ships as its own plugin marketplace
 with two app-first verbs: `/vibrant:run` (measure your setup) and
 `/vibrant:contribute` (opt-in, anonymized publish). Federation followed:
 `core/frontier.py` (merge, summarize with a k-anonymity floor, validate),
-`dyno-report --frontier <url>` and `$DYNO_FRONTIER` for the federated read side, and
+`vibrant-report --frontier <url>` and `$VIBRANT_FRONTIER` for the federated read side, and
 the in-tool contribute loop. The fabricated `demo.py` was removed: it produced a
 synthetic "your setup" report that read as real and misled; the real run (snapshot
-computes survival now) is the proof, and `test_dyno_report.py` covers the render.
+computes survival now) is the proof, and `test_vibrant_report.py` covers the render.
 The `hoist/` deploy recipe was removed. See git history
 from `fa2142e` onward.
-Original outcome: dyno-report ships itself -- a `hoist` formula (see
+Original outcome: vibrant-report ships itself -- a `hoist` formula (see
 `~/projects/hoistable`) that, on install, clones the repo, builds the snapshot, and
 runs the report with zero setup.
 
@@ -223,9 +223,9 @@ runs the report with zero setup.
 - `core/survival_git.py` -- numerator: `survival()` (KB), `changes()` (DORA),
   `net_complexity` (decision points). `core/horizon_attribute.py` -- commit<->
   session join (item 2). `core/test_survival_git.py` -- numerator acceptance.
-- `skills/dyno-report/dyno_report.py` -- the deterministic driver.
-  `test_dyno_report.py` -- the acceptance test (the contract).
-  `dyno_report.spec.md` -- source of truth. `SKILL.md` -- the three-step skill.
+- `skills/vibrant-report/vibrant_report.py` -- the deterministic driver.
+  `test_vibrant_report.py` -- the acceptance test (the contract).
+  `vibrant_report.spec.md` -- source of truth. `SKILL.md` -- the three-step skill.
 - `docs/taxonomy.md` -- the fingerprint dimensions in accepted terms.
 - `adapters/claude-code/` -- `snapshot.py`, `characterize.py` (routing/fanout
   signals), `fingerprint.py` (skill/tool signatures), `mb_cost.py` (pricing).
