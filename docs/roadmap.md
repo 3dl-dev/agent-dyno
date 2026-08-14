@@ -200,17 +200,18 @@ unit) or relabel its fields as an engine-efficiency-vector prediction (depth) an
 keep the measure loop as the ground truth on the headline. Acceptance: test asserts
 the new confound strings when the conditions hold; lever fields are honestly named.
 
-### 5. Hoist config
-**DONE** (`fa2142e`). `skills/dyno-report/demo.py` fabricates a synthetic snapshot
-+ throwaway git repo and renders `report.{json,md,html}` with zero setup (exercises
-the join, the labels cache, the lever, the slicer; `--selftest`). `hoist/config.json`
-is agent-dyno's canonical Layer 2 formula: a hermetic profile whose bringup renders
-the demo and whose acceptance re-runs the stdlib self-tests and grades the chart.
-Verified end to end: `python3 <hoistable>/hoist/hoist.py <agent-dyno>/hoist/config.json`
--> BUILT, transfer 6/6. NOTE: to hoist by name (`hoist agent-dyno`), repoint the
-hoistable index entry to `../agent-dyno/hoist/config.json` (a one-line change left
-unapplied to avoid committing to the hoistable repo's main branch, which carried
-unrelated in-flight work). Direct-path hoist needs no hoistable change.
+### 5. Distribution (the hoist/deploy path was built, then superseded)
+The initial build wrapped Agent Dyno as a hoistable graded-install skill (a "deploy"
+verb). That was dropped: Agent Dyno is a measurement tool, not a service, so nothing
+is deployed. The distribution now ships as its own plugin marketplace
+(`/plugin marketplace add 3dl-dev/agent-dyno`, `/plugin install agent-dyno@agent-dyno`)
+with two app-first verbs: `/agent-dyno:run` (measure your setup) and
+`/agent-dyno:contribute` (opt-in, anonymized publish). Federation followed:
+`core/frontier.py` (merge, summarize with a k-anonymity floor, validate),
+`dyno-report --frontier <url>` and `$DYNO_FRONTIER` for the federated read side, and
+the in-tool contribute loop. `skills/dyno-report/demo.py` remains as a worked example
+plus end-to-end render test. The `hoist/` deploy recipe was removed. See git history
+from `fa2142e` onward.
 Original outcome: dyno-report ships itself -- a `hoist` formula (see
 `~/projects/hoistable`) that, on install, clones the repo, builds the snapshot, and
 runs the report with zero setup.

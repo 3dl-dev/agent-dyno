@@ -2,12 +2,12 @@
 """
 demo.py, render a self-contained example report with zero external setup.
 
-This is what makes dyno-report hoistable. It proves the whole pipe end to end on
-a clean machine: it fabricates a small synthetic snapshot and a throwaway git repo
-(no harness transcripts, no network, no real repos, no keys), runs the same
-deterministic driver a real report uses, and writes report.{json,md,html}. A
-`hoist agent-dyno` clones the repo and runs this to a rendered report; the hoist
-acceptance then grades the artifacts.
+A worked example and an end-to-end test of the whole pipe. It fabricates a small
+synthetic snapshot and a throwaway git repo (no harness transcripts, no network, no
+real repos, no keys), runs the same deterministic driver a real report uses, and
+writes report.{json,md,html}. `--selftest` asserts the artifacts render, so it
+doubles as end-to-end coverage of build_report. Use it to see what a report looks
+like without measuring your own setup.
 
 It exercises the real machinery, not a stub: the git<->session join (proj-scoped
 topline + per-model attribution), the fingerprint labels cache (pattern dims), the
