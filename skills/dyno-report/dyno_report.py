@@ -100,6 +100,15 @@ def _arm(values):
             "is_blended": len(b) > 1 and b[0]["share"] < 60.0}
 
 
+def _majority(values):
+    """The value that holds a clear majority (>50%) of the KNOWN values, else None.
+    Used for timeline change flags: a blended week (no majority) never reads as a
+    change, and 'unknown'/absent values (missing data, not a setting the operator
+    chose) never trigger a transition like 'unknown to high'."""
+    b = blend([v for v in values if v not in (None, "unknown")])
+    return b[0]["value"] if b and b[0]["share"] > 50.0 else None
+
+
 def engine_of(sess):
     if (sess.get("workflows") or 0) > 0 or (sess.get("wf_agents") or 0) > 0:
         return "workflow"
@@ -542,7 +551,7 @@ def timeline(metrics):
             weeks[_iso_week(m["day"])].append(m)
         except Exception:
             continue
-    rows, prev = [], None
+    rows, prev_maj = [], None
     for key in sorted(weeks):
         cells = weeks[key]
         survc = sum(c["born"] - c["killed"] for c in cells)
@@ -553,19 +562,27 @@ def timeline(metrics):
         # drops a week from the curve.
         out_mtok = sum(c["out_tok"] for c in cells) / 1e6
         eq = round(survkb / out_mtok, 2) if out_mtok else None
+        # Display the plurality per arm; but flag a CHANGE only on a clear-majority
+        # shift. A blended stack whose plurality wobbles week to week (delegate one
+        # week, solo the next, neither a majority) is not a change the operator made,
+        # and must not read as one. Only a >50% arm flipping to a different >50% arm
+        # is a real, attributable change.
         fp = {"engine": modal([c["engine"] for c in cells]),
               "orchestrator": modal([c["model"] for c in cells]),
               "effort": modal([c["effort"] for c in cells])}
+        maj = {"engine": _majority([c["engine"] for c in cells]),
+               "orchestrator": _majority([c["model"] for c in cells]),
+               "effort": _majority([c["effort"] for c in cells])}
         changes = []
-        if prev:
+        if prev_maj:
             for dim in ("engine", "orchestrator", "effort"):
-                if fp[dim] != prev[dim]:
-                    changes.append(f"{dim}: {prev[dim]} to {fp[dim]}")
+                if maj[dim] and prev_maj[dim] and maj[dim] != prev_maj[dim]:
+                    changes.append(f"{dim}: {prev_maj[dim]} to {maj[dim]}")
         bs = babysitting(cells)
         rows.append({"week": _week_label(key), "eq": eq,
                      "sessions": len(cells), "fingerprint": fp, "changes": changes,
                      "babysitting": bs["per_100_turns"] if bs else None})
-        prev = fp
+        prev_maj = maj
     return rows
 
 

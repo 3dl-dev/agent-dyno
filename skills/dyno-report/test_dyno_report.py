@@ -248,10 +248,33 @@ def check_frontier_loading(fails):
         fails.append("load_frontier: unfetchable URL should degrade to empty")
 
 
+def check_timeline_changes(fails):
+    """(blended-stack honesty) timeline flags a week-to-week change only on a clear
+    MAJORITY shift, never on plurality wobble in a stably blended stack."""
+    def mm(day, engine, model, effort="high"):
+        return {"day": day, "engine": engine, "model": model, "effort": effort,
+                "born": 1000, "killed": 0, "out_tok": 1000, "n_turns": 1,
+                "nudges": 0, "interrupts": 0, "ends_q": 0}
+    d1, d2 = "2026-08-03", "2026-08-12"
+    # a real shift: week1 is majority solo, week2 is majority delegate
+    shift = ([mm(d1, "solo", "opus-5")] * 3 + [mm(d1, "delegate", "opus-4-8")]
+             + [mm(d2, "delegate", "opus-4-8")] * 3 + [mm(d2, "solo", "opus-5")])
+    wk2 = [r for r in dyno_report.timeline(shift) if r["eq"] is not None][1]
+    if not any("engine: solo to delegate" in c for c in wk2["changes"]):
+        fails.append(f"timeline should flag a real majority engine shift: {wk2['changes']}")
+    # blended wobble: 2 solo + 2 delegate each week (no majority) -> no change flag
+    wobble = ([mm(d1, "solo", "opus-5")] * 2 + [mm(d1, "delegate", "opus-4-8")] * 2
+              + [mm(d2, "delegate", "opus-4-8")] * 2 + [mm(d2, "solo", "opus-5")] * 2)
+    for r in dyno_report.timeline(wobble):
+        if any("engine" in c for c in r["changes"]):
+            fails.append(f"blended week wrongly flagged an engine change: {r['changes']}")
+
+
 def main():
     fails = []
     check_confounds(fails)
     check_frontier_loading(fails)
+    check_timeline_changes(fails)
     with tempfile.TemporaryDirectory() as tmp:
         snap = os.path.join(tmp, "snap"); os.makedirs(snap)
         repo = os.path.join(tmp, "repo"); os.makedirs(repo)
@@ -417,9 +440,12 @@ def main():
                              f"{[r['week'] for r in tlr]}")
             if tlr[0]["changes"]:
                 fails.append("first week should have no change annotations")
-            if not any("orchestrator" in c for c in tlr[1]["changes"]):
-                fails.append(f"week 2 should annotate an orchestrator change, "
-                             f"got {tlr[1]['changes']}")
+            # both fixture weeks are blended (2 distinct models, no majority), so
+            # NEITHER should flag a spurious change: the honest behavior. Real-shift
+            # detection is exercised in check_timeline_changes().
+            if tlr[1]["changes"]:
+                fails.append(f"week 2 (blended, no majority) should flag no spurious "
+                             f"change, got {tlr[1]['changes']}")
         # fuel-and-work series: 2 weekly buckets; week 1 = s1+s2
         fwroot = rep.get("fuel_and_work") or {}
         fw = fwroot.get("series") or []
