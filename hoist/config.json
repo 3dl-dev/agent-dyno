@@ -21,7 +21,10 @@
     }
   },
   "binds": [
-    { "name": "repos", "required": false, "probe": "git repos to measure; the default --repos auto discovers them from the operator's own snapshot, so no value is needed to produce a report" },
-    { "name": "snapshot", "required": false, "probe": "a local fuel snapshot; absent, the claude-code adapter builds one from local transcripts" }
+    { "name": "git", "required": true, "probe": "command -v git >/dev/null" },
+    { "name": "python3", "required": true, "probe": "python3 -c \"import sys; assert sys.version_info[0]==3\"" },
+    { "name": "gh-for-operator-fetch", "required": false, "probe": "command -v gh >/dev/null" },
+    { "name": "repos", "required": false, "probe": "true" },
+    { "name": "snapshot", "required": false, "probe": "true" }
   ]
 }
