@@ -1128,18 +1128,19 @@ _CSS = """
 .vibrant *{box-sizing:border-box;}
 .vibrant .card{background:var(--card);border:1px solid var(--line);border-radius:18px;
  padding:30px 32px;box-shadow:0 1px 2px rgba(var(--shadow),.05),0 10px 34px rgba(var(--shadow),.07);}
-.vibrant .top{display:flex;justify-content:space-between;align-items:center;margin:0 0 22px;}
-.vibrant .brand{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:800;
- letter-spacing:.19em;color:var(--ink);text-transform:uppercase;}
-.vibrant .brand .mark{width:15px;height:15px;border-radius:4px;flex:none;
- background:linear-gradient(135deg,var(--s1),var(--s3));}
+.vibrant .top{display:flex;justify-content:space-between;align-items:center;margin:0 0 26px;}
+.vibrant .brand{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;
+ letter-spacing:.16em;color:var(--ink);text-transform:uppercase;}
+.vibrant .brand .mark{width:17px;height:15px;flex:none;display:block;}
+.vibrant .brand .mark rect{fill:var(--accent);}
 .vibrant .meta{font-size:12px;color:var(--muted);letter-spacing:.02em;font-variant-numeric:tabular-nums;}
 .vibrant .mid{display:flex;justify-content:space-between;align-items:flex-end;
- gap:20px 28px;flex-wrap:wrap;margin:0 0 28px;}
+ gap:20px 28px;flex-wrap:wrap;margin:0 0 20px;}
 .vibrant .hero-left{min-width:0;}
-.vibrant .num{font-size:82px;font-weight:730;letter-spacing:-.035em;line-height:.8;color:var(--ink);}
-.vibrant .unit{font-size:13.5px;font-weight:600;color:var(--ink2);margin-top:12px;}
-.vibrant .how{font-size:12px;color:var(--muted);margin-top:3px;}
+.vibrant .num{font-size:82px;font-weight:730;letter-spacing:-.035em;line-height:.82;
+ color:var(--ink);margin-top:2px;}
+.vibrant .unit{font-size:13.5px;font-weight:600;color:var(--ink2);margin-top:16px;}
+.vibrant .how{font-size:12px;color:var(--muted);margin-top:4px;}
 .vibrant .hero-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none;}
 .vibrant .row-h{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
  color:var(--muted);margin:0 0 9px;}
@@ -1251,8 +1252,12 @@ def _hero_card(report):
         trend = (f'<div class="hero-right">{_sparkline(eqs)}'
                  f'<div class="trend-cap"><span class="{cls}">{arrow}&#8202;'
                  f'{abs(d):.0f}</span> over {span}</div></div>')
+    mark = ('<svg class="mark" viewBox="0 0 18 16" aria-hidden="true">'
+            '<rect x="0" y="9" width="4" height="7" rx="1.3"/>'
+            '<rect x="7" y="5" width="4" height="11" rx="1.3"/>'
+            '<rect x="14" y="1" width="4" height="15" rx="1.3"/></svg>')
     p = ['<div class="card">',
-         '<div class="top"><div class="brand"><span class="mark"></span>VIBRANT</div>',
+         f'<div class="top"><div class="brand">{mark}VIBRANT</div>',
          f'<div class="meta">{tl.get("sessions")} sessions</div></div>',
          '<div class="mid"><div class="hero-left">',
          f'<div class="num" title="surviving functionality per Mtok output, '
@@ -1264,7 +1269,8 @@ def _hero_card(report):
     if topo.get("blend"):
         p.append('<div class="rig"><div class="row-h">Your rig</div>'
                  + _stack_bar(topo) + '</div>')
-    p.append('<div class="foot"><span>vibrant</span><span>3dl-dev/vibrant</span></div>')
+    p.append('<div class="foot"><span>vibe-coding rig efficiency</span>'
+             '<span>3dl-dev/vibrant</span></div>')
     p.append('</div>')
     return "".join(p)
 
@@ -1333,6 +1339,21 @@ def render_html(report):
                      f'font-size="11" fill="var(--muted)">{v:.0f}</text>')
     parts.append(f'<line x1="{ml}" y1="{mt+ph}" x2="{ml+pw}" y2="{mt+ph}" '
                  f'stroke="var(--axis)" stroke-width="1"/>')
+    # change-point indices split the run into configuration ERAS. Between two
+    # changes the setup held roughly constant, so each era has a characteristic
+    # efficiency: its mean. The bold line is those per-era means (a segmented
+    # average that never smears across a real setup change), and the level SHIFT at
+    # each change is the signal the daily noise otherwise buries. This is the
+    # thesis made visible: an arrangement has a level, and tuning moves the level.
+    change_idx = [i for i, r in enumerate(tl) if r["changes"]]
+    bounds = [0] + change_idx + [n]
+    eras = []
+    for a, b in zip(bounds, bounds[1:]):
+        if b > a:
+            seg = eqs[a:b]
+            eras.append((a, b, sum(seg) / len(seg)))
+
+    # flags: dashed verticals + numbered pins at each change
     flags, k = [], 0
     for i, r in enumerate(tl):
         if not r["changes"]:
@@ -1347,23 +1368,40 @@ def render_html(report):
         parts.append(f'<text x="{x:.1f}" y="{mt-0.5}" text-anchor="middle" '
                      f'font-size="10" font-weight="700" fill="var(--accent)">{k}</text>')
         flags.append((k, r))
-    pline = " ".join(f"{X(i):.1f},{Y(r['eq']):.1f}" for i, r in enumerate(tl))
-    parts.append(f'<polygon points="{X(0):.1f},{mt+ph:.1f} {pline} {X(n-1):.1f},{mt+ph:.1f}" '
-                 f'fill="var(--accent)" opacity="0.07"/>')
-    parts.append(f'<polyline points="{pline}" fill="none" stroke="var(--accent)" '
-                 f'stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>')
-    # thin x-labels to ~8 so a daily curve does not collide; markers shrink when dense
-    lstep = max(1, round(n / 8))
-    rad = 3 if n > 14 else 4
+
+    # daily actuals, faint: the raw per-day truth under the trend, still hoverable
+    dline = " ".join(f"{X(i):.1f},{Y(r['eq']):.1f}" for i, r in enumerate(tl))
+    parts.append(f'<polygon points="{X(0):.1f},{mt+ph:.1f} {dline} {X(n-1):.1f},{mt+ph:.1f}" '
+                 f'fill="var(--accent)" opacity="0.05"/>')
+    parts.append(f'<polyline points="{dline}" fill="none" stroke="var(--accent)" '
+                 f'stroke-width="1.3" stroke-linejoin="round" opacity="0.30"/>')
     for i, r in enumerate(tl):
-        x, y = X(i), Y(r["eq"])
         tip = f"{r['week']}: {r['eq']} survKB per Mtok, {r['sessions']} sessions"
         if r["changes"]:
             tip += " | " + "; ".join(r["changes"])
-        parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{rad}" fill="var(--card)" '
-                     f'stroke="var(--accent)" stroke-width="2"><title>{esc(tip)}</title></circle>')
+        parts.append(f'<circle cx="{X(i):.1f}" cy="{Y(r["eq"]):.1f}" r="2.2" '
+                     f'fill="var(--accent)" opacity="0.34"><title>{esc(tip)}</title></circle>')
+
+    # era-mean step line, bold: the readable signal
+    step = []
+    for (a, b, mean) in eras:
+        x0, x1 = X(a), (X(b) if b < n else X(n - 1))
+        step += [f"{x0:.1f},{Y(mean):.1f}", f"{x1:.1f},{Y(mean):.1f}"]
+    if step:
+        parts.append(f'<polyline points="{" ".join(step)}" fill="none" '
+                     f'stroke="var(--accent)" stroke-width="3" stroke-linejoin="round" '
+                     f'stroke-linecap="round"/>')
+        for (a, b, mean) in eras:
+            xm = (X(a) + (X(b) if b < n else X(n - 1))) / 2
+            parts.append(f'<text x="{xm:.1f}" y="{Y(mean)-8:.1f}" text-anchor="middle" '
+                         f'font-size="12" font-weight="700" fill="var(--accent)">'
+                         f'{mean:.0f}</text>')
+
+    # thin x-labels to ~8 so a daily axis does not collide
+    lstep = max(1, round(n / 8))
+    for i, r in enumerate(tl):
         if i % lstep == 0 or i == n - 1:
-            parts.append(f'<text x="{x:.1f}" y="{mt+ph+16:.0f}" text-anchor="middle" '
+            parts.append(f'<text x="{X(i):.1f}" y="{mt+ph+16:.0f}" text-anchor="middle" '
                          f'font-size="10" fill="var(--muted)">{esc(r["week"])}</text>')
     parts.append("</svg>")
 
@@ -1374,9 +1412,11 @@ def render_html(report):
         legend = f'<ol>{items}</ol>'
     detail = (f'{_lever_html(report)}'
               f'<h2>Efficiency over time</h2>'
-              f'<p>Surviving work per Mtok output over time, the same terms as the '
-              f'headline. A numbered flag marks a real change you made, dated to the '
-              f'day it happened, so a move ties to a change and not noise.</p>'
+              f'<p>The bold line is your average surviving work per Mtok for each '
+              f'configuration era; the faint line is the daily actuals it averages. A '
+              f'numbered flag marks a real setup change, dated to the day, so the level '
+              f'between two flags is what that arrangement was worth. Tuning toward a '
+              f'better rig should raise the level, step by step.</p>'
               f'{"".join(parts)}{legend}'
               f'{render_small_multiples(report)}{render_attribution(report)}')
     body = f'<div class="vibrant">{hero}{detail}</div>'
