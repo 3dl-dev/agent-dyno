@@ -12,3 +12,4 @@ transcript-archive/
 .hoist-report/
 .claude/settings.json
 .claude/settings.local.json
+hoist/*.hoist.SKILL.md

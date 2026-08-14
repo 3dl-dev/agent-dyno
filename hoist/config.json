@@ -1,0 +1,27 @@
+{
+  "app": "vibrant",
+  "source": { "clone": "/home/baron/projects/agent-dyno", "dir": "vibrant" },
+  "default_profile": "measure",
+  "profiles": {
+    "measure": {
+      "isolation": {
+        "none": true,
+        "why": "the driver reads local git and local transcripts and writes only to --out; it opens no ports and touches no shared host state, so a hoist is hermetic"
+      },
+      "bringup": [
+        { "name": "stdlib-only-no-install", "run": "python3 -c \"import sys; assert sys.version_info[0] == 3\"" }
+      ],
+      "health": [
+        { "name": "driver-and-core-present", "check": "test -f skills/vibrant-report/vibrant_report.py && test -f core/survival_git.py" }
+      ],
+      "acceptance": [
+        { "name": "driver-verifies-on-a-fixture", "check": "python3 core/test_survival_git.py" },
+        { "name": "report-and-misery-contract-hold", "check": "python3 skills/vibrant-report/test_vibrant_report.py && python3 skills/vibrant-report/test_misery.py" }
+      ]
+    }
+  },
+  "binds": [
+    { "name": "repos", "required": false, "probe": "git repos to measure; the default --repos auto discovers them from the operator's own snapshot, so no value is needed to produce a report" },
+    { "name": "snapshot", "required": false, "probe": "a local fuel snapshot; absent, the claude-code adapter builds one from local transcripts" }
+  ]
+}
