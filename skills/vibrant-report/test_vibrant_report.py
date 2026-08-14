@@ -390,12 +390,19 @@ def main():
         attr = rep["numerator"].get("attribution") or {}
         if attr.get("matched", 0) < 1:
             fails.append(f"git<->session join matched no commits: {attr}")
-        if ((attr.get("by_model") or {}).get("opus-5") or {}).get("net_complexity") != 6:
-            fails.append(f"attribution.by_model opus-5 net_complexity should be 6, "
-                         f"got {attr.get('by_model')}")
+        # attributed to the ORCHESTRATOR (opus-5), the EFFORT (high), and the full
+        # model-ROLES config (opus-5 -> <worker>): survival is a rig property.
+        if ((attr.get("by_orchestrator") or {}).get("opus-5") or {}).get("net_complexity") != 6:
+            fails.append(f"attribution.by_orchestrator opus-5 net_complexity should be "
+                         f"6, got {attr.get('by_orchestrator')}")
         if ((attr.get("by_effort") or {}).get("high") or {}).get("net_complexity") != 6:
             fails.append(f"attribution.by_effort high net_complexity should be 6, "
                          f"got {attr.get('by_effort')}")
+        roles = attr.get("by_model_roles") or {}
+        if not any(k.startswith("opus-5 ->") and v.get("net_complexity") == 6
+                   for k, v in roles.items()):
+            fails.append(f"attribution.by_model_roles should credit an 'opus-5 -> *' "
+                         f"rig with 6 net_complexity, got {roles}")
 
         # lever must target workflow/high (the only cell a same-shape frontier
         # entry beats), reference fix-wf-high, and predict the counterfactual EQ
@@ -565,13 +572,16 @@ def main():
                 fails.append("report.html is missing the per-era velocity signal")
             if "efficiency, not quality" not in hh:
                 fails.append("report.html is missing the efficiency-is-not-quality caveat")
-            # ---- (item 3) the slicer cuts by every fingerprint dimension ----
-            for lbl in ("by model", "by effort", "by engine", "by routing",
-                        "by review regime", "by knowledge practice"):
+            # ---- (item 3) the slicer cuts by every fingerprint dimension, now
+            # including the orchestrator->worker model-roles config as a first-class
+            # arm (the same model reads differently as driver vs worker) ----
+            for lbl in ("by orchestrator", "by worker", "by model roles", "by effort",
+                        "by engine", "by routing", "by review regime",
+                        "by knowledge practice"):
                 if lbl not in hh:
                     fails.append(f"report.html slicer missing dimension group: {lbl}")
             # git-side work units join the page (as a table, not a fake time series)
-            if "Surviving work by model" not in hh:
+            if "Surviving work by orchestrator" not in hh:
                 fails.append("report.html missing the attribution (per-model work) table")
             # still self-contained: no external asset references
             if "src=" in hh or "<link" in hh or "http://" in hh or "https://" in hh:

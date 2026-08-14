@@ -85,6 +85,8 @@ def load_sessions(snapshot, repo_name):
             "sid": sid, "start": ts[0], "end": ts[-1],
             "engine": engine_of(s),
             "model": (s.get("model") or "?").split("[")[0].replace("claude-", ""),
+            "raw_model": s.get("model"),
+            "submix": s.get("submix") or {},
             "effort": max(set(efforts), key=efforts.count) if efforts else "unknown",
         })
     return out

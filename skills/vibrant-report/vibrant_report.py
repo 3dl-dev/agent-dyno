@@ -122,6 +122,27 @@ def routing_of(sess):
     return "homogeneous" if worker_bases == {orch} else "cross-family"
 
 
+def worker_of(sess):
+    """The dominant WORKER model a session dispatches to, base-family, weighted by
+    subagent invocation count; 'solo' when it runs no workers. This is the 'who does
+    the work' half of the rig, distinct from the orchestrator ('who drives'). The
+    same model reads completely differently as a driver vs a worker, which is exactly
+    the distinction a per-orchestrator-only view collapses."""
+    submix = sess.get("submix") or {}
+    if not submix:
+        return "solo"
+    top = sorted(submix, key=lambda k: (-submix[k], k))[0]
+    return base_model(top)
+
+
+def roles_of(sess):
+    """The rig's model configuration as one arm: orchestrator -> dominant worker,
+    e.g. 'opus-4-8 -> opus-5' (opus-4-8 drives, dispatches opus-5 workers) vs
+    'opus-5 -> sonnet-5' (opus-5 drives). A first-class parametrix axis: the pairing
+    is the rig, not the driver alone."""
+    return f"{base_model(sess.get('model'))} -> {worker_of(sess)}"
+
+
 def rig_key(m):
     """The deterministic fingerprint skeleton a session belongs to: engine /
     routing / effort. The classifier labels distinct RIGS, not sessions (the
@@ -272,6 +293,8 @@ def session_metrics(sess, turns, code, survival, session_cost, usage_field):
         "engine": engine_of(sess),
         "routing": routing_of(sess),
         "model": base_model(sess.get("model")),
+        "worker": worker_of(sess),
+        "model_roles": roles_of(sess),
         "effort": effort,
         "born": sv["born"],
         "killed": sv.get("killed", 0),
@@ -557,7 +580,7 @@ def detect_changes(metrics, window=14, sustain=0.75):
     days = sorted(by_day)
     out = []
     for label, field in (("engine", "engine"), ("orchestrator", "model"),
-                         ("effort", "effort")):
+                         ("worker", "worker"), ("effort", "effort")):
         daymaj = {}
         for day in days:
             vals = [c.get(field) for c in by_day[day]
@@ -705,8 +728,8 @@ def fingerprint_summary(metrics, numerator):
         return pending if v == "unclassified" else v
 
     fine, review, knowledge = (label(d) for d in PATTERN_DIMS)
-    ingested = ["topology", "routing", "orchestrator-model", "effort",
-                "delivery-cadence"]
+    ingested = ["topology", "routing", "orchestrator-model", "worker-model",
+                "model-roles", "effort", "delivery-cadence"]
     for name, val in (("fine-topology", fine), ("review-regime", review),
                       ("knowledge-practice", knowledge)):
         if val != pending:
@@ -720,6 +743,8 @@ def fingerprint_summary(metrics, numerator):
         "orchestration_topology": topo,
         "model_routing": _arm([m["routing"] for m in metrics]),
         "orchestrator_model": _arm([m["model"] for m in metrics]),
+        "worker_model": _arm([m["worker"] for m in metrics]),
+        "model_roles": _arm([m["model_roles"] for m in metrics]),
         "reasoning_effort": _arm([m["effort"] for m in metrics]),
         "review_regime": review,
         "knowledge_practice": knowledge,
@@ -1111,16 +1136,24 @@ def attribute_work(bundles, since, snapshot_dir, tail=900.0):
 
     Leverages horizon_attribute.load_sessions for the project+time match. A commit
     matches the session whose active window brackets its time (short tail tolerance);
-    its surviving lines/complexity accrue to that session's model and effort.
-    Deterministic: commit times are fixed at HEAD, session times are fixed in the
+    its surviving lines/complexity accrue to that session's ORCHESTRATOR (direct
+    agent), EFFORT, and full model-ROLES config (orchestrator -> dominant worker).
+    Survival is a property of the session, not of any one model inside it, so it is
+    attributed to the RIG, never split below the session (there is no per-worker file
+    record). Deterministic: commit times fixed at HEAD, session times fixed in the
     snapshot; a commit matching no session is counted, not dropped."""
-    by_model = defaultdict(lambda: {"commits": 0, "surviving": 0, "net_complexity": 0})
-    by_effort = defaultdict(lambda: {"commits": 0, "surviving": 0, "net_complexity": 0})
+    def _agg():
+        return defaultdict(lambda: {"commits": 0, "surviving": 0, "net_complexity": 0})
+    by_model, by_effort, by_roles = _agg(), _agg(), _agg()
     matched = unmatched = 0
     for repo, b in bundles.items():
         sessions = horizon_attribute.load_sessions(snapshot_dir, b["name"])
         if not sessions:
             continue
+        for s in sessions:  # precompute the roles config once per session
+            s["_roles"] = f"{base_model(s.get('raw_model'))} -> " + (
+                base_model(sorted(s["submix"], key=lambda k: (-s["submix"][k], k))[0])
+                if s.get("submix") else "solo")
         commits, surviving, complexity = b["commits"], b["surviving"], b["complexity"]
         if not commits:
             continue
@@ -1134,15 +1167,17 @@ def attribute_work(bundles, since, snapshot_dir, tail=900.0):
                 continue
             s = min(cand, key=lambda s: abs((s["start"] + s["end"]) / 2 - c["ts"]))
             matched += 1
-            for agg, key in ((by_model, s["model"]), (by_effort, s["effort"])):
+            for agg, key in ((by_model, s["model"]), (by_effort, s["effort"]),
+                             (by_roles, s["_roles"])):
                 a = agg[key]
                 a["commits"] += 1
                 a["surviving"] += surviving.get(sha, 0)
                 a["net_complexity"] += complexity.get(sha, 0)
     return {
         "matched": matched, "unmatched": unmatched,
-        "by_model": {k: by_model[k] for k in sorted(by_model)},
+        "by_orchestrator": {k: by_model[k] for k in sorted(by_model)},
         "by_effort": {k: by_effort[k] for k in sorted(by_effort)},
+        "by_model_roles": {k: by_roles[k] for k in sorted(by_roles)},
     }
 
 
@@ -1163,6 +1198,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
     all_fp = sorted(
         ({"day": s.get("day"), "engine": engine_of(s),
           "model": base_model(s.get("model")),
+          "worker": worker_of(s), "model_roles": roles_of(s),
           "effort": modal([t.get("effort") for t in turns.get(sid, [])
                            if t.get("effort")])}
          for sid, s in sessions.items() if s.get("day")),
@@ -1315,6 +1351,8 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
         "fuel_and_work": {
             "granularity": granularity, "series": fuel,
             "by_model": fuel_sliced(metrics, granularity, "model"),
+            "by_worker": fuel_sliced(metrics, granularity, "worker"),
+            "by_model_roles": fuel_sliced(metrics, granularity, "model_roles"),
             "by_effort": fuel_sliced(metrics, granularity, "effort"),
             "by_engine": fuel_sliced(metrics, granularity, "engine"),
             "by_routing": fuel_sliced(metrics, granularity, "routing"),
@@ -1858,7 +1896,9 @@ def _sm_svg(rows):
 # dimension id -> the fuel_and_work slice key and the human group label. One
 # selector cuts by every fingerprint dimension the driver slices.
 _SLICE_DIMS = [
-    ("model", "by_model", "by model"),
+    ("model", "by_model", "by orchestrator"),
+    ("worker", "by_worker", "by worker"),
+    ("model_roles", "by_model_roles", "by model roles"),
     ("effort", "by_effort", "by effort"),
     ("engine", "by_engine", "by engine"),
     ("routing", "by_routing", "by routing"),
@@ -1926,12 +1966,19 @@ def render_attribution(report):
                 f"</tr></thead><tbody>{rows}</tbody></table>")
 
     parts = []
-    if attr.get("by_model"):
-        parts.append(table("Surviving work by model", "model", attr["by_model"]))
+    if attr.get("by_model_roles"):
+        parts.append(table("Surviving work by rig (orchestrator to worker)",
+                           "orchestrator to worker", attr["by_model_roles"]))
+    if attr.get("by_orchestrator"):
+        parts.append(table("Surviving work by orchestrator (direct agent)",
+                           "orchestrator", attr["by_orchestrator"]))
     if attr.get("by_effort"):
         parts.append(table("Surviving work by effort", "effort", attr["by_effort"]))
     note = (f'<p style="margin-top:8px">Joined {attr["matched"]} commit(s) to a '
-            f'session; {attr.get("unmatched", 0)} matched no session window.</p>')
+            f'session; {attr.get("unmatched", 0)} matched no session window. Survival '
+            f'is credited to the whole rig (the session), never split between the '
+            f'orchestrator and its workers: there is no per-worker file record, so a '
+            f'model reads only through the rig it ran in.</p>')
     return "".join(parts) + note if parts else ""
 
 
