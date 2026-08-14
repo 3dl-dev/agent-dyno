@@ -548,7 +548,7 @@ def main():
             hh = open(htmlp).read()
             if "<svg" not in hh or "durable shipped complexity" not in hh:
                 fails.append("report.html is not the expected chart")
-            if "Fuel and work over time" not in hh:
+            if "Fuel and work" not in hh:
                 fails.append("report.html is missing the fuel-and-work small multiples")
             # the shareable card carries the wordmark and the number's precise unit
             # (in its tooltip); the lever (here the workflow/high tweak) is in the
@@ -565,13 +565,13 @@ def main():
             if "A lever to test (unverified)" not in hh or "unverified" not in hh:
                 fails.append("report.html presents an unverified lever as substantiated "
                              "advice (should be labeled a hypothesis to test)")
-            # velocity must sit beside efficiency: the topline (lines/token) inverts
-            # on tight, high-leverage work, so shipped-per-day is shown per era and
-            # the caveat states efficiency is neither velocity nor quality.
-            if "shipped" not in hh or "velocity" not in hh:
-                fails.append("report.html is missing the per-era velocity signal")
-            if "efficiency, not quality" not in hh:
-                fails.append("report.html is missing the efficiency-is-not-quality caveat")
+            # the efficiency-over-time chart is one meter, self-evident: bold per-era
+            # levels + dated flags, no explanatory paragraphs and no second meter
+            # (velocity) conflated into the same visual channel.
+            if "Efficiency over time" not in hh:
+                fails.append("report.html is missing the efficiency-over-time chart")
+            if "The bold line is" in hh or "efficiency, not quality" in hh:
+                fails.append("report.html still carries the cut explanatory paragraphs")
             # ---- (item 3) the slicer cuts by every fingerprint dimension, now
             # including the orchestrator->worker model-roles config as a first-class
             # arm (the same model reads differently as driver vs worker) ----

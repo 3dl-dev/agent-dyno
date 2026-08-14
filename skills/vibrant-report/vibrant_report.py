@@ -1447,12 +1447,8 @@ def render_md(report):
         # the whole fingerprint (topology usually matters more than the model), and
         # it is operator-relative: this is YOUR friction, comparable only across your
         # own rigs, never a verdict about a model.
-        L.append(f"**Misery {mb['overall']}/100.** How much you fought your rig "
-                 f"(0 smooth, 100 constant fighting), from the sentiment of your own "
-                 f"replies. A second meter, never folded into efficiency: a rig can be "
-                 f"cheap and miserable at once. It is a function of your whole "
-                 f"fingerprint (topology usually more than the model) and relative to "
-                 f"you, so compare it only across your own rigs.")
+        L.append(f"**Misery {mb['overall']}/100.** How much you fought your rig, from "
+                 f"your own replies. A second meter, never folded into efficiency.")
         L.append("")
     cov = report.get("coverage")
     if cov and cov.get("measured_pct") is not None and cov["measured_pct"] < 90:
@@ -1581,7 +1577,10 @@ _CSS = """
 .vibrant .measure{font-size:12.5px;color:var(--ink2);margin:12px 0 0;}
 .vibrant .foot{margin-top:24px;padding-top:15px;border-top:1px solid var(--line);
  font-size:11px;letter-spacing:.03em;color:var(--muted);display:flex;justify-content:space-between;}
-.vibrant h2{font-size:14px;font-weight:650;color:var(--ink);margin:34px 0 3px;letter-spacing:-.01em;}
+.vibrant h2{font-size:14px;font-weight:650;color:var(--ink);margin:34px 0 12px;letter-spacing:-.01em;}
+.vibrant h2 .sub{font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0;}
+.vibrant h2 select{margin-left:8px;vertical-align:middle;}
+.vibrant .fine{font-size:11px;color:var(--muted);margin-top:8px;}
 .vibrant p{font-size:13px;color:var(--ink2);margin:0 0 14px;line-height:1.5;}
 .vibrant svg{max-width:100%;height:auto;}
 .vibrant table{border-collapse:collapse;font-size:13px;margin-top:14px;width:100%;
@@ -1770,18 +1769,20 @@ def render_html(report):
     ml, mr, mt, mb = 46, 18, 26, 40
     pw, ph = W - ml - mr, H - mt - mb
     eqs = [r["eq"] for r in tl]
-    ylo, yhi = min(eqs), max(eqs)
-    if yhi == ylo:
-        yhi, ylo = yhi + 1, 0.0
-    pad = (yhi - ylo) * 0.18
-    # efficiency is non-negative; never let padding push the axis below zero.
-    ylo, yhi = max(0.0, ylo - pad), yhi + pad
+    # robust y-scale: a couple of outlier days (a big commit on a low-token day) can
+    # be 10x the rest and crush the era lines into a flat band. Cap the axis at the
+    # ~85th percentile of daily values plus headroom; rare spikes clip to the top
+    # edge instead of flattening the signal. Floor at 0 (efficiency is non-negative).
+    srt = sorted(eqs)
+    p85 = srt[min(len(srt) - 1, int(0.85 * len(srt)))] if srt else 1.0
+    ylo, yhi = 0.0, max(p85 * 1.2, max(eqs) * 0.35, 1.0)
     n = len(tl)
 
     def X(i):
         return ml + (pw * i / (n - 1) if n > 1 else pw / 2)
 
     def Y(v):
+        v = min(max(v, ylo), yhi)  # clamp: spikes ride the top edge, never off-canvas
         return mt + ph * (1 - (v - ylo) / (yhi - ylo))
 
     parts = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="efficiency over time">']
@@ -1862,11 +1863,8 @@ def render_html(report):
         for (a, b, mean, vel) in eras:
             xm = (X(a) + (X(b) if b < n else X(n - 1))) / 2
             parts.append(f'<text x="{xm:.1f}" y="{Y(mean)-9:.1f}" text-anchor="middle" '
-                         f'font-size="12.5" font-weight="700" fill="var(--accent)">'
+                         f'font-size="13" font-weight="700" fill="var(--accent)">'
                          f'{mean:.0f}</text>')
-            parts.append(f'<text x="{xm:.1f}" y="{Y(mean)+16:.1f}" '
-                         f'text-anchor="middle" font-size="11" font-weight="700" '
-                         f'fill="var(--good)">{vel:.1f}/{vunit} shipped</text>')
 
     # thin x-labels to ~8 so a daily axis does not collide
     lstep = max(1, round(n / 8))
@@ -1882,19 +1880,8 @@ def render_html(report):
                         f'{esc("; ".join(r["changes"]))}</li>' for k, r in flags)
         legend = f'<ol>{items}</ol>'
     detail = (f'{_lever_html(report)}'
-              f'<h2>Efficiency over time</h2>'
-              f'<p>The bold line is your headline meter for each configuration era: '
-              f'durable shipped complexity per Mtok, the decision-logic that landed in '
-              f'non-reverted commits and stuck, per million output tokens. The faint '
-              f'line is the daily actuals; a numbered flag marks a real setup change, '
-              f'dated to the day, so the level between two flags is what that arrangement '
-              f'was worth.</p>'
-              f'<p>Under each level is that era\'s <b>velocity</b>, the durable changes '
-              f'you shipped per day. Because the meter counts what shipped and stuck, not '
-              f'what was typed, a rig that churns a mountain in chat but commits little '
-              f'that lasts scores low, while a tight rig that ships a lot scores high. '
-              f'The meter is efficiency, not quality: it says nothing about whether the '
-              f'work was good, only that it lasted.</p>'
+              f'<h2>Efficiency over time <span class="sub">durable work per Mtok, '
+              f'per era</span></h2>'
               f'{"".join(parts)}{legend}'
               f'{render_small_multiples(report)}{render_attribution(report)}')
     body = f'<div class="vibrant">{hero}{_coverage_banner(report)}{detail}</div>'
@@ -2014,10 +2001,8 @@ def render_small_multiples(report):
           "s.addEventListener('change',function(){"
           "document.querySelectorAll('.fw-slice').forEach(function(d){d.hidden=true;});"
           "var t=document.getElementById(s.value);if(t)t.hidden=false;});})();</script>")
-    return (f'<h2>Fuel and work over time (by {esc(gran)})</h2>'
-            f'<p>The three token streams that make up your fuel, against the code '
-            f'that survived, each on its own scale. Slice by any dimension: '
-            f'<select id="fw-sel">{"".join(groups)}</select></p>'
+    return (f'<h2>Fuel and work <span class="sub">token streams vs code that '
+            f'survived</span> <select id="fw-sel">{"".join(groups)}</select></h2>'
             f'{"".join(blocks)}{js}')
 
 
@@ -2057,11 +2042,8 @@ def render_attribution(report):
                            "orchestrator", attr["by_orchestrator"]))
     if attr.get("by_effort"):
         parts.append(table("Surviving work by effort", "effort", attr["by_effort"]))
-    note = (f'<p style="margin-top:8px">Joined {attr["matched"]} commit(s) to a '
-            f'session; {attr.get("unmatched", 0)} matched no session window. Survival '
-            f'is credited to the whole rig (the session), never split between the '
-            f'orchestrator and its workers: there is no per-worker file record, so a '
-            f'model reads only through the rig it ran in.</p>')
+    note = (f'<p class="fine">Credited to the whole rig, never split below the session. '
+            f'{attr["matched"]} commits joined, {attr.get("unmatched", 0)} unmatched.</p>')
     return "".join(parts) + note if parts else ""
 
 
