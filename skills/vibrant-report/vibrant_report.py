@@ -1531,21 +1531,25 @@ _CSS = """
 .vibrant .brand .mark{width:17px;height:15px;flex:none;display:block;}
 .vibrant .brand .mark rect{fill:var(--accent);}
 .vibrant .meta{font-size:12px;color:var(--muted);letter-spacing:.02em;font-variant-numeric:tabular-nums;}
-.vibrant .mid{display:flex;justify-content:space-between;align-items:flex-end;
- gap:20px 28px;flex-wrap:wrap;margin:0 0 20px;}
-.vibrant .hero-left{min-width:0;}
-.vibrant .num{font-size:82px;font-weight:730;letter-spacing:-.035em;line-height:.82;
- color:var(--accent);margin-top:2px;}
-.vibrant .unit{font-size:13.5px;font-weight:600;color:var(--ink2);margin-top:16px;}
-.vibrant .how{font-size:12px;color:var(--muted);margin-top:4px;}
-.vibrant .misery{margin-top:14px;display:flex;align-items:baseline;gap:8px;
- border-top:1px solid var(--line);padding-top:12px;}
-.vibrant .misery .mnum{font-size:30px;font-weight:730;letter-spacing:-.02em;color:var(--s2);}
-.vibrant .misery .mlabel{font-size:12px;color:var(--ink2);font-weight:600;}
-.vibrant .hero-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none;}
+.vibrant .meters{display:flex;gap:44px;flex-wrap:wrap;margin:6px 0 26px;}
+.vibrant .meter{min-width:0;}
+.vibrant .mv{font-size:72px;font-weight:730;letter-spacing:-.035em;line-height:.82;
+ color:var(--accent);}
+.vibrant .meter.mis .mv{color:var(--s2);}
+.vibrant .mn{font-size:15px;font-weight:700;color:var(--ink);margin-top:14px;
+ letter-spacing:.01em;}
+.vibrant .mu{font-size:11.5px;color:var(--muted);margin-top:2px;}
 .vibrant .row-h{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
- color:var(--muted);margin:0 0 9px;}
-.vibrant .rig{margin:0 0 4px;}
+ color:var(--muted);margin:0 0 10px;}
+.vibrant .fp{margin:0 0 4px;}
+.vibrant .arm{display:flex;align-items:center;gap:12px;margin:0 0 8px;}
+.vibrant .arm-l{flex:none;width:52px;font-size:11px;font-weight:700;color:var(--ink2);
+ text-transform:uppercase;letter-spacing:.05em;}
+.vibrant .arm-v{flex:none;font-size:12px;color:var(--ink2);white-space:nowrap;min-width:96px;}
+.vibrant .arm-v b{color:var(--ink);font-weight:650;}
+.vibrant .bar.mini{height:12px;border-radius:6px;overflow:hidden;flex:1;}
+.vibrant .bar.mini .seg:first-child{border-radius:6px 0 0 6px;}
+.vibrant .bar.mini .seg:last-child{border-radius:0 6px 6px 0;}
 .vibrant .stack{margin:0;}
 .vibrant .bar{display:flex;gap:2px;height:34px;}
 .vibrant .seg{display:block;min-width:3px;}
@@ -1593,7 +1597,7 @@ _CSS = """
  border-radius:8px;background:var(--card);color:var(--ink);cursor:pointer;}
 .vibrant ol{font-size:12.5px;color:var(--ink2);margin:6px 0;padding-left:20px;}
 @media (max-width:560px){.vibrant{padding:14px 10px 28px;}.vibrant .card{padding:22px 20px;}
- .vibrant .num{font-size:50px;}.vibrant .trend{flex-wrap:wrap;gap:8px;}}
+ .vibrant .mv{font-size:52px;}.vibrant .meters{gap:28px;}}
 """
 
 _STACK_COLORS = ("var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)", "var(--s5)")
@@ -1615,6 +1619,26 @@ def _stack_bar(arm):
                       f'{esc(str(s["value"]))} <b>{s["share"]:.0f}%</b></span>')
     return (f'<div class="stack"><div class="bar">{"".join(segs)}</div>'
             f'<div class="legend">{"".join(legend)}</div></div>')
+
+
+def _arm_row(label, arm):
+    """One fingerprint arm as a compact row: a one-word axis label, a blend bar, and
+    the dominant value with its share. Three of these ARE the rig fingerprint on the
+    card, replacing a single collapsed categorical."""
+    esc = _html.escape
+    b = (arm or {}).get("blend") or []
+    if not b:
+        return ""
+    segs = "".join(
+        f'<span class="seg" style="flex:{s["sessions"]};'
+        f'background:{_STACK_COLORS[i % len(_STACK_COLORS)]}" '
+        f'title="{esc(str(s["value"]))} {s["share"]}%"></span>'
+        for i, s in enumerate(b[:5]))
+    dom = b[0]
+    return (f'<div class="arm"><span class="arm-l">{esc(label)}</span>'
+            f'<span class="bar mini">{segs}</span>'
+            f'<span class="arm-v"><b>{esc(str(dom["value"]))}</b> {dom["share"]:.0f}%'
+            f'</span></div>')
 
 
 def _sparkline(eqs, W=224, H=58):
@@ -1652,46 +1676,36 @@ def _hero_card(report):
     esc = _html.escape
     tl = report["topline"]
     fp = report.get("fingerprint") or {}
-    eqs = [r["eq"] for r in report.get("timeline", []) if r["eq"] is not None]
-    gran = (report.get("fuel_and_work") or {}).get("granularity", "week")
-    unit = {"day": "days", "week": "weeks", "month": "months"}.get(gran, "points")
-    trend = ""
-    if len(eqs) >= 2:
-        d = eqs[-1] - eqs[0]
-        arrow, cls = ("&#9650;", "up") if d > 0 else (("&#9660;", "down") if d < 0 else ("&#126;", ""))
-        span = f"{len(eqs)} {unit if len(eqs) != 1 else unit[:-1]}"
-        trend = (f'<div class="hero-right">{_sparkline(eqs)}'
-                 f'<div class="trend-cap"><span class="{cls}">{arrow}&#8202;'
-                 f'{abs(d):.0f}</span> over {span}</div></div>')
+    mb = report.get("misery")
     mark = ('<svg class="mark" viewBox="0 0 18 16" aria-hidden="true">'
             '<rect x="0" y="9" width="4" height="7" rx="1.3"/>'
             '<rect x="7" y="5" width="4" height="11" rx="1.3"/>'
             '<rect x="14" y="1" width="4" height="15" rx="1.3"/></svg>')
-    p = ['<div class="card">',
-         f'<div class="top"><div class="brand">{mark}VIBRANT</div>',
-         f'<div class="meta">{tl.get("sessions")} sessions</div></div>',
-         '<div class="mid"><div class="hero-left">',
-         f'<div class="num" title="durable shipped complexity (decision points) per '
-         f'Mtok output, larger is better">{esc(str(tl["eq"]))}</div>',
-         '<div class="unit">durable shipped work per Mtok</div>',
-         '<div class="how">decision-logic that shipped and stuck in git, per million '
-         'output tokens</div>']
-    mb = report.get("misery")
+    # two meters, side by side, each a big number + one-word name + a minimal unit.
+    meters = [f'<div class="meter"><div class="mv" title="durable shipped complexity '
+              f'per Mtok output, larger is better">{esc(str(tl["eq"]))}</div>'
+              f'<div class="mn">efficiency</div><div class="mu">durable work / Mtok</div>'
+              f'</div>']
     if mb:
-        p.append(f'<div class="misery" title="operator friction, 0 smooth to 100 '
-                 f'fighting; a second meter over the same rig, never folded into '
-                 f'efficiency"><span class="mnum">{mb["overall"]}</span>'
-                 f'<span class="mlabel">misery / 100: how much you fought your '
-                 f'rig (not the same as cheap)</span></div>')
-    p += ['</div>', trend, '</div>']
-    topo = fp.get("orchestration_topology") or {}
-    if topo.get("blend"):
-        p.append('<div class="rig"><div class="row-h">Your rig</div>'
-                 + _stack_bar(topo) + '</div>')
-    p.append('<div class="foot"><span>vibe-coding rig efficiency</span>'
-             '<span>3dl-dev/vibrant</span></div>')
-    p.append('</div>')
-    return "".join(p)
+        meters.append(f'<div class="meter mis"><div class="mv">{mb["overall"]}</div>'
+                      f'<div class="mn">misery</div><div class="mu">/100, how much you '
+                      f'fought it</div></div>')
+    # the fingerprint: the multi-arm rig, not one collapsed categorical. Three arms
+    # that define the rig -- who drives, who codes, the shape -- each a blend bar.
+    arms = [("drives", "orchestrator_model"), ("codes", "worker_model"),
+            ("shape", "orchestration_topology")]
+    rows = "".join(r for r in (_arm_row(lbl, fp.get(k)) for lbl, k in arms) if r)
+    fingerprint = (f'<div class="fp"><div class="row-h">Fingerprint</div>{rows}</div>'
+                   if rows else "")
+    return "".join([
+        '<div class="card">',
+        f'<div class="top"><div class="brand">{mark}VIBRANT</div>',
+        f'<div class="meta">{tl.get("sessions")} sessions</div></div>',
+        f'<div class="meters">{"".join(meters)}</div>',
+        fingerprint,
+        '<div class="foot"><span>vibe-coding rig efficiency</span>'
+        '<span>3dl-dev/vibrant</span></div>',
+        '</div>'])
 
 
 def _coverage_banner(report):
