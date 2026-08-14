@@ -93,6 +93,38 @@ Draft an anonymized entry for your frontier following
 horizon, the proof tier. Append it to your own `frontier/reference-frontier.json`
 for internal use, or open a PR against `3dl-dev/vibrant` to go public.
 
+## Building history past ~30 days
+
+A first run sees about a month, and it is worth knowing exactly which half of the
+measurement is capped and which is not.
+
+- **Surviving work (the numerator) is never capped.** It lives in git, which everyone
+  keeps forever. `python3 core/survival_git.py --since 180.days.ago` gives you six
+  months today, on a repo you have never snapshotted. The topline's numerator has as
+  much history as your git log does.
+- **The fuel and fingerprint side is what rotates.** Tokens, effort, and which engine
+  ran come from the harness transcripts, and Claude Code prunes those after ~30 days.
+  That is the only reason a fresh report's engine timeline stops at a month.
+
+So to extend the *fuel* history, freeze it before it rotates. `snapshot.py` writes a
+few kilobytes of derived metrics per run; keep those and your window grows. Run it on
+a schedule, for example a weekly cron:
+
+```bash
+# crontab -e  ->  every Monday 9am, freeze the week before it rotates
+0 9 * * 1  cd /path/to/vibrant && python3 adapters/claude-code/snapshot.py --out ~/.vibrant/snapshots
+```
+
+Each run drops a dated `~/.vibrant/snapshots/<date>-<host>/` directory. Keep them.
+After a few months you have a continuous fuel record no rotation can erase.
+
+To build one report across several retained snapshots, gather their `mb-*.jsonl` and
+`mc-*.jsonl` into a single directory and point `--snapshot` there; the driver keys
+sessions by id, so overlapping windows dedupe rather than double-count. The one piece
+that does not simply concatenate is `survival-cache.json` (a JSON map, not JSONL): if
+you want survival across the whole span, delete the stale caches and let the next
+`harness-efficiency` run rebuild one over the combined transcripts it can still see.
+
 ## If something looks off
 
 Open an issue at https://github.com/3dl-dev/vibrant/issues with the command

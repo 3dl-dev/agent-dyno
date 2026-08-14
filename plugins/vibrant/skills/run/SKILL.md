@@ -12,7 +12,7 @@ yourself. If a number is not in `report.json`, do not report it.
 
 ## 1. Get Vibrant onto the machine (once)
 
-Find an Vibrant checkout to run from, in this order:
+Find a Vibrant checkout to run from, in this order:
 
 1. The current directory, if it is the Vibrant repo (it has `core/survival_git.py`).
 2. The marketplace clone at `~/.claude/plugins/marketplaces/vibrant` (the whole
@@ -40,6 +40,12 @@ people. If asked for that, decline and cite the document. The driver stamps
 
 Ask the operator which repos they actually code in (comma-separated paths); default
 to the current git repo if they are in one. Ask the window (default `30.days.ago`).
+
+A first run tops out near a month because the fuel side comes from harness
+transcripts, which rotate after ~30 days; the surviving-work numerator (git) is not
+capped. If they want a longer engine timeline, point them at "Building history past
+~30 days" in `docs/getting-started.md`: a weekly `snapshot.py` cron freezes the fuel
+before it rotates.
 
 ## 4. Build the fuel snapshot and run the driver
 
@@ -70,7 +76,30 @@ not value; if you add one caveat, that is the one. Keep it short.
 To rerun after a change and see if the number moved, run again with
 `--baseline <prev report.json>`.
 
-## 6. Offer to contribute (in the flow, opt-in)
+## 6. Turn the lever into a change in THEIR setup (the payoff)
+
+A generic lever ("have the orchestrator review the worker before accepting") is not
+the value. The value is telling THIS operator the one thing to change in THEIR own
+toolkit to get it. Do this only when `report.json` has a `lever` (skip it when the
+operator already leads their frontier and there is none).
+
+1. Read their actual rig, in this order, and stop when you have enough to be
+   specific: their `CLAUDE.md` (global `~/.claude/CLAUDE.md` and the project's), their
+   skills (`~/.claude/skills/` and `.claude/skills/`), their agent specs
+   (`.claude/agents/`), their hooks (`.claude/settings.json`), and whatever they
+   orchestrate with (an `rd`-style board, `swarm`/`delegate` skills, custom scripts).
+   Everyone's rig is different; read theirs, do not assume mine.
+2. Translate the lever into one to three concrete edits in files they actually have,
+   each naming the file and the change: the skill to edit, the exact `CLAUDE.md` rule
+   to add (give the line), the hook or agent spec to change. Example, lever "tighten
+   the review pass behind fan-out": if they have a `swarm-dispatch` skill, "add a
+   review stage that diff-checks each worker's return before accepting"; if they have
+   no such skill, "add to your project `CLAUDE.md`: after a delegate returns, review
+   its diff before you build on it." Ground every suggestion in something on disk.
+3. Offer to make the edit; do not change their files without a yes. If their rig is
+   too thin to place the lever, say so plainly instead of inventing tooling for them.
+
+## 7. Offer to contribute (in the flow, opt-in)
 
 Contributing is part of using Vibrant, not a separate errand. After you show the
 surface, ask the operator plainly: "Want to add this run to your frontier? It is
