@@ -62,13 +62,22 @@ federates up only if they choose. Third Division Labs runs the public one. See
 
 ## Quickstart
 
-```bash
-# The objective numerator, works on any repo, any agent, no setup:
-python3 core/survival_git.py --repo /path/to/your/repo --since 30.days.ago
+Agent Dyno is skill-bound: you install it as a plugin and your agent runs it, with
+no manual commands and no setup of your own. In Claude Code:
 
-# A full, friendly efficiency report from your Claude Code logs:
-#   hand skills/dyno-report to your agent, it runs locally, stdlib only.
 ```
+/plugin marketplace add 3dl-dev/agent-dyno
+/plugin install hoist-agent-dyno@agent-dyno
+```
+
+Then invoke the installed `hoist-agent-dyno` skill. Your agent self-extracts a
+sha256-verified harness, clones Agent Dyno onto your machine, renders an example
+report, and grades the install honestly, naming anything that did not transfer.
+Everything runs locally on the standard library; nothing leaves your machine.
+
+That clone carries the `dyno-report` skill. Invoke it on the repos you actually
+code in and it turns your own logs and git history into your report (`report.md`,
+`report.html`, `report.json`). See [docs/getting-started.md](docs/getting-started.md).
 
 ## Harness-agnostic by design
 

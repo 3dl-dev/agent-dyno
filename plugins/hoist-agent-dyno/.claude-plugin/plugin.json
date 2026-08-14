@@ -1,0 +1,5 @@
+{
+  "name": "hoist-agent-dyno",
+  "description": "The deploy verb for Agent Dyno: invoke to hoist and grade Agent Dyno on your target. Self-extracts the sha256-verified harness; non-destructive, honestly graded.",
+  "version": "0.1.0"
+}

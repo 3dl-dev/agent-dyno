@@ -1,0 +1,16 @@
+{
+  "name": "agent-dyno",
+  "owner": {
+    "name": "Chris Baron",
+    "email": "baron@3dl.dev"
+  },
+  "description": "Agent Dyno, self-hoisting: install the plugin and your agent clones, deploys, and grades Agent Dyno on your target, reporting an honest transfer score. Measures the token-efficiency of an AI coding setup, harness-neutral.",
+  "plugins": [
+    {
+      "name": "hoist-agent-dyno",
+      "source": "./plugins/hoist-agent-dyno",
+      "description": "Hoist Agent Dyno onto your target: self-extract the sha256-verified hoistable harness, clone, render a report, and grade. Agent-first; no commands.",
+      "version": "0.1.0"
+    }
+  ]
+}
