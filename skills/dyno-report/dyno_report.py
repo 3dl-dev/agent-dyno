@@ -100,15 +100,6 @@ def _arm(values):
             "is_blended": len(b) > 1 and b[0]["share"] < 60.0}
 
 
-def _majority(values):
-    """The value that holds a clear majority (>50%) of the KNOWN values, else None.
-    Used for timeline change flags: a blended week (no majority) never reads as a
-    change, and 'unknown'/absent values (missing data, not a setting the operator
-    chose) never trigger a transition like 'unknown to high'."""
-    b = blend([v for v in values if v not in (None, "unknown")])
-    return b[0]["value"] if b and b[0]["share"] > 50.0 else None
-
-
 def engine_of(sess):
     if (sess.get("workflows") or 0) > 0 or (sess.get("wf_agents") or 0) > 0:
         return "workflow"
@@ -538,11 +529,59 @@ def _week_label(key):
     return f"{_MONTHS[monday.month - 1]} {monday.day}"
 
 
-def timeline(metrics):
-    """EQ as a function of time (ISO week), annotated with the operator's own
-    fingerprint changes. Everyone iterates their stack; making those changes
-    visible on the curve is how you attribute a move to a change instead of noise.
-    """
+def detect_changes(metrics, window=14, sustain=0.75):
+    """The operator's real setup changes, dated to the day they happened.
+
+    Falsifiable claims are fatal: the operator knows exactly when they switched, so
+    a wrong date is an instant discredit. Week-granular detection cannot do this (it
+    reports the week's Monday and lags a real mid-week switch by up to a week). This
+    works at the day level: a change is a value becoming the day-MAJORITY (>50% of
+    that day's sessions) and holding it as a sustained era (the day-majority on at
+    least `sustain` of the next `window` days that have a majority). A genuinely
+    blended dimension (engine, when the operator alternates and no day holds a
+    majority, or the majority wobbles) yields NO changes rather than inventing them.
+    Returns [{date, dim, from, to}], sorted."""
+    by_day = defaultdict(list)
+    for m in metrics:
+        if m.get("day"):
+            by_day[m["day"]].append(m)
+    days = sorted(by_day)
+    out = []
+    for label, field in (("engine", "engine"), ("orchestrator", "model"),
+                         ("effort", "effort")):
+        daymaj = {}
+        for day in days:
+            vals = [c.get(field) for c in by_day[day]
+                    if c.get(field) not in (None, "unknown", "none")]
+            b = blend(vals)
+            daymaj[day] = b[0]["value"] if b and b[0]["share"] > 50.0 else None
+        regime = None
+        for i, day in enumerate(days):
+            v = daymaj[day]
+            if v is None:
+                continue
+            if regime is None:
+                regime = v
+                continue
+            if v != regime:
+                nxt = [daymaj[x] for x in days[i:i + window] if daymaj.get(x) is not None]
+                if len(nxt) >= max(3, window // 2) and \
+                        sum(1 for x in nxt if x == v) / len(nxt) >= sustain:
+                    out.append({"date": day, "dim": label, "from": regime, "to": v})
+                    regime = v
+    return sorted(out, key=lambda c: c["date"])
+
+
+def timeline(metrics, all_fp=None):
+    """Weekly efficiency curve (surviving KB per Mtok output, the headline's unit),
+    annotated with the operator's real, day-dated setup changes (detect_changes).
+    A change flag sits on the week that contains its date and carries the exact
+    date, so the claim is checkable and never off by a week.
+
+    The curve uses `metrics` (survival-having sessions, since EQ needs survival), but
+    change detection uses `all_fp`, the day/engine/model/effort of EVERY session, so
+    a model switch is dated over all runs (not just the ones that wrote surviving
+    code) and matches the day the operator actually switched. Defaults to metrics."""
     weeks = defaultdict(list)
     for m in metrics:
         if not m.get("day"):
@@ -551,38 +590,28 @@ def timeline(metrics):
             weeks[_iso_week(m["day"])].append(m)
         except Exception:
             continue
-    rows, prev_maj = [], None
+    chg_by_week = defaultdict(list)
+    for c in detect_changes(all_fp if all_fp is not None else metrics):
+        try:
+            chg_by_week[_iso_week(c["date"])].append(
+                f'{c["dim"]}: {c["from"]} to {c["to"]} ({_daylabel(c["date"])})')
+        except Exception:
+            continue
+    rows = []
     for key in sorted(weeks):
         cells = weeks[key]
         survc = sum(c["born"] - c["killed"] for c in cells)
         survkb = survc / 1024 if survc > 0 else 0.0
-        # Weekly metric matches the headline's framing (per Mtok output), using
-        # surviving KB as the session-side proxy for the git-side functionality (the
-        # numerator is not weekly). Dollar-independent, so an unpriced session never
-        # drops a week from the curve.
         out_mtok = sum(c["out_tok"] for c in cells) / 1e6
         eq = round(survkb / out_mtok, 2) if out_mtok else None
-        # Display the plurality per arm; but flag a CHANGE only on a clear-majority
-        # shift. A blended stack whose plurality wobbles week to week (delegate one
-        # week, solo the next, neither a majority) is not a change the operator made,
-        # and must not read as one. Only a >50% arm flipping to a different >50% arm
-        # is a real, attributable change.
         fp = {"engine": modal([c["engine"] for c in cells]),
               "orchestrator": modal([c["model"] for c in cells]),
               "effort": modal([c["effort"] for c in cells])}
-        maj = {"engine": _majority([c["engine"] for c in cells]),
-               "orchestrator": _majority([c["model"] for c in cells]),
-               "effort": _majority([c["effort"] for c in cells])}
-        changes = []
-        if prev_maj:
-            for dim in ("engine", "orchestrator", "effort"):
-                if maj[dim] and prev_maj[dim] and maj[dim] != prev_maj[dim]:
-                    changes.append(f"{dim}: {prev_maj[dim]} to {maj[dim]}")
         bs = babysitting(cells)
         rows.append({"week": _week_label(key), "eq": eq,
-                     "sessions": len(cells), "fingerprint": fp, "changes": changes,
+                     "sessions": len(cells), "fingerprint": fp,
+                     "changes": chg_by_week.get(key, []),
                      "babysitting": bs["per_100_turns"] if bs else None})
-        prev_maj = maj
     return rows
 
 
@@ -865,6 +894,16 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
             metrics.append(m)
     metrics.sort(key=lambda m: m["sid"])  # deterministic order
 
+    # every session's fingerprint (not just survival-having ones), for dating the
+    # operator's real setup changes over ALL their runs, not the survival subset.
+    all_fp = sorted(
+        ({"day": s.get("day"), "engine": engine_of(s),
+          "model": base_model(s.get("model")),
+          "effort": modal([t.get("effort") for t in turns.get(sid, [])
+                           if t.get("effort")])}
+         for sid, s in sessions.items() if s.get("day")),
+        key=lambda r: (r["day"], r["model"], r["engine"]))
+
     # pattern-dimension labels: explicit --labels, else alongside the snapshot.
     # Absent -> the three pattern dims stay pending; a no-cache run is unchanged.
     if labels_path is None:
@@ -953,7 +992,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
     lever = best_lever(by_ee_cells, frontier, tl["_survkb"], tl["_dollars"])
     tl = {k: v for k, v in tl.items() if not k.startswith("_")}  # drop internals
     measure = measure_vs_baseline(tl["eq"], baseline_path)
-    tline = timeline(metrics)
+    tline = timeline(metrics, all_fp)
     bs = babysitting(metrics)
     fuel = fuel_and_work(metrics, granularity)
 
@@ -1103,6 +1142,7 @@ _CSS = """
 .dyno .lever-h{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
  color:var(--muted);margin:0 0 6px;}
 .dyno .lever-tweak{font-size:15px;font-weight:600;color:var(--ink);line-height:1.4;}
+.dyno .lever-sub{font-size:12.5px;color:var(--ink2);margin-top:6px;line-height:1.45;}
 .dyno .trend{display:flex;align-items:center;gap:16px;}
 .dyno .spark{width:200px;height:44px;flex:none;}
 .dyno .trend-cap{font-size:12.5px;color:var(--ink2);}
@@ -1175,48 +1215,57 @@ def _sparkline(eqs):
 
 
 def _hero_card(report):
-    """The shareable scorecard: wordmark, the hero number, the stack, the lever, and
-    a trend sparkline. Designed to be screenshotted and dropped into X / Slack /
-    Reddit as-is; the design is the share, there are no share buttons."""
+    """The shareable scorecard: wordmark, the hero number, the stack, a trend
+    sparkline. Every element is a fact about the operator's own runs (the number,
+    the blend of their sessions, their trend), so nothing here is a falsifiable
+    claim. The lever and advice live below, in the detail; the card is the share,
+    kept sparse, with no share buttons."""
     esc = _html.escape
     tl = report["topline"]
     fp = report.get("fingerprint") or {}
-    lever = report.get("lever")
-    measure = report.get("measure")
     eqs = [r["eq"] for r in report.get("timeline", []) if r["eq"] is not None]
-    cfr = tl.get("change_failure_rate")
     p = ['<div class="card">',
          '<div class="brand"><span class="mark"></span>AGENT DYNO'
          '<span class="sub">engine efficiency</span></div>',
          f'<div class="hero"><span class="num">{esc(str(tl["eq"]))}</span>'
-         f'<span class="unit">surviving functionality per Mtok output</span></div>']
-    chips = [f'{tl.get("sessions")} sessions']
-    if cfr is not None:
-        chips.append(f'{cfr}% change-failure')
-    p.append(f'<div class="sub">Larger is better. {" &middot; ".join(esc(c) for c in chips)} '
-             f'&middot; nothing leaves your machine.</div>')
+         f'<span class="unit">surviving functionality per Mtok output</span></div>',
+         f'<div class="sub">Larger is better &middot; {tl.get("sessions")} sessions '
+         f'&middot; nothing leaves your machine</div>']
     topo = fp.get("orchestration_topology") or {}
     if topo.get("blend"):
         p.append('<div class="row-h">Your stack</div>' + _stack_bar(topo))
-    if lever:
-        p.append(f'<div class="lever"><div class="lever-h">Your biggest lever</div>'
-                 f'<div class="lever-tweak">{esc(str(lever.get("tweak") or ""))}</div></div>')
-    else:
-        p.append('<div class="lever ok"><div class="lever-h">At the frontier</div>'
-                 '<div class="lever-tweak">Nothing shaped like your setup beats you yet. '
-                 'Contribute your result so the next person can learn from it.</div></div>')
     if len(eqs) >= 2:
         d = eqs[-1] - eqs[0]
         arrow, cls = ("&#9650;", "up") if d > 0 else (("&#9660;", "down") if d < 0 else ("&#8212;", ""))
         p.append(f'<div class="trend">{_sparkline(eqs)}'
-                 f'<div class="trend-cap">Efficiency, last {len(eqs)} weeks '
-                 f'<span class="{cls}">{arrow} {abs(d):.0f}</span></div></div>')
-    if measure:
-        p.append(f'<div class="measure">Since last run: {measure["baseline_eq"]} to '
-                 f'{measure["current_eq"]} ({measure["actual_delta"]:+}).</div>')
+                 f'<div class="trend-cap">Last {len(eqs)} weeks '
+                 f'<span class="{cls}">{arrow}&#8202;{abs(d):.0f}</span></div></div>')
     p.append('<div class="foot"><span>agent-dyno</span><span>3dl-dev/agent-dyno</span></div>')
     p.append('</div>')
     return "".join(p)
+
+
+def _lever_html(report):
+    """The lever and measure line: the operator's advice, in the detail (not the
+    shareable card, where a small tweak would read as an anticlimax)."""
+    esc = _html.escape
+    lever = report.get("lever")
+    measure = report.get("measure")
+    out = []
+    if lever:
+        out.append(f'<div class="lever"><div class="lever-h">Your biggest lever</div>'
+                   f'<div class="lever-tweak">{esc(str(lever.get("tweak") or ""))}</div>'
+                   f'<div class="lever-sub">Setups shaped like yours retain '
+                   f'{lever.get("frontier_cell_efficiency")} surviving-KB per dollar, '
+                   f'against your {lever.get("your_cell_efficiency")}.</div></div>')
+    else:
+        out.append('<div class="lever ok"><div class="lever-h">At the frontier</div>'
+                   '<div class="lever-tweak">Nothing shaped like your setup beats you '
+                   'yet. Contribute your result so the next person can learn.</div></div>')
+    if measure:
+        out.append(f'<div class="measure">Since last run: {measure["baseline_eq"]} to '
+                   f'{measure["current_eq"]} ({measure["actual_delta"]:+}).</div>')
+    return "".join(out)
 
 
 def render_html(report):
@@ -1228,7 +1277,7 @@ def render_html(report):
     hero = _hero_card(report)
     tl = [r for r in report.get("timeline", []) if r["eq"] is not None]
     if len(tl) < 2:
-        body = (f'<div class="dyno">{hero}'
+        body = (f'<div class="dyno">{hero}{_lever_html(report)}'
                 f'{render_small_multiples(report)}{render_attribution(report)}</div>')
         return _page(head + body)
 
@@ -1294,10 +1343,11 @@ def render_html(report):
         items = "".join(f'<li><span class="flag">{k}</span> {esc(r["week"])}: '
                         f'{esc("; ".join(r["changes"]))}</li>' for k, r in flags)
         legend = f'<ol>{items}</ol>'
-    detail = (f'<h2>Efficiency over time</h2>'
+    detail = (f'{_lever_html(report)}'
+              f'<h2>Efficiency over time</h2>'
               f'<p>Surviving work per Mtok output by week, the same terms as the '
-              f'headline. A numbered flag marks a change you made to your setup, so a '
-              f'move ties to a change, not noise.</p>'
+              f'headline. A numbered flag marks a real change you made, dated to the '
+              f'day it happened, so a move ties to a change and not noise.</p>'
               f'{"".join(parts)}{legend}'
               f'{render_small_multiples(report)}{render_attribution(report)}')
     body = f'<div class="dyno">{hero}{detail}</div>'

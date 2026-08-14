@@ -248,33 +248,41 @@ def check_frontier_loading(fails):
         fails.append("load_frontier: unfetchable URL should degrade to empty")
 
 
-def check_timeline_changes(fails):
-    """(blended-stack honesty) timeline flags a week-to-week change only on a clear
-    MAJORITY shift, never on plurality wobble in a stably blended stack."""
-    def mm(day, engine, model, effort="high"):
-        return {"day": day, "engine": engine, "model": model, "effort": effort,
-                "born": 1000, "killed": 0, "out_tok": 1000, "n_turns": 1,
-                "nudges": 0, "interrupts": 0, "ends_q": 0}
-    d1, d2 = "2026-08-03", "2026-08-12"
-    # a real shift: week1 is majority solo, week2 is majority delegate
-    shift = ([mm(d1, "solo", "opus-5")] * 3 + [mm(d1, "delegate", "opus-4-8")]
-             + [mm(d2, "delegate", "opus-4-8")] * 3 + [mm(d2, "solo", "opus-5")])
-    wk2 = [r for r in dyno_report.timeline(shift) if r["eq"] is not None][1]
-    if not any("engine: solo to delegate" in c for c in wk2["changes"]):
-        fails.append(f"timeline should flag a real majority engine shift: {wk2['changes']}")
-    # blended wobble: 2 solo + 2 delegate each week (no majority) -> no change flag
-    wobble = ([mm(d1, "solo", "opus-5")] * 2 + [mm(d1, "delegate", "opus-4-8")] * 2
-              + [mm(d2, "delegate", "opus-4-8")] * 2 + [mm(d2, "solo", "opus-5")] * 2)
-    for r in dyno_report.timeline(wobble):
-        if any("engine" in c for c in r["changes"]):
-            fails.append(f"blended week wrongly flagged an engine change: {r['changes']}")
+def check_detect_changes(fails):
+    """(falsifiability) detect_changes dates a real setup change to the day it
+    happened, and invents nothing on a blended dimension that never holds a
+    sustained majority."""
+    import datetime
+
+    def day(i):
+        return (datetime.date(2026, 8, 1) + datetime.timedelta(days=i)).isoformat()
+
+    def mm(d, engine):
+        return {"day": d, "engine": engine, "model": "opus-5", "effort": "high"}
+
+    # a real sustained regime change: 10 days majority-solo, then 10 majority-delegate
+    ms = ([mm(day(i), "solo") for i in range(10)]
+          + [mm(day(i), "delegate") for i in range(10, 20)])
+    eng = [c for c in dyno_report.detect_changes(ms) if c["dim"] == "engine"]
+    if not (len(eng) == 1 and eng[0]["from"] == "solo" and eng[0]["to"] == "delegate"
+            and eng[0]["date"] == day(10)):
+        fails.append(f"detect_changes should date one solo->delegate change to "
+                     f"{day(10)}: got {eng}")
+    # blended alternation: the day-majority flips daily and never sustains -> nothing
+    alt = []
+    for i in range(24):
+        maj, minr = ("solo", "delegate") if i % 2 == 0 else ("delegate", "solo")
+        alt += [mm(day(i), maj)] * 3 + [mm(day(i), minr)] * 2
+    if [c for c in dyno_report.detect_changes(alt) if c["dim"] == "engine"]:
+        fails.append(f"detect_changes invented a change on blended/alternating data: "
+                     f"{dyno_report.detect_changes(alt)}")
 
 
 def main():
     fails = []
     check_confounds(fails)
     check_frontier_loading(fails)
-    check_timeline_changes(fails)
+    check_detect_changes(fails)
     with tempfile.TemporaryDirectory() as tmp:
         snap = os.path.join(tmp, "snap"); os.makedirs(snap)
         repo = os.path.join(tmp, "repo"); os.makedirs(repo)

@@ -100,14 +100,16 @@ The user sees three things and nothing else:
    half of turn quality (sentiment on your replies, handover quality) is the
    inference layer below, and it can disagree with the babysitting counters.
 4. **EQ over time, annotated with the operator's own fingerprint changes.** Bin
-   sessions by ISO week, compute the weekly EQ (surviving KB per Mtok output, the
-   same per-output-token framing as the headline), and flag a change only on a
-   clear-**majority** shift of an arm (engine, orchestrator model, effort): a >50%
-   value giving way to a different >50% value. A blended stack whose plurality
-   wobbles week to week (delegate one week, solo the next, neither a majority) made
-   no change and must not read as one; modal detection there invents transitions the
-   operator never made. Each real change is a marked flag on the curve, so a move
-   ties to a change the operator made, not to noise. Everyone iterates their stack; those changes are the
+   sessions by ISO week for the curve (surviving KB per Mtok output, the headline's
+   unit). Detect changes at the **day** level, over EVERY session (not just
+   survival-having ones), and **date each to the day it happened**: a value becomes
+   the day-majority (>50%) and holds it as a sustained era (the day-majority on at
+   least 75% of the next 14 days that have a majority). A blended arm (the operator
+   alternates, no day holds a sustained majority) yields NO change. Falsifiability is
+   fatal here: the operator knows exactly when they switched, so a change flag
+   carries the exact date and never a wrong or week-lagged one; week-granular or
+   plurality-based detection invents transitions and mislabels dates, and is
+   forbidden. Each real change is a flag on the week that contains its date. Everyone iterates their stack; those changes are the
    confounds, and making them visible on the curve is how you control for them.
    Rendered as a self-contained chart (`report.html`) and a compact textual
    timeline in `report.md`.
