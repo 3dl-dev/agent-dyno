@@ -17,8 +17,12 @@ dyno_report --harness <name> --repos <path>[,<path>...] [--since <git-approxidat
   driver calls only the adapter's declared entry points, never harness internals.
 - `--snapshot` reuses an existing fuel snapshot; absent, the driver builds one via
   the adapter, then reuses it. Building is idempotent.
-- `--frontier` is the commons to compare against; absent, uses the repo's
-  `frontier/reference-frontier.json`.
+- `--frontier` is the commons to compare against: a path **or a URL**
+  (`http`/`https`/`file`), so a user can read their team's or the public frontier
+  without cloning it (the federated read side). When `--frontier` is not given, the
+  driver uses `$DYNO_FRONTIER` if set (the operator's configured frontier), else the
+  repo's `frontier/reference-frontier.json`. A URL that cannot be fetched degrades to
+  an empty frontier (no same-shape comparison), never an error.
 - Reads only local git + local transcripts + the frontier file. No network. No
   state outside `--out`.
 

@@ -32,7 +32,9 @@ import hashlib
 import html as _html
 import json
 import os
+import re
 import sys
+import urllib.request
 from collections import defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -156,6 +158,25 @@ def usage_sum(sess, kind, usage_field):
         for _model, usage in (sess.get(key) or {}).items():
             total += usage_field(usage, kind)
     return total
+
+
+def load_frontier(path_or_url):
+    """Load a frontier from a path or a URL (http/https/file). Returns (dict, raw
+    bytes). The URL form is the federated read side: compare against a team's or the
+    public frontier without cloning it. Anything unfetchable/unreadable degrades to
+    an empty frontier, never an error, so a run always produces a number."""
+    ref = path_or_url or ""
+    try:
+        if re.match(r"^(https?|file)://", ref):
+            with urllib.request.urlopen(ref, timeout=30) as r:  # noqa: S310
+                raw = r.read()
+        elif ref and os.path.exists(ref):
+            raw = open(ref, "rb").read()
+        else:
+            return {"entries": []}, b""
+        return json.loads(raw), raw
+    except Exception:
+        return {"entries": []}, b""
 
 
 def load_snapshot(snapshot_dir):
@@ -881,7 +902,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
     # and eq is null. Name it, so a null topline is explained, not silent.
     denom_empty = bool(metrics) and not denom_metrics
 
-    frontier = json.load(open(frontier_path)) if os.path.exists(frontier_path) else {"entries": []}
+    frontier, fbytes = load_frontier(frontier_path)
     ss = same_shape(by_ee_cells, frontier)
     tl = topline(metrics, numerator, denom_metrics)
     lever = best_lever(by_ee_cells, frontier, tl["_survkb"], tl["_dollars"])
@@ -897,7 +918,6 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
         head = survival_git.git(repo, "rev-parse", "HEAD").strip()
         repo_prov.append({"name": os.path.basename(os.path.normpath(repo)),
                           "head": head})
-    fbytes = open(frontier_path, "rb").read() if os.path.exists(frontier_path) else b""
     report = {
         "provenance": {
             "harness": harness,
@@ -1262,8 +1282,10 @@ def main():
     ap.add_argument("--repos", default="")
     ap.add_argument("--snapshot", required=True)
     ap.add_argument("--since", default="30.days.ago")
-    ap.add_argument("--frontier", default=os.path.join(ROOT, "frontier",
-                                                       "reference-frontier.json"))
+    ap.add_argument("--frontier", default=None,
+                    help="frontier to compare against: a path or a URL "
+                         "(http/https/file). Default: $DYNO_FRONTIER, else the "
+                         "repo's frontier/reference-frontier.json")
     ap.add_argument("--now", type=float, default=None,
                     help="fixed epoch for deterministic age buckets; default clock")
     ap.add_argument("--baseline", default=None,
@@ -1277,7 +1299,11 @@ def main():
     args = ap.parse_args()
 
     repos = [os.path.expanduser(r) for r in args.repos.split(",") if r]
-    report = build_report(args.snapshot, repos, args.since, args.frontier,
+    # frontier resolution: explicit --frontier, else the operator's configured
+    # $DYNO_FRONTIER (their team/org/public board), else the repo's own.
+    frontier_ref = args.frontier or os.environ.get("DYNO_FRONTIER") or \
+        os.path.join(ROOT, "frontier", "reference-frontier.json")
+    report = build_report(args.snapshot, repos, args.since, frontier_ref,
                           args.harness, args.now,
                           baseline_path=os.path.expanduser(args.baseline)
                           if args.baseline else None,

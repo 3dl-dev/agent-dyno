@@ -225,9 +225,33 @@ def check_confounds(fails):
         fails.append(f"confounds: empty-denominator not named when set: {cf3}")
 
 
+def check_frontier_loading(fails):
+    """(federation read side) --frontier accepts a path and a file:// URL, and
+    degrades to an empty frontier when unfetchable, never raising."""
+    d = tempfile.mkdtemp()
+    p = os.path.join(d, "fr.json")
+    payload = {"schema": "agent-dyno/frontier@2",
+               "entries": [{"id": "x", "engine": "solo", "vector": {},
+                            "date": "2026-08-01"}]}
+    json.dump(payload, open(p, "w"))
+    fr, raw = dyno_report.load_frontier(p)
+    if [e["id"] for e in fr.get("entries", [])] != ["x"] or not raw:
+        fails.append("load_frontier: path form failed")
+    fr2, raw2 = dyno_report.load_frontier("file://" + p)
+    if [e["id"] for e in fr2.get("entries", [])] != ["x"] or raw2 != raw:
+        fails.append("load_frontier: file:// URL did not resolve to the same bytes")
+    fr3, raw3 = dyno_report.load_frontier(os.path.join(d, "nope.json"))
+    if fr3 != {"entries": []} or raw3 != b"":
+        fails.append(f"load_frontier: missing path should degrade to empty, got {fr3}")
+    fr4, _ = dyno_report.load_frontier("http://127.0.0.1:9/nope")
+    if fr4 != {"entries": []}:
+        fails.append("load_frontier: unfetchable URL should degrade to empty")
+
+
 def main():
     fails = []
     check_confounds(fails)
+    check_frontier_loading(fails)
     with tempfile.TemporaryDirectory() as tmp:
         snap = os.path.join(tmp, "snap"); os.makedirs(snap)
         repo = os.path.join(tmp, "repo"); os.makedirs(repo)
