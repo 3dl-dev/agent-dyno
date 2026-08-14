@@ -26,9 +26,11 @@ Stdlib only. Deterministic: same (snapshot, git HEADs, frontier, since) inputs
 give byte-identical report.json regardless of the model that invoked it.
 """
 import argparse
+import concurrent.futures
 import datetime
 import glob
 import hashlib
+import time
 import html as _html
 import json
 import os
@@ -952,63 +954,153 @@ def coverage_for(snapshot_dir, repos, root):
     }
 
 
-def shipped_by_day(repos, since):
-    """The numerator's raw material, per calendar day, from git.
+_BUCKETS = [(0, 1), (1, 3), (3, 7), (7, 14), (14, 30), (30, 90), (90, 10**6)]
+_BUCKET_LABELS = ["<1d", "1-3d", "3-7d", "7-14d", "14-30d", "30-90d", ">90d"]
 
-    For each non-merge commit in the window: it is a shipped change, and if its
-    subject is NOT a fix/revert it is a DURABLE shipped change (it landed and was not
-    later remediated). A durable change carries surviving COMPLEXITY: the decision
-    points it added that are still blamed to it at HEAD. The headline is that durable
-    shipped complexity per Mtok output, so a rig that churns a lot in-chat but
-    commits little that sticks scores low, and a rig that ships tight, high-leverage
-    changes scores high, regardless of how many lines either generated.
 
-    Returns ({day: durable_shipped_changes}, {day: fix_or_revert_changes},
-    {day: durable_surviving_complexity}). Deterministic: commit times and blame are
-    fixed at HEAD."""
-    shipped, fixes, complexity = defaultdict(int), defaultdict(int), defaultdict(int)
-    for repo in repos:
-        commits = survival_git.window_commits(repo, since)
-        if not commits:
+def _survival_agg(commits, surviving, complexity, since, now):
+    """The survival aggregate (added / surviving / net_complexity / age buckets /
+    fix share) from a single blame's per-commit data, same shape as
+    survival_git.survival, so the numerator table is built without a second pass."""
+    if not commits:
+        return None
+    agg = defaultdict(lambda: [0, 0])
+    fix_added = 0
+    for sha, c in commits.items():
+        if c["added"] == 0:
             continue
+        if survival_git.FIXY.search(c["subj"]):
+            fix_added += c["added"]
+        age_d = (now - c["ts"]) / 86400
+        surv = surviving.get(sha, 0)
+        for i, (lo, hi) in enumerate(_BUCKETS):
+            if lo <= age_d < hi:
+                agg[i][0] += c["added"]
+                agg[i][1] += surv
+                break
+    total_added = sum(c["added"] for c in commits.values())
+    total_surv = sum(surviving.get(s, 0) for s in commits)
+    net_cx = sum(complexity.get(s, 0) for s in commits)
+    return {"since": since, "commits": len(commits), "added": total_added,
+            "surviving": total_surv, "net_complexity": net_cx,
+            "pct": 100 * total_surv / max(1, total_added),
+            "buckets": [(_BUCKET_LABELS[i], agg[i][0], agg[i][1])
+                        for i in range(len(_BUCKET_LABELS))],
+            "fix_added": fix_added, "fix_pct": 100 * fix_added / max(1, total_added)}
+
+
+def _repo_git(repo, since, now, cache_dir):
+    """ONE blame pass per repo, cached by (HEAD, since). Returns the whole git bundle
+    the report needs from a repo: per-commit surviving lines and complexity (for the
+    numerator, the durable-by-day maps, and the session attribution), the survival
+    aggregate, and DORA changes. Re-running with an unchanged HEAD reads the cache and
+    does no blame at all, so the every-run cost is near zero; only a repo whose HEAD
+    moved is re-blamed. Blame is the expensive step and it happened three times per
+    repo before this; now it happens once."""
+    name = os.path.basename(os.path.normpath(repo))
+    head = survival_git.git(repo, "rev-parse", "HEAD").strip()
+    cpath = os.path.join(cache_dir, f"gitcache-{name}.json") if cache_dir else None
+    key = f"{head}|{since}"
+    if cpath and os.path.exists(cpath):
+        try:
+            cached = json.load(open(cpath))
+            if cached.get("key") == key:
+                commits = {sha: {**c, "paths": set(c["paths"])}
+                           for sha, c in cached["commits"].items()}
+                return {"name": name, "head": head, "blamed": False, "elapsed": 0.0,
+                        "commits": commits, "surviving": cached["surviving"],
+                        "complexity": cached["complexity"],
+                        "survival": _survival_agg(commits, cached["surviving"],
+                                                  cached["complexity"], since, now),
+                        "changes": cached["changes"]}
+        except Exception:
+            pass
+    t0 = time.time()
+    commits = survival_git.window_commits(repo, since)
+    surviving, complexity = {}, {}
+    if commits:
         tracked = set(survival_git.git(repo, "ls-files").splitlines())
         paths = {p for c in commits.values() for p in c["paths"]} & tracked
-        _surv, cx = survival_git.surviving_by_commit(repo, paths)
-        for sha, c in commits.items():
+        surviving, complexity = survival_git.surviving_by_commit(repo, paths)
+    changes = survival_git.changes(repo, since, now=now)
+    elapsed = time.time() - t0
+    if cpath:
+        try:
+            json.dump({"key": key,
+                       "commits": {sha: {**c, "paths": sorted(c["paths"])}
+                                   for sha, c in commits.items()},
+                       "surviving": surviving, "complexity": complexity,
+                       "changes": changes}, open(cpath, "w"))
+        except Exception:
+            pass
+    return {"name": name, "head": head, "blamed": True, "elapsed": elapsed,
+            "commits": commits, "surviving": surviving, "complexity": complexity,
+            "survival": _survival_agg(commits, surviving, complexity, since, now),
+            "changes": changes}
+
+
+def gather_git(repos, since, now, cache_dir, progress=True):
+    """Blame every repo once, in parallel, with per-repo progress to stderr. Cached
+    repos return instantly; only HEAD-moved repos are re-blamed. Returns {repo:
+    bundle}. This is the fan-out, made cheap and transparent."""
+    bundles, done, n = {}, 0, len(repos)
+    if progress and n:
+        print(f"measuring {n} repo(s) [cached repos are instant; only changed repos "
+              f"re-blame]...", file=sys.stderr)
+    workers = min(8, max(1, (os.cpu_count() or 2)))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(_repo_git, r, since, now, cache_dir): r for r in repos}
+        for fut in concurrent.futures.as_completed(futs):
+            repo = futs[fut]
+            bundles[repo] = fut.result()
+            done += 1
+            if progress:
+                b = bundles[repo]
+                tag = f"blamed {b['elapsed']:.1f}s" if b["blamed"] else "cached"
+                print(f"  [{done}/{n}] {b['name']}: {tag} "
+                      f"({b['survival']['net_complexity'] if b['survival'] else 0} cx)",
+                      file=sys.stderr)
+    return bundles
+
+
+def shipped_by_day(bundles):
+    """Durable shipped complexity / changes / fixes per calendar day, from the cached
+    blame bundles. A non-fix commit is a DURABLE shipped change carrying the surviving
+    complexity still blamed to it at HEAD; a fix/revert is remediation, not durable.
+    Returns ({day: durable_changes}, {day: fixes}, {day: durable_complexity})."""
+    shipped, fixes, complexity = defaultdict(int), defaultdict(int), defaultdict(int)
+    for b in bundles.values():
+        cx = b["complexity"]
+        for sha, c in b["commits"].items():
             day = datetime.datetime.fromtimestamp(
                 c["ts"], datetime.timezone.utc).strftime("%Y-%m-%d")
             if survival_git.FIXY.search(c["subj"]):
-                fixes[day] += 1  # remediation: shipped, but not durable
+                fixes[day] += 1
                 continue
             shipped[day] += 1
             complexity[day] += cx.get(sha, 0)
     return dict(shipped), dict(fixes), dict(complexity)
 
 
-def attribute_work(repos, since, snapshot_dir, tail=900.0):
-    """Join surviving git work to the (model, effort) that authored it.
+def attribute_work(bundles, since, snapshot_dir, tail=900.0):
+    """Join surviving git work to the (model, effort) that authored it, from the
+    cached blame bundles (no re-blame).
 
-    Leverages horizon_attribute.load_sessions for the project+time match (never
-    hand-rolling it) and survival_git for per-commit surviving lines AND surviving
-    complexity. A commit matches the session whose active window brackets its time
-    (short tail tolerance); its surviving lines/complexity accrue to that session's
-    model and effort. Deterministic: commit times are fixed at HEAD, session times
-    are fixed in the snapshot; a commit matching no session is counted, not
-    dropped. This is the durable 'whose committed logic lasted' cut."""
+    Leverages horizon_attribute.load_sessions for the project+time match. A commit
+    matches the session whose active window brackets its time (short tail tolerance);
+    its surviving lines/complexity accrue to that session's model and effort.
+    Deterministic: commit times are fixed at HEAD, session times are fixed in the
+    snapshot; a commit matching no session is counted, not dropped."""
     by_model = defaultdict(lambda: {"commits": 0, "surviving": 0, "net_complexity": 0})
     by_effort = defaultdict(lambda: {"commits": 0, "surviving": 0, "net_complexity": 0})
     matched = unmatched = 0
-    for repo in repos:
-        repo_name = os.path.basename(os.path.normpath(repo))
-        sessions = horizon_attribute.load_sessions(snapshot_dir, repo_name)
+    for repo, b in bundles.items():
+        sessions = horizon_attribute.load_sessions(snapshot_dir, b["name"])
         if not sessions:
             continue
-        commits = survival_git.window_commits(repo, since)
+        commits, surviving, complexity = b["commits"], b["surviving"], b["complexity"]
         if not commits:
             continue
-        tracked = set(survival_git.git(repo, "ls-files").splitlines())
-        paths = {p for c in commits.values() for p in c["paths"]} & tracked
-        surviving, complexity = survival_git.surviving_by_commit(repo, paths)
         for sha, c in commits.items():
             if c["added"] == 0:
                 continue
@@ -1079,16 +1171,21 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
         vector_by_engine_model.append({"engine": e, "model": mdl,
                                        **vector(by_em_cells[(e, mdl)])})
 
-    # numerator per repo -- reported in two units: surviving KB (volume) and DORA
-    # changes (shipped units of work: merged PRs, not commits) with change failure
-    # rate. Volume and throughput carry different signal.
+    # resolve now first (the blame's age buckets and the confounds depend on it).
+    now_val = now if now is not None else \
+        datetime.datetime.now(datetime.timezone.utc).timestamp()
+    # ONE cached, parallel blame pass per repo feeds the numerator, the durable-by-day
+    # maps, and the session attribution. Re-runs with unchanged HEADs do no blame.
+    bundles = gather_git(repos, since, now_val, cache_dir=snapshot_dir)
+
+    # numerator per repo -- surviving KB (volume) and DORA changes (shipped units of
+    # work) with change failure rate. Volume and throughput carry different signal.
     repo_rows = []
     tot_add = tot_surv = tot_ch = tot_fail = tot_cx = 0
     for repo in repos:
-        r = survival_git.survival(repo, since, now=now)
-        ch = survival_git.changes(repo, since, now=now)
-        name = os.path.basename(os.path.normpath(repo))
-        row = {"name": name, "changes": ch["changes"], "failed_changes": ch["failed"],
+        b = bundles[repo]
+        r, ch = b["survival"], b["changes"]
+        row = {"name": b["name"], "changes": ch["changes"], "failed_changes": ch["failed"],
                "change_source": ch["source"],
                "change_failure_rate": ch["change_failure_rate"]}
         tot_ch += ch["changes"]
@@ -1114,12 +1211,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
                  "complexity_per_1k_lines": round(1000 * tot_cx / tot_surv, 1)
                  if tot_surv else None}
     # per-model / per-effort surviving work, via the git<->session join
-    numerator["attribution"] = attribute_work(repos, since, snapshot_dir)
-    # resolve now for the now-dependent confounds (window overlap). Deterministic
-    # when --now is passed; falls back to wall-clock per the determinism contract
-    # ("same inputs, same day, same bytes").
-    now_val = now if now is not None else \
-        datetime.datetime.now(datetime.timezone.utc).timestamp()
+    numerator["attribution"] = attribute_work(bundles, since, snapshot_dir)
 
     # topline denominator: scope output tokens to the sessions that worked the
     # measured repos (proj names a repo). Fall back to the whole window when no
@@ -1137,7 +1229,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
 
     # durable shipped complexity (the headline numerator): decision points that
     # landed in non-reverted commits and still survive at HEAD, per Mtok output.
-    shipped_map, fixes_map, complexity_map = shipped_by_day(repos, since)
+    shipped_map, fixes_map, complexity_map = shipped_by_day(bundles)
     numerator["durable_complexity"] = sum(complexity_map.values())
 
     frontier, fbytes = load_frontier(frontier_path)
@@ -1181,6 +1273,13 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
             "snapshot": os.path.basename(os.path.normpath(snapshot_dir)),
             "sessions_with_survival": len(metrics),
             "repos": repo_prov,
+            "measurement": {
+                "repos_measured": len(repos),
+                "repos_reblamed": sum(1 for b in bundles.values() if b["blamed"]),
+                "blame_seconds": round(sum(b["elapsed"] for b in bundles.values()), 1),
+                "note": "one cached blame pass per repo, keyed by HEAD; only "
+                        "changed repos re-blame, so a re-run is near-instant.",
+            },
             "frontier_sha256": hashlib.sha256(fbytes).hexdigest() if fbytes else None,
             "driver": "vibrant_report/1",
         },
