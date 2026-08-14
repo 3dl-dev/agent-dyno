@@ -602,7 +602,9 @@ def timeline(metrics, all_fp=None, gran="week"):
     rows = []
     for k in sorted(buckets):
         cells = buckets[k]
-        survc = sum(c["born"] - c["killed"] for c in cells)
+        born = sum(c["born"] for c in cells)
+        killed = sum(c["killed"] for c in cells)
+        survc = born - killed
         survkb = survc / 1024 if survc > 0 else 0.0
         out_mtok = sum(c["out_tok"] for c in cells) / 1e6
         eq = round(survkb / out_mtok, 2) if out_mtok else None
@@ -610,9 +612,14 @@ def timeline(metrics, all_fp=None, gran="week"):
               "orchestrator": modal([c["model"] for c in cells]),
               "effort": modal([c["effort"] for c in cells])}
         bs = babysitting(cells)
+        # churn: the share of what the model wrote that it deleted or rewrote in
+        # the same session. eq (surviving work per token) is blind to this, so a
+        # high-churn era can look efficient while being a lot of motion for the
+        # yield. Surfaced so the topline is never misread as quality.
         rows.append({"week": labels[k], "eq": eq,
                      "sessions": len(cells), "fingerprint": fp,
-                     "changes": chg.get(k, []),
+                     "changes": chg.get(k, []), "born": born, "killed": killed,
+                     "churn_pct": round(100 * killed / born, 1) if born else None,
                      "babysitting": bs["per_100_turns"] if bs else None})
     return rows
 
@@ -1138,7 +1145,7 @@ _CSS = """
  gap:20px 28px;flex-wrap:wrap;margin:0 0 20px;}
 .vibrant .hero-left{min-width:0;}
 .vibrant .num{font-size:82px;font-weight:730;letter-spacing:-.035em;line-height:.82;
- color:var(--ink);margin-top:2px;}
+ color:var(--accent);margin-top:2px;}
 .vibrant .unit{font-size:13.5px;font-weight:600;color:var(--ink2);margin-top:16px;}
 .vibrant .how{font-size:12px;color:var(--muted);margin-top:4px;}
 .vibrant .hero-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none;}
@@ -1158,6 +1165,7 @@ _CSS = """
 .vibrant .lever{background:var(--surface);border-radius:12px;padding:15px 17px;margin:0 0 24px;
  border-left:3px solid var(--accent);}
 .vibrant .lever.ok{border-left-color:var(--good);}
+.vibrant .lever.warn{border-left-color:var(--s4);}
 .vibrant .lever-h{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
  color:var(--muted);margin:0 0 6px;}
 .vibrant .lever-tweak{font-size:15px;font-weight:600;color:var(--ink);line-height:1.4;}
@@ -1283,11 +1291,27 @@ def _lever_html(report):
     measure = report.get("measure")
     out = []
     if lever:
-        out.append(f'<div class="lever"><div class="lever-h">Your biggest lever</div>'
+        proof = str(lever.get("proof") or "unverified")
+        verified = any(t in proof.lower()
+                       for t in ("reproduced", "tier-2", "tier-3", "git-verif"))
+        fce, yce = lever.get("frontier_cell_efficiency"), lever.get("your_cell_efficiency")
+        if verified:
+            head, cls = "Your biggest lever", "lever"
+            sub = (f'A reproduced setup shaped like yours retains {fce} surviving-KB '
+                   f'per dollar, against your {yce} (proof: {esc(proof)}). Re-run with '
+                   f'--baseline to confirm the move on your own data.')
+        else:
+            # an unverified frontier cell is a hypothesis, not a target. Say so
+            # plainly; an unsubstantiated number presented as advice is the instakill.
+            head, cls = "A lever to test (unverified)", "lever warn"
+            sub = (f'An <b>unverified</b> frontier claim (proof: {esc(proof)}) reports '
+                   f'{fce} surviving-KB per dollar for a setup shaped like yours, against '
+                   f'your {yce}. A self-reported cell is a hypothesis: reproduce it with '
+                   f'the dynamometer, or test it behind --baseline, before you trust the '
+                   f'number.')
+        out.append(f'<div class="{cls}"><div class="lever-h">{head}</div>'
                    f'<div class="lever-tweak">{esc(str(lever.get("tweak") or ""))}</div>'
-                   f'<div class="lever-sub">Setups shaped like yours retain '
-                   f'{lever.get("frontier_cell_efficiency")} surviving-KB per dollar, '
-                   f'against your {lever.get("your_cell_efficiency")}.</div></div>')
+                   f'<div class="lever-sub">{sub}</div></div>')
     else:
         out.append('<div class="lever ok"><div class="lever-h">At the frontier</div>'
                    '<div class="lever-tweak">Nothing shaped like your setup beats you '
@@ -1351,7 +1375,10 @@ def render_html(report):
     for a, b in zip(bounds, bounds[1:]):
         if b > a:
             seg = eqs[a:b]
-            eras.append((a, b, sum(seg) / len(seg)))
+            born = sum(r.get("born") or 0 for r in tl[a:b])
+            killed = sum(r.get("killed") or 0 for r in tl[a:b])
+            churn = round(100 * killed / born) if born else None
+            eras.append((a, b, sum(seg) / len(seg), churn))
 
     # flags: dashed verticals + numbered pins at each change
     flags, k = [], 0
@@ -1382,20 +1409,26 @@ def render_html(report):
         parts.append(f'<circle cx="{X(i):.1f}" cy="{Y(r["eq"]):.1f}" r="2.2" '
                      f'fill="var(--accent)" opacity="0.34"><title>{esc(tip)}</title></circle>')
 
-    # era-mean step line, bold: the readable signal
+    # era-mean step line, bold: the readable signal. Each era also carries its
+    # CHURN (share of written code deleted in-session), which eq is blind to, so a
+    # high level bought with a lot of thrown-away work reads honestly.
     step = []
-    for (a, b, mean) in eras:
+    for (a, b, mean, churn) in eras:
         x0, x1 = X(a), (X(b) if b < n else X(n - 1))
         step += [f"{x0:.1f},{Y(mean):.1f}", f"{x1:.1f},{Y(mean):.1f}"]
     if step:
         parts.append(f'<polyline points="{" ".join(step)}" fill="none" '
                      f'stroke="var(--accent)" stroke-width="3" stroke-linejoin="round" '
                      f'stroke-linecap="round"/>')
-        for (a, b, mean) in eras:
+        for (a, b, mean, churn) in eras:
             xm = (X(a) + (X(b) if b < n else X(n - 1))) / 2
-            parts.append(f'<text x="{xm:.1f}" y="{Y(mean)-8:.1f}" text-anchor="middle" '
-                         f'font-size="12" font-weight="700" fill="var(--accent)">'
+            parts.append(f'<text x="{xm:.1f}" y="{Y(mean)-9:.1f}" text-anchor="middle" '
+                         f'font-size="12.5" font-weight="700" fill="var(--accent)">'
                          f'{mean:.0f}</text>')
+            if churn is not None:
+                parts.append(f'<text x="{xm:.1f}" y="{Y(mean)+15:.1f}" '
+                             f'text-anchor="middle" font-size="10.5" font-weight="600" '
+                             f'fill="var(--down)">{churn}% churned</text>')
 
     # thin x-labels to ~8 so a daily axis does not collide
     lstep = max(1, round(n / 8))
@@ -1415,8 +1448,12 @@ def render_html(report):
               f'<p>The bold line is your average surviving work per Mtok for each '
               f'configuration era; the faint line is the daily actuals it averages. A '
               f'numbered flag marks a real setup change, dated to the day, so the level '
-              f'between two flags is what that arrangement was worth. Tuning toward a '
-              f'better rig should raise the level, step by step.</p>'
+              f'between two flags is what that arrangement was worth.</p>'
+              f'<p>Read the level with the <b>churn</b> under it: efficiency counts the '
+              f'code that survived per token, and is blind to code the model wrote and '
+              f'then deleted in the same session. A high level bought at high churn is a '
+              f'lot of motion for the yield, so a cheaper-looking era can be the one that '
+              f'was worse to work in. Efficiency is not quality.</p>'
               f'{"".join(parts)}{legend}'
               f'{render_small_multiples(report)}{render_attribution(report)}')
     body = f'<div class="vibrant">{hero}{detail}</div>'

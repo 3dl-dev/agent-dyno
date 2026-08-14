@@ -550,8 +550,17 @@ def main():
                 fails.append("report.html is missing the VIBRANT wordmark")
             if "larger is better" not in hh:
                 fails.append("report.html is missing the topline unit/reading")
-            if "Your biggest lever" not in hh or "review pass behind fan-out" not in hh:
-                fails.append("report.html is missing the lever in the detail")
+            # the fixture frontier cell is tier-1-self-report (unverified), so the
+            # lever must render as a hypothesis to test, NOT as substantiated advice:
+            # an unsubstantiated number presented as fact is the instakill.
+            if "review pass behind fan-out" not in hh:
+                fails.append("report.html is missing the lever tweak in the detail")
+            if "A lever to test (unverified)" not in hh or "unverified" not in hh:
+                fails.append("report.html presents an unverified lever as substantiated "
+                             "advice (should be labeled a hypothesis to test)")
+            # and the churn caveat: efficiency must never be read as quality
+            if "churned" not in hh or "Efficiency is not quality" not in hh:
+                fails.append("report.html is missing the churn / not-quality caveat")
             # ---- (item 3) the slicer cuts by every fingerprint dimension ----
             for lbl in ("by model", "by effort", "by engine", "by routing",
                         "by review regime", "by knowledge practice"):
