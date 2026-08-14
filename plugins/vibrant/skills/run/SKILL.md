@@ -38,8 +38,17 @@ people. If asked for that, decline and cite the document. The driver stamps
 
 ## 3. Ask what to measure
 
-Ask the operator which repos they actually code in (comma-separated paths); default
-to the current git repo if they are in one. Ask the window (default `30.days.ago`).
+Do NOT hand-pick the repos. The driver discovers them from the snapshot itself:
+`--repos auto` (the default) reads every project the operator's sessions worked in
+and maps each to a git repo under `--repos-root` (default `~/projects`). Measuring
+only the repos you happened to name is how the tool once reported 9% of a rig as the
+whole thing; auto-discovery removes that failure. Pass explicit `--repos a,b,c` only
+if the operator asks to narrow it. Set `--repos-root` if their repos live elsewhere.
+
+The report carries a `coverage` block and, when it covers under 90% of sessions,
+prints a banner naming the unmeasured projects. If you see it, tell the operator and
+widen `--repos-root` or add the missing repos: the number only means something over
+the work it actually looked at. Ask the window (default `30.days.ago`).
 
 A first run tops out near a month because the fuel side comes from harness
 transcripts, which rotate after ~30 days; the surviving-work numerator (git) is not
@@ -52,7 +61,8 @@ before it rotates.
 ```
 python3 adapters/claude-code/snapshot.py --out <snap-parent>
 python3 skills/vibrant-report/vibrant_report.py --harness claude-code \
-    --snapshot <snap-dir> --repos <their-repos> --since <window> --out <out-dir>
+    --snapshot <snap-dir> --repos auto --repos-root ~/projects \
+    --since <window> --out <out-dir>
 ```
 
 Reuse a recent snapshot dir if one exists. The driver writes `report.json` (the
