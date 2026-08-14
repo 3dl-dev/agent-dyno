@@ -1060,6 +1060,12 @@ def gather_git(repos, since, now, cache_dir, progress=True):
                 print(f"  [{done}/{n}] {b['name']}: {tag} "
                       f"({b['survival']['net_complexity'] if b['survival'] else 0} cx)",
                       file=sys.stderr)
+    if progress and n:
+        reblamed = sum(1 for b in bundles.values() if b["blamed"])
+        secs = sum(b["elapsed"] for b in bundles.values())
+        print(f"measured {n} repo(s): {reblamed} re-blamed ({secs:.0f}s), "
+              f"{n - reblamed} from cache. Re-runs stay near-instant until a repo's "
+              f"HEAD moves.", file=sys.stderr)
     return bundles
 
 
@@ -1273,13 +1279,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
             "snapshot": os.path.basename(os.path.normpath(snapshot_dir)),
             "sessions_with_survival": len(metrics),
             "repos": repo_prov,
-            "measurement": {
-                "repos_measured": len(repos),
-                "repos_reblamed": sum(1 for b in bundles.values() if b["blamed"]),
-                "blame_seconds": round(sum(b["elapsed"] for b in bundles.values()), 1),
-                "note": "one cached blame pass per repo, keyed by HEAD; only "
-                        "changed repos re-blame, so a re-run is near-instant.",
-            },
+            "repos_measured": len(repos),
             "frontier_sha256": hashlib.sha256(fbytes).hexdigest() if fbytes else None,
             "driver": "vibrant_report/1",
         },
