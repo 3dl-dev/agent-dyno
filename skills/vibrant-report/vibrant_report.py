@@ -788,6 +788,71 @@ def frontier_eq(entry):
     return (1.0 / d) if d else None
 
 
+def rig_stats(metrics, attribution, misery_block):
+    """Per rig-config (orchestrator -> worker): efficiency (durable complexity per
+    Mtok output), misery, and session count, from the operator's OWN data. This is
+    the navigation surface: where each of your configurations actually sits."""
+    out_by, n_by = defaultdict(float), defaultdict(int)
+    for m in metrics:
+        out_by[m["model_roles"]] += m["out_tok"]
+        n_by[m["model_roles"]] += 1
+    cx = (attribution or {}).get("by_model_roles") or {}
+    mis = (misery_block or {}).get("by_model_roles") or {}
+    stats = {}
+    for rig, v in cx.items():
+        om = out_by.get(rig, 0) / 1e6
+        stats[rig] = {"rig": rig, "eff": round(v["net_complexity"] / om, 1) if om else 0.0,
+                      "misery": mis.get(rig), "sessions": n_by.get(rig, 0),
+                      "commits": v.get("commits", 0)}
+    return stats
+
+
+def navigate(stats, min_sessions=8):
+    """The grounded lever: from where you spend the most time, the single-axis move to
+    one of YOUR OWN configurations that Pareto-dominates it (at least as efficient AND
+    at least as bearable, strictly better on one). No frontier fiction, no advice you
+    already follow: it only ever points at a rig your own history proves is better."""
+    scored = [s for s in stats.values()
+              if s["sessions"] >= min_sessions and s["misery"] is not None]
+    if len(scored) < 2:
+        return None
+
+    def dominates(t, f):  # t is at least as good on both, strictly better on one
+        return (t["eff"] >= f["eff"] and t["misery"] <= f["misery"]
+                and (t["eff"] > f["eff"] or t["misery"] < f["misery"]))
+
+    def single_axis(f, t):
+        # returns (axis, from_value, to_value) if the two rigs differ in exactly one
+        # of {orchestrator, worker}, else None. A clean, actionable one-axis move
+        # beats a disruptive whole-rig leap.
+        fo, fw = [x.strip() for x in f["rig"].split("->")]
+        to, tw = [x.strip() for x in t["rig"].split("->")]
+        if fo == to and fw != tw:
+            return "worker", fw, tw
+        if fw == tw and fo != to:
+            return "orchestrator", fo, to
+        return None
+
+    best = None
+    for f in sorted(scored, key=lambda s: -s["sessions"]):  # biggest exposure first
+        doms = [(t, single_axis(f, t)) for t in scored
+                if t["rig"] != f["rig"] and dominates(t, f) and single_axis(f, t)]
+        if not doms:
+            continue
+        # pick the single-axis dominator with the largest combined relative gain
+        t, (axis, frm, to_v) = max(
+            doms, key=lambda d: (d[0]["eff"] - f["eff"]) / max(f["eff"], 1)
+            + (f["misery"] - d[0]["misery"]) / 100.0)
+        best = {"from_rig": f["rig"], "to_rig": t["rig"], "axis": axis,
+                "change": f"{frm} to {to_v}", "from_sessions": f["sessions"],
+                "from_eff": f["eff"], "to_eff": t["eff"],
+                "from_misery": f["misery"], "to_misery": t["misery"],
+                "tweak": (f"Shift your {axis} from {frm} to {to_v}."
+                          if axis != "rig" else f"Move from {f['rig']} to {t['rig']}.")}
+        break
+    return best
+
+
 def best_lever(by_ee_cells, frontier, total_survkb, total_dollars):
     """The single tweak with the largest predicted topline gain: the operator's
     worst same-shape cell vs the same-shape frontier entry that beats it. None if
@@ -1369,6 +1434,11 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
             "by_routing": _misery_by(metrics, "routing"),
         }
 
+    # navigation: the grounded lever, from the operator's OWN per-rig efficiency and
+    # misery (never the frontier, never advice they already follow).
+    rstats = rig_stats(metrics, numerator.get("attribution"), misery_block)
+    navigation = navigate(rstats)
+
     # provenance
     repo_prov = []
     for repo in repos:
@@ -1397,6 +1467,8 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
         "fingerprint": fingerprint_summary(metrics, numerator),
         "babysitting": bs,
         "lever": lever,
+        "navigation": navigation,
+        "rig_stats": rstats,
         "measure": measure,
         "timeline": tline,
         "fuel_and_work": {
@@ -1740,10 +1812,29 @@ def _lever_html(report):
     """The lever and measure line: the operator's advice, in the detail (not the
     shareable card, where a small tweak would read as an anticlimax)."""
     esc = _html.escape
+    nav = report.get("navigation")
     lever = report.get("lever")
     measure = report.get("measure")
     out = []
-    if lever:
+    if nav:
+        # the grounded move: a Pareto step to one of the operator's OWN better rigs.
+        # Visible is one line; the evidence + copy-paste prompt collapse below.
+        prompt = (f"Change your default {nav['axis']} for this kind of work: "
+                  f"{nav['change']}. Your own runs show {nav['to_rig']} is both more "
+                  f"efficient and less miserable than {nav['from_rig']} (the rig you use "
+                  f"most). Make it your default (CLAUDE.md / routing), then re-run "
+                  f"Vibrant with --baseline to confirm the move.")
+        ev = (f"From your history: {nav['from_rig']} ({nav['from_sessions']} sessions) "
+              f"runs at efficiency {nav['from_eff']:.0f}, misery {nav['from_misery']}; "
+              f"your {nav['to_rig']} runs at {nav['to_eff']:.0f} / {nav['to_misery']}, "
+              f"better on both.")
+        out.append(
+            f'<div class="lever"><div class="lever-h">Your biggest move</div>'
+            f'<div class="lever-tweak">{esc(nav["tweak"])}</div>'
+            f'<details class="lever-more"><summary>why, and the prompt to apply it'
+            f'</summary><div class="fine">{esc(ev)}</div>'
+            f'<pre class="lever-prompt">{esc(prompt)}</pre></details></div>')
+    elif lever:
         proof = str(lever.get("proof") or "unverified")
         verified = any(t in proof.lower()
                        for t in ("reproduced", "tier-2", "tier-3", "git-verif"))
