@@ -7,9 +7,10 @@ company and share upward by hand. The design is many frontiers, not one central
 board.
 
 Be clear about what that means today. What ships is the file format, a viewer, the
-`dyno-contribute` step, and the curated public frontier. The tree of frontiers is a
-convention you run by hand, not a system that runs itself: see "Federation" below
-for exactly what is automated and what is not.
+`dyno-contribute` step, the `$DYNO_FRONTIER` config, and three deterministic
+operations in `core/frontier.py` (merge, summarize, validate). There is still no
+service and no daemon: the tree of frontiers is opt-in and owner-triggered, never
+automatic. See "Federation" for what each tool does.
 
 ## A frontier is just a file
 
@@ -46,9 +47,20 @@ your scope unless you move it up, and moving it up is one explicit action:
   Division Labs.
 
 Nothing auto-shares. `dyno-contribute` writes to your local frontier by default and
-reaches a parent only when you tell it to. There is no automated rollup or subscribe
-yet: a parent frontier is populated by its owner merging what they trust, and you
-compare against a frontier by pointing the report at its file.
+reaches a parent only when you tell it to. Three tools make the tree real without a
+service, and every one is owner-triggered, never automatic:
+
+- **Subscribe / compare:** `dyno-report --frontier <path-or-url>` (or set
+  `$DYNO_FRONTIER` once) reads any frontier, so you compare against your team's or
+  the public board without cloning it, and without your repos leaving to do it.
+- **Roll up a team:** `core/frontier.py merge --into <team.json> <member.json> ...`
+  folds member boards into the team's, deduplicated and idempotent. The owner runs
+  it.
+- **Share a summary, not the runs:** `core/frontier.py summarize <frontier>
+  --min-samples <k>` emits one anonymized aggregate per shape (median vector plus
+  counts, no ids, no technique prose, no identity), with a k-anonymity floor. An
+  enterprise PRs that summary to a parent when it chooses; individual runs never
+  leave.
 
 ## Trust, kept simple on purpose
 
