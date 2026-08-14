@@ -887,6 +887,71 @@ def measure_vs_baseline(current_eq, baseline_path):
                     "different unit, not a headline forecast."}
 
 
+def _proj_to_repo(proj, root):
+    """Resolve a session's project string to a git repo path under `root`, or None.
+    Handles Claude worktree projects (`<repo>--claude-worktrees-<name>` -> `<repo>`)
+    and a dash/underscore fallback, so a worktree session still credits its repo."""
+    base = proj.split("--claude-worktrees-")[0].strip()
+    for name in (base, base.replace("-", "_"), base.replace("_", "-")):
+        if not name:
+            continue
+        cand = os.path.join(root, name)
+        if os.path.isdir(os.path.join(cand, ".git")):
+            return cand
+    return None
+
+
+def discover_repos(snapshot_dir, root, since):
+    """Fan out, do not guess: the repos to measure are the ones the operator's
+    sessions actually worked in, discovered from the snapshot itself and pruned to
+    those with commits in the window. Returns a sorted list of repo paths.
+
+    A tool that measures only the repos it was handed will mislead whenever that hand
+    is wrong. Discovery removes the hand."""
+    sessions, _t, _c, _s = load_snapshot(snapshot_dir)
+    repo_paths = set()
+    for s in sessions.values():
+        if s.get("proj"):
+            repo = _proj_to_repo(s["proj"], root)
+            if repo:
+                repo_paths.add(repo)
+    active = []
+    for repo in sorted(repo_paths):
+        # prune dead repos before the expensive blame: keep only those with commits
+        # in the window.
+        if survival_git.git(repo, "log", f"--since={since}", "--oneline", "-1").strip():
+            active.append(repo)
+    return active
+
+
+def coverage_for(snapshot_dir, repos, root):
+    """What fraction of the operator's sessions the measured repo set actually
+    covers, and every project it does NOT, by session count. Surfaced in the report
+    so a narrow repo set (the failure that made the tool measure 9% of a rig and say
+    nothing) confesses itself instead of hiding."""
+    sessions, _t, _c, _s = load_snapshot(snapshot_dir)
+    measured_paths = {os.path.abspath(r) for r in repos}
+    proj_sessions = defaultdict(int)
+    for s in sessions.values():
+        if s.get("proj"):
+            proj_sessions[s["proj"]] += 1
+    total, measured, unresolved = sum(proj_sessions.values()), 0, defaultdict(int)
+    for proj, cnt in proj_sessions.items():
+        repo = _proj_to_repo(proj, root)
+        if repo and os.path.abspath(repo) in measured_paths:
+            measured += cnt
+        else:
+            unresolved[proj.split("--claude-worktrees-")[0]] += cnt
+    return {
+        "root": root, "total_sessions": total, "measured_sessions": measured,
+        "measured_pct": round(100 * measured / total, 1) if total else None,
+        "measured_repos": sorted(os.path.basename(r) for r in repos),
+        "unmeasured": sorted(({"proj": p, "sessions": c}
+                              for p, c in unresolved.items()),
+                             key=lambda x: -x["sessions"]),
+    }
+
+
 def shipped_by_day(repos, since):
     """The numerator's raw material, per calendar day, from git.
 
@@ -967,7 +1032,8 @@ def attribute_work(repos, since, snapshot_dir, tail=900.0):
 
 
 def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
-                 baseline_path=None, granularity="week", labels_path=None):
+                 baseline_path=None, granularity="week", labels_path=None,
+                 coverage=None):
     session_cost, usage_field = load_adapter_cost(harness)
     sessions, turns, code, survival = load_snapshot(snapshot_dir)
     metrics = []
@@ -1124,6 +1190,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
             "constitution": "docs/governance.md",
         },
         "topline": tl,
+        "coverage": coverage,
         "fingerprint": fingerprint_summary(metrics, numerator),
         "babysitting": bs,
         "lever": lever,
@@ -1169,6 +1236,15 @@ def render_md(report):
              f"stuck, not what was typed, so in-chat churn does not inflate it. "
              f"Nothing leaves your machine.")
     L.append("")
+    cov = report.get("coverage")
+    if cov and cov.get("measured_pct") is not None and cov["measured_pct"] < 90:
+        top = ", ".join(f"{u['proj']} ({u['sessions']})"
+                        for u in cov.get("unmeasured", [])[:5])
+        L.append(f"> Coverage: this measures {cov['measured_pct']}% of your sessions "
+                 f"({cov['measured_sessions']}/{cov['total_sessions']}). Biggest "
+                 f"unmeasured projects: {top}. Add them to --repos (or run with "
+                 f"--repos auto) so the number reflects your whole rig, not a slice.")
+        L.append("")
     if lever:
         verified = any(t in str(lever.get("proof") or "").lower()
                        for t in ("reproduced", "tier-2", "tier-3", "git-verif"))
@@ -1266,6 +1342,12 @@ _CSS = """
  border-left:3px solid var(--accent);}
 .vibrant .lever.ok{border-left-color:var(--good);}
 .vibrant .lever.warn{border-left-color:var(--s4);}
+.vibrant .cov{background:var(--surface);border-radius:12px;padding:14px 17px;
+ margin:16px 0 0;border-left:3px solid var(--down);}
+.vibrant .cov-h{font-size:13px;font-weight:700;color:var(--ink);margin:0 0 4px;}
+.vibrant .cov-b{font-size:12.5px;color:var(--ink2);line-height:1.5;}
+.vibrant .cov-b code{background:var(--card);border:1px solid var(--line);
+ border-radius:5px;padding:1px 5px;font-size:11.5px;}
 .vibrant .lever-h{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
  color:var(--muted);margin:0 0 6px;}
 .vibrant .lever-tweak{font-size:15px;font-weight:600;color:var(--ink);line-height:1.4;}
@@ -1384,6 +1466,25 @@ def _hero_card(report):
     return "".join(p)
 
 
+def _coverage_banner(report):
+    """A blunt banner when the measured repos cover only a slice of the operator's
+    sessions. The tool measuring 9% of a rig and reporting it as the whole was the
+    failure; this makes the gap loud and names what to add."""
+    cov = report.get("coverage")
+    if not cov or cov.get("measured_pct") is None or cov["measured_pct"] >= 90:
+        return ""
+    esc = _html.escape
+    top = ", ".join(f'{esc(u["proj"])} ({u["sessions"]})'
+                    for u in cov.get("unmeasured", [])[:6])
+    return (f'<div class="cov"><div class="cov-h">Partial coverage: '
+            f'{cov["measured_pct"]}% of your sessions</div>'
+            f'<div class="cov-b">This number is built from {cov["measured_sessions"]} '
+            f'of {cov["total_sessions"]} sessions, the ones in the measured repos. '
+            f'Your biggest unmeasured projects are {top}. Re-run with '
+            f'<code>--repos auto</code> (or add them to <code>--repos</code>) so the '
+            f'meter reflects your whole rig, not a slice.</div></div>')
+
+
 def _lever_html(report):
     """The lever and measure line: the operator's advice, in the detail (not the
     shareable card, where a small tweak would read as an anticlimax)."""
@@ -1432,7 +1533,7 @@ def render_html(report):
     hero = _hero_card(report)
     tl = [r for r in report.get("timeline", []) if r["eq"] is not None]
     if len(tl) < 2:
-        body = (f'<div class="vibrant">{hero}{_lever_html(report)}'
+        body = (f'<div class="vibrant">{hero}{_coverage_banner(report)}{_lever_html(report)}'
                 f'{render_small_multiples(report)}{render_attribution(report)}</div>')
         return _page(head + body)
 
@@ -1567,7 +1668,7 @@ def render_html(report):
               f'work was good, only that it lasted.</p>'
               f'{"".join(parts)}{legend}'
               f'{render_small_multiples(report)}{render_attribution(report)}')
-    body = f'<div class="vibrant">{hero}{detail}</div>'
+    body = f'<div class="vibrant">{hero}{_coverage_banner(report)}{detail}</div>'
     return _page(head + body)
 
 
@@ -1728,7 +1829,11 @@ def _page(inner):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--harness", default="claude-code")
-    ap.add_argument("--repos", default="")
+    ap.add_argument("--repos", default="auto",
+                    help="comma-separated repo paths, or 'auto' (default) to "
+                         "discover them from the sessions in the snapshot")
+    ap.add_argument("--repos-root", default="~/projects",
+                    help="where auto-discovery looks for repos (default ~/projects)")
     ap.add_argument("--snapshot", required=True)
     ap.add_argument("--since", default="30.days.ago")
     ap.add_argument("--frontier", default=None,
@@ -1748,7 +1853,14 @@ def main():
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
-    repos = [os.path.expanduser(r) for r in args.repos.split(",") if r]
+    root = os.path.expanduser(args.repos_root)
+    if args.repos.strip().lower() in ("", "auto"):
+        repos = discover_repos(args.snapshot, root, args.since)
+        print(f"auto-discovered {len(repos)} repo(s) from the snapshot: "
+              f"{', '.join(os.path.basename(r) for r in repos)}", file=sys.stderr)
+    else:
+        repos = [os.path.expanduser(r) for r in args.repos.split(",") if r]
+    coverage = coverage_for(args.snapshot, repos, root)
     # frontier resolution: explicit --frontier, else the operator's configured
     # $VIBRANT_FRONTIER (their team/org/public board), else the repo's own.
     frontier_ref = args.frontier or os.environ.get("VIBRANT_FRONTIER") or \
@@ -1759,7 +1871,8 @@ def main():
                           if args.baseline else None,
                           granularity=args.granularity,
                           labels_path=os.path.expanduser(args.labels)
-                          if args.labels else None)
+                          if args.labels else None,
+                          coverage=coverage)
     os.makedirs(args.out, exist_ok=True)
     with open(os.path.join(args.out, "report.json"), "w") as f:
         json.dump(report, f, indent=2, sort_keys=True)
