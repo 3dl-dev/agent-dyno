@@ -562,9 +562,13 @@ def main():
             # an unsubstantiated number presented as fact is the instakill.
             if "review pass behind fan-out" not in hh:
                 fails.append("report.html is missing the lever tweak in the detail")
-            if "A lever to test (unverified)" not in hh or "unverified" not in hh:
+            # unverified lever: labeled a hypothesis, with an inspectable (collapsed)
+            # copy-paste prompt rather than a wall of prose.
+            if "A lever to test" not in hh or "unverified" not in hh.lower():
                 fails.append("report.html presents an unverified lever as substantiated "
                              "advice (should be labeled a hypothesis to test)")
+            if "prompt to apply it" not in hh or "lever-prompt" not in hh:
+                fails.append("report.html lever is missing the collapsed copy-paste prompt")
             # the efficiency-over-time chart is one meter, self-evident: bold per-era
             # levels + dated flags, no explanatory paragraphs and no second meter
             # (velocity) conflated into the same visual channel.

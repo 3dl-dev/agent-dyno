@@ -1573,7 +1573,16 @@ _CSS = """
 .vibrant .lever-h{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
  color:var(--muted);margin:0 0 6px;}
 .vibrant .lever-tweak{font-size:15px;font-weight:600;color:var(--ink);line-height:1.4;}
-.vibrant .lever-sub{font-size:12.5px;color:var(--ink2);margin-top:6px;line-height:1.45;}
+.vibrant .lever-more{margin-top:8px;}
+.vibrant .lever-more summary{font-size:11.5px;font-weight:600;color:var(--accent);
+ cursor:pointer;letter-spacing:.02em;list-style:none;}
+.vibrant .lever-more summary::-webkit-details-marker{display:none;}
+.vibrant .lever-more summary::before{content:"\\25B8 ";color:var(--muted);}
+.vibrant .lever-more[open] summary::before{content:"\\25BE ";}
+.vibrant .lever-prompt{margin:8px 0 4px;padding:10px 12px;background:var(--card);
+ border:1px solid var(--line);border-radius:8px;font-size:12px;line-height:1.5;
+ color:var(--ink2);white-space:pre-wrap;word-break:break-word;
+ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
 .vibrant .spark{width:224px;height:58px;display:block;}
 .vibrant .trend-cap{font-size:12.5px;color:var(--ink2);}
 .vibrant .trend-cap .up{color:var(--up);font-weight:650;}
@@ -1738,24 +1747,26 @@ def _lever_html(report):
         proof = str(lever.get("proof") or "unverified")
         verified = any(t in proof.lower()
                        for t in ("reproduced", "tier-2", "tier-3", "git-verif"))
-        fce, yce = lever.get("frontier_cell_efficiency"), lever.get("your_cell_efficiency")
-        if verified:
-            head, cls = "Your biggest lever", "lever"
-            sub = (f'A reproduced setup shaped like yours retains {fce} surviving-KB '
-                   f'per dollar, against your {yce} (proof: {esc(proof)}). Re-run with '
-                   f'--baseline to confirm the move on your own data.')
-        else:
-            # an unverified frontier cell is a hypothesis, not a target. Say so
-            # plainly; an unsubstantiated number presented as advice is the instakill.
-            head, cls = "A lever to test (unverified)", "lever warn"
-            sub = (f'An <b>unverified</b> frontier claim (proof: {esc(proof)}) reports '
-                   f'{fce} surviving-KB per dollar for a setup shaped like yours, against '
-                   f'your {yce}. A self-reported cell is a hypothesis: reproduce it with '
-                   f'the dynamometer, or test it behind --baseline, before you trust the '
-                   f'number.')
-        out.append(f'<div class="{cls}"><div class="lever-h">{head}</div>'
-                   f'<div class="lever-tweak">{esc(str(lever.get("tweak") or ""))}</div>'
-                   f'<div class="lever-sub">{sub}</div></div>')
+        tweak = str(lever.get("tweak") or "")
+        head, cls = ("Your biggest lever", "lever") if verified \
+            else ("A lever to test", "lever warn")
+        # the actionable artifact: a copy-paste prompt the operator hands their agent
+        # to adopt the tweak as a standing rule, collapsed behind a disclosure so it is
+        # inspectable but not in the way.
+        prompt = (f"New standing rule for this rig, effective now: {tweak} "
+                  f"Apply it on every relevant turn instead of your default, and add it "
+                  f"to your project CLAUDE.md (or your orchestrator's system prompt) so "
+                  f"it persists across sessions. Then re-run Vibrant with --baseline to "
+                  f"confirm it moved the number.")
+        prov = ("Reproduced on the frontier." if verified else
+                f"Unverified frontier claim (proof: {esc(proof)}), so a hypothesis, not "
+                f"a target: reproduce it or test it behind --baseline before trusting it.")
+        out.append(
+            f'<div class="{cls}"><div class="lever-h">{head}</div>'
+            f'<div class="lever-tweak">{esc(tweak)}</div>'
+            f'<details class="lever-more"><summary>prompt to apply it</summary>'
+            f'<pre class="lever-prompt">{esc(prompt)}</pre>'
+            f'<div class="fine">{prov}</div></details></div>')
     else:
         out.append('<div class="lever ok"><div class="lever-h">At the frontier</div>'
                    '<div class="lever-tweak">Nothing shaped like your setup beats you '
