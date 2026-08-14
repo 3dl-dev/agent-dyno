@@ -57,6 +57,14 @@ def main():
                            check=True)
         except subprocess.CalledProcessError as e:
             print(f"extractor {extractor} failed: {e}", file=sys.stderr)
+    # Survival: the numerator side the driver needs. Without survival-cache.json a
+    # report has no surviving-work data and comes back empty, so it is part of the
+    # snapshot, not an optional extra step.
+    try:
+        subprocess.run([sys.executable, os.path.join(HERE, "model-behavior-survival.py"),
+                        "--out", os.path.join(d, "survival-cache.json")], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"survival extractor failed: {e}", file=sys.stderr)
     print(f"snapshot written: {d}")
     print("keep this directory, it is your long-horizon fuel record. "
           "Tiny, local, and all you need alongside git.")

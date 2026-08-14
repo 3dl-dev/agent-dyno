@@ -199,6 +199,14 @@ def per_session_survival(cache_path=None, verbose=False):
 
 
 def main():
+    # --out writes the per-session survival cache (survival-cache.json) the driver
+    # reads. This is what the snapshot needs; without it a report has no survival
+    # and comes back empty. Default (no --out) prints the model-level table.
+    if "--out" in sys.argv:
+        out = sys.argv[sys.argv.index("--out") + 1]
+        per_session_survival(cache_path=out, verbose=True)
+        print(f"survival cache written: {out}", file=sys.stderr)
+        return
     since = None
     if "--since" in sys.argv:
         since = sys.argv[sys.argv.index("--since") + 1]

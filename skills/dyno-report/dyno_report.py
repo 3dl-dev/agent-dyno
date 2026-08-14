@@ -525,9 +525,13 @@ def timeline(metrics):
     for key in sorted(weeks):
         cells = weeks[key]
         survc = sum(c["born"] - c["killed"] for c in cells)
-        dollars = sum(c["dollars"] for c in cells)
         survkb = survc / 1024 if survc > 0 else 0.0
-        eq = round(survkb / dollars, 4) if dollars else None
+        # Weekly metric matches the headline's framing (per Mtok output), using
+        # surviving KB as the session-side proxy for the git-side functionality (the
+        # numerator is not weekly). Dollar-independent, so an unpriced session never
+        # drops a week from the curve.
+        out_mtok = sum(c["out_tok"] for c in cells) / 1e6
+        eq = round(survkb / out_mtok, 2) if out_mtok else None
         fp = {"engine": modal([c["engine"] for c in cells]),
               "orchestrator": modal([c["model"] for c in cells]),
               "effort": modal([c["effort"] for c in cells])}
@@ -1145,7 +1149,7 @@ def render_html(report):
     # points with native tooltips + direct value labels + x tick labels
     for i, r in enumerate(tl):
         x, y = X(i), Y(r["eq"])
-        tip = f"{r['week']}: {r['eq']} survKB/$, {r['sessions']} sessions"
+        tip = f"{r['week']}: {r['eq']} survKB per Mtok, {r['sessions']} sessions"
         if r["changes"]:
             tip += " | " + "; ".join(r["changes"])
         parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4.5" fill="var(--surface)" '
@@ -1167,9 +1171,10 @@ def render_html(report):
                   f'<ol style="font-size:13px;color:var(--ink2);margin:4px 0">{items}</ol>')
     body = (f'<div class="viz-root"><h1>{esc(str(eq0))} functionality per Mtok output</h1>'
             f'{_surface_html(report)}'
-            f'<h2>Efficiency over time</h2>'
-            f'<p>Each numbered flag is a change you made to your setup, so a move on '
-            f'the curve ties to a change, not noise.</p>'
+            f'<h2>Surviving work per Mtok output, by week</h2>'
+            f'<p>Your efficiency over time, in the same per-output-token terms as the '
+            f'headline. Each numbered flag is a change you made to your setup, so a '
+            f'move on the curve ties to a change, not noise.</p>'
             f'{"".join(parts)}{legend}'
             f'<table><thead><tr><th>week</th><th>EQ</th><th>sessions</th>'
             f'<th>changes</th></tr></thead><tbody>{rows}</tbody></table>'
