@@ -807,49 +807,61 @@ def rig_stats(metrics, attribution, misery_block):
     return stats
 
 
-def navigate(stats, min_sessions=8):
-    """The grounded lever: from where you spend the most time, the single-axis move to
-    one of YOUR OWN configurations that Pareto-dominates it (at least as efficient AND
-    at least as bearable, strictly better on one). No frontier fiction, no advice you
-    already follow: it only ever points at a rig your own history proves is better."""
-    scored = [s for s in stats.values()
-              if s["sessions"] >= min_sessions and s["misery"] is not None]
-    if len(scored) < 2:
-        return None
+# the fingerprint axes the recommendation descends over, each as (label, the
+# per-session metric field, the attribution key, the misery-block key).
+_GRAD_DIMS = [
+    ("orchestrator", "model", "by_orchestrator", "by_model"),
+    ("worker", "worker", "by_worker", "by_worker"),
+    ("effort", "effort", "by_effort", "by_effort"),
+    ("topology", "engine", "by_engine", "by_engine"),
+]
 
-    def dominates(t, f):  # t is at least as good on both, strictly better on one
-        return (t["eff"] >= f["eff"] and t["misery"] <= f["misery"]
-                and (t["eff"] > f["eff"] or t["misery"] < f["misery"]))
 
-    def single_axis(f, t):
-        # returns (axis, from_value, to_value) if the two rigs differ in exactly one
-        # of {orchestrator, worker}, else None. A clean, actionable one-axis move
-        # beats a disruptive whole-rig leap.
-        fo, fw = [x.strip() for x in f["rig"].split("->")]
-        to, tw = [x.strip() for x in t["rig"].split("->")]
-        if fo == to and fw != tw:
-            return "worker", fw, tw
-        if fw == tw and fo != to:
-            return "orchestrator", fo, to
-        return None
-
+def gradient_move(metrics, attribution, misery_block, min_sessions=8, misery_tol=4.0):
+    """The recommendation as gradient descent over the fingerprint. The objective is
+    the TRUE economy, dollars per 1k surviving decision points (which prices model
+    heterogeneity and the orchestrator's dominant cache-read cost, so it is not fooled
+    by the opus-drives-sonnet false economy that per-token efficiency falls for). For
+    every axis, it measures the cost at each value from the operator's OWN runs, takes
+    the steepest single-axis descent from the value they use most to the cheapest one
+    that is not more miserable, and returns the axis with the largest drop. Never the
+    frontier; never an axis they already optimize (a maxed axis has no cheaper value)."""
+    attribution = attribution or {}
+    misery_block = misery_block or {}
     best = None
-    for f in sorted(scored, key=lambda s: -s["sessions"]):  # biggest exposure first
-        doms = [(t, single_axis(f, t)) for t in scored
-                if t["rig"] != f["rig"] and dominates(t, f) and single_axis(f, t)]
-        if not doms:
+    for label, mfield, akey, mis_key in _GRAD_DIMS:
+        cx = {k: v["net_complexity"] for k, v in (attribution.get(akey) or {}).items()}
+        mis = misery_block.get(mis_key) or {}
+        dol, sess = defaultdict(float), defaultdict(int)
+        for m in metrics:
+            v = m.get(mfield)
+            dol[v] += m.get("dollars", 0.0)
+            sess[v] += 1
+        # cost ($/1k complexity) per value that has both dollars and surviving work
+        cost = {v: dol[v] / (cx[v] / 1000.0)
+                for v in cx if cx[v] > 0 and sess[v] >= min_sessions and dol[v] > 0}
+        if len(cost) < 2:
             continue
-        # pick the single-axis dominator with the largest combined relative gain
-        t, (axis, frm, to_v) = max(
-            doms, key=lambda d: (d[0]["eff"] - f["eff"]) / max(f["eff"], 1)
-            + (f["misery"] - d[0]["misery"]) / 100.0)
-        best = {"from_rig": f["rig"], "to_rig": t["rig"], "axis": axis,
-                "change": f"{frm} to {to_v}", "from_sessions": f["sessions"],
-                "from_eff": f["eff"], "to_eff": t["eff"],
-                "from_misery": f["misery"], "to_misery": t["misery"],
-                "tweak": (f"Shift your {axis} from {frm} to {to_v}."
-                          if axis != "rig" else f"Move from {f['rig']} to {t['rig']}.")}
-        break
+        dominant = max(cost, key=lambda v: sess[v])
+        dcost, dmis = cost[dominant], mis.get(dominant)
+        # candidates: cheaper, enough evidence, and not more miserable than today
+        cands = [v for v in cost if v != dominant and cost[v] < dcost
+                 and (dmis is None or mis.get(v) is None or mis[v] <= dmis + misery_tol)]
+        if not cands:
+            continue
+        to = min(cands, key=lambda v: cost[v])
+        drop = dcost - cost[to]
+        cand = {"axis": label, "from": dominant, "to": to,
+                "from_cost": round(dcost, 1), "to_cost": round(cost[to], 1),
+                "savings_pct": round(100 * drop / dcost, 0),
+                "from_sessions": sess[dominant], "to_sessions": sess[to],
+                "from_misery": dmis, "to_misery": mis.get(to),
+                "tweak": f"Run your {label} at {to} instead of {dominant}.",
+                "_drop": drop}
+        if best is None or cand["_drop"] > best["_drop"]:
+            best = cand
+    if best:
+        best.pop("_drop", None)
     return best
 
 
@@ -1239,15 +1251,17 @@ def attribute_work(bundles, since, snapshot_dir, tail=900.0):
     def _agg():
         return defaultdict(lambda: {"commits": 0, "surviving": 0, "net_complexity": 0})
     by_model, by_effort, by_roles = _agg(), _agg(), _agg()
+    by_worker, by_engine = _agg(), _agg()
     matched = unmatched = 0
     for repo, b in bundles.items():
         sessions = horizon_attribute.load_sessions(snapshot_dir, b["name"])
         if not sessions:
             continue
-        for s in sessions:  # precompute the roles config once per session
-            s["_roles"] = f"{base_model(s.get('raw_model'))} -> " + (
-                base_model(sorted(s["submix"], key=lambda k: (-s["submix"][k], k))[0])
-                if s.get("submix") else "solo")
+        for s in sessions:  # precompute the rig config axes once per session
+            s["_worker"] = (base_model(sorted(s["submix"],
+                            key=lambda k: (-s["submix"][k], k))[0])
+                            if s.get("submix") else "solo")
+            s["_roles"] = f"{base_model(s.get('raw_model'))} -> {s['_worker']}"
         commits, surviving, complexity = b["commits"], b["surviving"], b["complexity"]
         if not commits:
             continue
@@ -1261,8 +1275,10 @@ def attribute_work(bundles, since, snapshot_dir, tail=900.0):
                 continue
             s = min(cand, key=lambda s: abs((s["start"] + s["end"]) / 2 - c["ts"]))
             matched += 1
+            eng = s.get("engine", "unknown")
             for agg, key in ((by_model, s["model"]), (by_effort, s["effort"]),
-                             (by_roles, s["_roles"])):
+                             (by_roles, s["_roles"]), (by_worker, s["_worker"]),
+                             (by_engine, eng)):
                 a = agg[key]
                 a["commits"] += 1
                 a["surviving"] += surviving.get(sha, 0)
@@ -1270,6 +1286,8 @@ def attribute_work(bundles, since, snapshot_dir, tail=900.0):
     return {
         "matched": matched, "unmatched": unmatched,
         "by_orchestrator": {k: by_model[k] for k in sorted(by_model)},
+        "by_worker": {k: by_worker[k] for k in sorted(by_worker)},
+        "by_engine": {k: by_engine[k] for k in sorted(by_engine)},
         "by_effort": {k: by_effort[k] for k in sorted(by_effort)},
         "by_model_roles": {k: by_roles[k] for k in sorted(by_roles)},
     }
@@ -1434,10 +1452,10 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
             "by_routing": _misery_by(metrics, "routing"),
         }
 
-    # navigation: the grounded lever, from the operator's OWN per-rig efficiency and
-    # misery (never the frontier, never advice they already follow).
+    # navigation: gradient descent over the fingerprint on the true-economy objective
+    # ($/surviving-work), from the operator's OWN runs. Never the frontier.
     rstats = rig_stats(metrics, numerator.get("attribution"), misery_block)
-    navigation = navigate(rstats)
+    navigation = gradient_move(metrics, numerator.get("attribution"), misery_block)
 
     # provenance
     repo_prov = []
@@ -1619,6 +1637,8 @@ _CSS = """
  text-transform:uppercase;letter-spacing:.05em;}
 .vibrant .arm-v{flex:none;font-size:12px;color:var(--ink2);white-space:nowrap;min-width:96px;}
 .vibrant .arm-v b{color:var(--ink);font-weight:650;}
+.vibrant .arm-chip{font-size:12px;font-weight:600;color:var(--ink);
+ background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:2px 9px;}
 .vibrant .bar.mini{height:12px;border-radius:6px;overflow:hidden;flex:1;}
 .vibrant .bar.mini .seg:first-child{border-radius:6px 0 0 6px;}
 .vibrant .bar.mini .seg:last-child{border-radius:0 6px 6px 0;}
@@ -1666,6 +1686,12 @@ _CSS = """
 .vibrant h2 .sub{font-weight:400;color:var(--muted);font-size:12px;letter-spacing:0;}
 .vibrant h2 select{margin-left:8px;vertical-align:middle;}
 .vibrant .fine{font-size:11px;color:var(--muted);margin-top:8px;}
+.vibrant .breakdown{margin-top:28px;}
+.vibrant .breakdown>summary{font-size:12px;font-weight:600;color:var(--accent);
+ cursor:pointer;list-style:none;}
+.vibrant .breakdown>summary::-webkit-details-marker{display:none;}
+.vibrant .breakdown>summary::before{content:"\\25B8 ";color:var(--muted);}
+.vibrant .breakdown[open]>summary::before{content:"\\25BE ";}
 .vibrant p{font-size:13px;color:var(--ink2);margin:0 0 14px;line-height:1.5;}
 .vibrant svg{max-width:100%;height:auto;}
 .vibrant table{border-collapse:collapse;font-size:13px;margin-top:14px;width:100%;
@@ -1703,10 +1729,17 @@ def _stack_bar(arm):
 
 
 def _arm_row(label, arm):
-    """One fingerprint arm as a compact row: a one-word axis label, a blend bar, and
-    the dominant value with its share. Three of these ARE the rig fingerprint on the
-    card, replacing a single collapsed categorical."""
+    """One fingerprint axis as a compact row: a one-word axis label, then either a
+    blend bar with the dominant value (countable dims) or a single classified label
+    (pattern dims). Six of these ARE the N-dim rig fingerprint on the card, not one
+    collapsed categorical."""
     esc = _html.escape
+    if isinstance(arm, str):  # a pattern dimension: one classified label
+        val = arm.split(" (")[0]
+        if "pending" in val or not val:
+            return ""
+        return (f'<div class="arm"><span class="arm-l">{esc(label)}</span>'
+                f'<span class="arm-chip">{esc(val)}</span></div>')
     b = (arm or {}).get("blend") or []
     if not b:
         return ""
@@ -1771,10 +1804,12 @@ def _hero_card(report):
         meters.append(f'<div class="meter mis"><div class="mv">{mb["overall"]}</div>'
                       f'<div class="mn">misery</div><div class="mu">/100, how much you '
                       f'fought it</div></div>')
-    # the fingerprint: the multi-arm rig, not one collapsed categorical. Three arms
-    # that define the rig -- who drives, who codes, the shape -- each a blend bar.
-    arms = [("drives", "orchestrator_model"), ("codes", "worker_model"),
-            ("shape", "orchestration_topology")]
+    # the fingerprint: the operator's N-dim position, not one collapsed categorical.
+    # Countable axes render as blend bars; the classified process axes (review,
+    # knowledge) as their label.
+    arms = [("driver", "orchestrator_model"), ("worker", "worker_model"),
+            ("shape", "orchestration_topology"), ("effort", "reasoning_effort"),
+            ("review", "review_regime"), ("memory", "knowledge_practice")]
     rows = "".join(r for r in (_arm_row(lbl, fp.get(k)) for lbl, k in arms) if r)
     fingerprint = (f'<div class="fp"><div class="row-h">Fingerprint</div>{rows}</div>'
                    if rows else "")
@@ -1817,19 +1852,26 @@ def _lever_html(report):
     measure = report.get("measure")
     out = []
     if nav:
-        # the grounded move: a Pareto step to one of the operator's OWN better rigs.
-        # Visible is one line; the evidence + copy-paste prompt collapse below.
-        prompt = (f"Change your default {nav['axis']} for this kind of work: "
-                  f"{nav['change']}. Your own runs show {nav['to_rig']} is both more "
-                  f"efficient and less miserable than {nav['from_rig']} (the rig you use "
-                  f"most). Make it your default (CLAUDE.md / routing), then re-run "
-                  f"Vibrant with --baseline to confirm the move.")
-        ev = (f"From your history: {nav['from_rig']} ({nav['from_sessions']} sessions) "
-              f"runs at efficiency {nav['from_eff']:.0f}, misery {nav['from_misery']}; "
-              f"your {nav['to_rig']} runs at {nav['to_eff']:.0f} / {nav['to_misery']}, "
-              f"better on both.")
+        # steepest descent on the true-economy objective ($/surviving-work) over the
+        # fingerprint. Visible is one line; the evidence + copy-paste prompt collapse.
+        mis_note = ""
+        if nav.get("from_misery") is not None and nav.get("to_misery") is not None:
+            mis_note = (f" Misery goes {nav['from_misery']} to {nav['to_misery']}."
+                        if nav["to_misery"] <= nav["from_misery"] else "")
+        ev = (f"From your runs: your {nav['axis']} is {nav['from']} on "
+              f"{nav['from_sessions']} sessions, at ${nav['from_cost']:.0f} per 1k "
+              f"surviving decision points; {nav['to']} runs at ${nav['to_cost']:.0f}, "
+              f"about {nav['savings_pct']:.0f}% cheaper for the same work.{mis_note} "
+              f"Dollars, not tokens, so it prices the orchestrator's cache-read cost "
+              f"(the opus-drives-cheap-worker false economy that per-token efficiency "
+              f"misreads).")
+        prompt = (f"Change your default {nav['axis']} for this kind of work: use "
+                  f"{nav['to']} instead of {nav['from']}. Your own runs show it does "
+                  f"the same surviving work for about {nav['savings_pct']:.0f}% less. "
+                  f"Set it in your routing / CLAUDE.md, then re-run Vibrant with "
+                  f"--baseline to confirm the move.")
         out.append(
-            f'<div class="lever"><div class="lever-h">Your biggest move</div>'
+            f'<div class="lever"><div class="lever-h">Your steepest move</div>'
             f'<div class="lever-tweak">{esc(nav["tweak"])}</div>'
             f'<details class="lever-more"><summary>why, and the prompt to apply it'
             f'</summary><div class="fine">{esc(ev)}</div>'
@@ -1885,14 +1927,20 @@ def render_html(report):
     ml, mr, mt, mb = 46, 18, 26, 40
     pw, ph = W - ml - mr, H - mt - mb
     eqs = [r["eq"] for r in tl]
-    # robust y-scale: a couple of outlier days (a big commit on a low-token day) can
-    # be 10x the rest and crush the era lines into a flat band. Cap the axis at the
-    # ~85th percentile of daily values plus headroom; rare spikes clip to the top
-    # edge instead of flattening the signal. Floor at 0 (efficiency is non-negative).
-    srt = sorted(eqs)
-    p85 = srt[min(len(srt) - 1, int(0.85 * len(srt)))] if srt else 1.0
-    ylo, yhi = 0.0, max(p85 * 1.2, max(eqs) * 0.35, 1.0)
     n = len(tl)
+    # the readable signal is the per-era LEVEL (aggregate efficiency between setup
+    # changes), not the daily noise. Compute eras first, then scale the y-axis to the
+    # era levels so the step line fills the frame; daily spikes clip to the top edge.
+    change_idx = [i for i, r in enumerate(tl) if r["changes"]]
+    bounds = [0] + change_idx + [n]
+    eras = []
+    for a, b in zip(bounds, bounds[1:]):
+        if b > a:
+            era_cx = sum(r.get("complexity") or 0 for r in tl[a:b])
+            era_out = sum(r.get("out_mtok") or 0 for r in tl[a:b])
+            eras.append((a, b, era_cx / era_out if era_out else 0.0))
+    ylo = 0.0
+    yhi = max([lvl for _, _, lvl in eras] + [1.0]) * 1.5
 
     def X(i):
         return ml + (pw * i / (n - 1) if n > 1 else pw / 2)
@@ -1911,30 +1959,6 @@ def render_html(report):
                      f'font-size="11" fill="var(--muted)">{v:.0f}</text>')
     parts.append(f'<line x1="{ml}" y1="{mt+ph}" x2="{ml+pw}" y2="{mt+ph}" '
                  f'stroke="var(--axis)" stroke-width="1"/>')
-    # change-point indices split the run into configuration ERAS. Between two
-    # changes the setup held roughly constant, so each era has a characteristic
-    # efficiency: its mean. The bold line is those per-era means (a segmented
-    # average that never smears across a real setup change), and the level SHIFT at
-    # each change is the signal the daily noise otherwise buries. This is the
-    # thesis made visible: an arrangement has a level, and tuning moves the level.
-    gran = (report.get("fuel_and_work") or {}).get("granularity", "day")
-    vunit = {"day": "day", "week": "wk", "month": "mo"}.get(gran, "bucket")
-    change_idx = [i for i, r in enumerate(tl) if r["changes"]]
-    bounds = [0] + change_idx + [n]
-    eras = []
-    for a, b in zip(bounds, bounds[1:]):
-        if b > a:
-            # era level is the AGGREGATE efficiency (total durable complexity / total
-            # scoped output over the era), not the mean of noisy daily ratios: a day
-            # with one commit and few tokens must not spike the level. This aggregates
-            # cleanly toward the headline.
-            era_cx = sum(r.get("complexity") or 0 for r in tl[a:b])
-            era_out = sum(r.get("out_mtok") or 0 for r in tl[a:b])
-            level = era_cx / era_out if era_out else 0.0
-            shipped = sum(r.get("shipped") or 0 for r in tl[a:b])
-            vel = shipped / (b - a)  # shipped changes per bucket (per day at day gran)
-            eras.append((a, b, level, vel))
-
     # flags: dashed verticals + numbered pins at each change
     flags, k = [], 0
     for i, r in enumerate(tl):
@@ -1951,32 +1975,21 @@ def render_html(report):
                      f'font-size="10" font-weight="700" fill="var(--accent)">{k}</text>')
         flags.append((k, r))
 
-    # daily actuals, faint: the raw per-day truth under the trend, still hoverable
+    # daily actuals: barely-there context (thin, no fill), so the era levels read.
     dline = " ".join(f"{X(i):.1f},{Y(r['eq']):.1f}" for i, r in enumerate(tl))
-    parts.append(f'<polygon points="{X(0):.1f},{mt+ph:.1f} {dline} {X(n-1):.1f},{mt+ph:.1f}" '
-                 f'fill="var(--accent)" opacity="0.05"/>')
     parts.append(f'<polyline points="{dline}" fill="none" stroke="var(--accent)" '
-                 f'stroke-width="1.3" stroke-linejoin="round" opacity="0.30"/>')
-    for i, r in enumerate(tl):
-        tip = f"{r['week']}: {r['eq']} survKB per Mtok, {r['sessions']} sessions"
-        if r["changes"]:
-            tip += " | " + "; ".join(r["changes"])
-        parts.append(f'<circle cx="{X(i):.1f}" cy="{Y(r["eq"]):.1f}" r="2.2" '
-                     f'fill="var(--accent)" opacity="0.34"><title>{esc(tip)}</title></circle>')
+                 f'stroke-width="1" stroke-linejoin="round" opacity="0.16"/>')
 
-    # era-mean step line, bold, is the eq level; under it each era carries its
-    # VELOCITY (shipped changes per day), the axis eq inverts on tight work. The two
-    # diverging is the whole point: a lower level that ships far more is the better
-    # rig, not the worse one.
+    # the per-era LEVEL: a bold step line with the level number, the readable signal.
     step = []
-    for (a, b, mean, vel) in eras:
+    for (a, b, mean) in eras:
         x0, x1 = X(a), (X(b) if b < n else X(n - 1))
         step += [f"{x0:.1f},{Y(mean):.1f}", f"{x1:.1f},{Y(mean):.1f}"]
     if step:
         parts.append(f'<polyline points="{" ".join(step)}" fill="none" '
-                     f'stroke="var(--accent)" stroke-width="3" stroke-linejoin="round" '
+                     f'stroke="var(--accent)" stroke-width="3.5" stroke-linejoin="round" '
                      f'stroke-linecap="round"/>')
-        for (a, b, mean, vel) in eras:
+        for (a, b, mean) in eras:
             xm = (X(a) + (X(b) if b < n else X(n - 1))) / 2
             parts.append(f'<text x="{xm:.1f}" y="{Y(mean)-9:.1f}" text-anchor="middle" '
                          f'font-size="13" font-weight="700" fill="var(--accent)">'
@@ -1999,7 +2012,9 @@ def render_html(report):
               f'<h2>Efficiency over time <span class="sub">durable work per Mtok, '
               f'per era</span></h2>'
               f'{"".join(parts)}{legend}'
-              f'{render_small_multiples(report)}{render_attribution(report)}')
+              f'<details class="breakdown"><summary>full breakdown: fuel streams and '
+              f'per-rig work</summary>'
+              f'{render_small_multiples(report)}{render_attribution(report)}</details>')
     body = f'<div class="vibrant">{hero}{_coverage_banner(report)}{detail}</div>'
     return _page(head + body)
 
