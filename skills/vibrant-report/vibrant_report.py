@@ -1241,13 +1241,16 @@ def _hero_card(report):
     tl = report["topline"]
     fp = report.get("fingerprint") or {}
     eqs = [r["eq"] for r in report.get("timeline", []) if r["eq"] is not None]
+    gran = (report.get("fuel_and_work") or {}).get("granularity", "week")
+    unit = {"day": "days", "week": "weeks", "month": "months"}.get(gran, "points")
     trend = ""
     if len(eqs) >= 2:
         d = eqs[-1] - eqs[0]
-        arrow, cls = ("&#9650;", "up") if d > 0 else (("&#9660;", "down") if d < 0 else ("&#8212;", ""))
+        arrow, cls = ("&#9650;", "up") if d > 0 else (("&#9660;", "down") if d < 0 else ("&#126;", ""))
+        span = f"{len(eqs)} {unit if len(eqs) != 1 else unit[:-1]}"
         trend = (f'<div class="hero-right">{_sparkline(eqs)}'
                  f'<div class="trend-cap"><span class="{cls}">{arrow}&#8202;'
-                 f'{abs(d):.0f}</span> over {len(eqs)} weeks</div></div>')
+                 f'{abs(d):.0f}</span> over {span}</div></div>')
     p = ['<div class="card">',
          '<div class="top"><div class="brand"><span class="mark"></span>VIBRANT</div>',
          f'<div class="meta">{tl.get("sessions")} sessions</div></div>',
@@ -1434,7 +1437,12 @@ def _sm_svg(rows):
             out.append(f'<circle cx="{X(i):.1f}" cy="{Y(v):.1f}" r="3" fill="{color}">'
                        f'<title>{esc(tip)}</title></circle>')
         if pi == len(panels) - 1:
+            # thin x-labels to ~8 so a daily axis does not collide (matches the
+            # efficiency chart); always keep the last so the range end is shown.
+            lstep = max(1, round(n / 8))
             for i, r in enumerate(rows):
+                if i % lstep and i != n - 1:
+                    continue
                 out.append(f'<text x="{X(i):.1f}" y="{top+PH+16:.0f}" '
                            f'text-anchor="middle" font-size="10" '
                            f'fill="var(--muted)">{esc(r["bucket"])}</text>')
