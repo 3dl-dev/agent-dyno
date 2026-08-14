@@ -572,34 +572,36 @@ def detect_changes(metrics, window=14, sustain=0.75):
     return sorted(out, key=lambda c: c["date"])
 
 
-def timeline(metrics, all_fp=None):
-    """Weekly efficiency curve (surviving KB per Mtok output, the headline's unit),
-    annotated with the operator's real, day-dated setup changes (detect_changes).
-    A change flag sits on the week that contains its date and carries the exact
-    date, so the claim is checkable and never off by a week.
+def timeline(metrics, all_fp=None, gran="week"):
+    """Efficiency curve (surviving KB per Mtok output, the headline's unit) binned at
+    `gran` (day / week / month), annotated with the operator's real, day-dated setup
+    changes (detect_changes). A change flag sits on the bucket that contains its date
+    and carries the exact date, so the claim is checkable.
 
     The curve uses `metrics` (survival-having sessions, since EQ needs survival), but
     change detection uses `all_fp`, the day/engine/model/effort of EVERY session, so
     a model switch is dated over all runs (not just the ones that wrote surviving
-    code) and matches the day the operator actually switched. Defaults to metrics."""
-    weeks = defaultdict(list)
+    code) and matches the day the operator actually switched."""
+    buckets, labels = defaultdict(list), {}
     for m in metrics:
         if not m.get("day"):
             continue
         try:
-            weeks[_iso_week(m["day"])].append(m)
+            k, lab = _bucket(m["day"], gran)
         except Exception:
             continue
-    chg_by_week = defaultdict(list)
+        buckets[k].append(m)
+        labels[k] = lab
+    chg = defaultdict(list)
     for c in detect_changes(all_fp if all_fp is not None else metrics):
         try:
-            chg_by_week[_iso_week(c["date"])].append(
-                f'{c["dim"]}: {c["from"]} to {c["to"]} ({_daylabel(c["date"])})')
+            k, _ = _bucket(c["date"], gran)
         except Exception:
             continue
+        chg[k].append(f'{c["dim"]}: {c["from"]} to {c["to"]} ({_daylabel(c["date"])})')
     rows = []
-    for key in sorted(weeks):
-        cells = weeks[key]
+    for k in sorted(buckets):
+        cells = buckets[k]
         survc = sum(c["born"] - c["killed"] for c in cells)
         survkb = survc / 1024 if survc > 0 else 0.0
         out_mtok = sum(c["out_tok"] for c in cells) / 1e6
@@ -608,9 +610,9 @@ def timeline(metrics, all_fp=None):
               "orchestrator": modal([c["model"] for c in cells]),
               "effort": modal([c["effort"] for c in cells])}
         bs = babysitting(cells)
-        rows.append({"week": _week_label(key), "eq": eq,
+        rows.append({"week": labels[k], "eq": eq,
                      "sessions": len(cells), "fingerprint": fp,
-                     "changes": chg_by_week.get(key, []),
+                     "changes": chg.get(k, []),
                      "babysitting": bs["per_100_turns"] if bs else None})
     return rows
 
@@ -992,7 +994,18 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
     lever = best_lever(by_ee_cells, frontier, tl["_survkb"], tl["_dollars"])
     tl = {k: v for k, v in tl.items() if not k.startswith("_")}  # drop internals
     measure = measure_vs_baseline(tl["eq"], baseline_path)
-    tline = timeline(metrics, all_fp)
+    # adaptive granularity: a month of data with daily changes should not be a
+    # weekly rollup. Pick day for a short span, week for medium, month for long.
+    if granularity == "auto":
+        days = sorted(m["day"] for m in all_fp if m.get("day"))
+        if days:
+            d0 = datetime.date(*(int(x) for x in days[0].split("-")[:3]))
+            d1 = datetime.date(*(int(x) for x in days[-1].split("-")[:3]))
+            span = (d1 - d0).days
+            granularity = "day" if span <= 70 else ("week" if span <= 550 else "month")
+        else:
+            granularity = "week"
+    tline = timeline(metrics, all_fp, granularity)
     bs = babysitting(metrics)
     fuel = fuel_and_work(metrics, granularity)
 
@@ -1297,7 +1310,8 @@ def render_html(report):
     if yhi == ylo:
         yhi, ylo = yhi + 1, 0.0
     pad = (yhi - ylo) * 0.18
-    ylo, yhi = ylo - pad, yhi + pad
+    # efficiency is non-negative; never let padding push the axis below zero.
+    ylo, yhi = max(0.0, ylo - pad), yhi + pad
     n = len(tl)
 
     def X(i):
@@ -1335,15 +1349,19 @@ def render_html(report):
                  f'fill="var(--accent)" opacity="0.07"/>')
     parts.append(f'<polyline points="{pline}" fill="none" stroke="var(--accent)" '
                  f'stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>')
+    # thin x-labels to ~8 so a daily curve does not collide; markers shrink when dense
+    lstep = max(1, round(n / 8))
+    rad = 3 if n > 14 else 4
     for i, r in enumerate(tl):
         x, y = X(i), Y(r["eq"])
         tip = f"{r['week']}: {r['eq']} survKB per Mtok, {r['sessions']} sessions"
         if r["changes"]:
             tip += " | " + "; ".join(r["changes"])
-        parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4" fill="var(--card)" '
+        parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{rad}" fill="var(--card)" '
                      f'stroke="var(--accent)" stroke-width="2"><title>{esc(tip)}</title></circle>')
-        parts.append(f'<text x="{x:.1f}" y="{mt+ph+16:.0f}" text-anchor="middle" '
-                     f'font-size="10" fill="var(--muted)">{esc(r["week"])}</text>')
+        if i % lstep == 0 or i == n - 1:
+            parts.append(f'<text x="{x:.1f}" y="{mt+ph+16:.0f}" text-anchor="middle" '
+                         f'font-size="10" fill="var(--muted)">{esc(r["week"])}</text>')
     parts.append("</svg>")
 
     legend = ""
@@ -1353,7 +1371,7 @@ def render_html(report):
         legend = f'<ol>{items}</ol>'
     detail = (f'{_lever_html(report)}'
               f'<h2>Efficiency over time</h2>'
-              f'<p>Surviving work per Mtok output by week, the same terms as the '
+              f'<p>Surviving work per Mtok output over time, the same terms as the '
               f'headline. A numbered flag marks a real change you made, dated to the '
               f'day it happened, so a move ties to a change and not noise.</p>'
               f'{"".join(parts)}{legend}'
@@ -1528,8 +1546,9 @@ def main():
     ap.add_argument("--labels", default=None,
                     help="fingerprint-labels.json (pattern dims per rig); default: "
                          "alongside the snapshot if present")
-    ap.add_argument("--granularity", default="week", choices=["day", "week", "month"],
-                    help="time bucket for the fuel-and-work chart")
+    ap.add_argument("--granularity", default="auto",
+                    choices=["auto", "day", "week", "month"],
+                    help="time bucket for the curves; auto picks day/week/month by span")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
