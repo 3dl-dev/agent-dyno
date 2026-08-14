@@ -441,6 +441,19 @@ def main():
                 fails.append(f"fingerprint contract missing dimension: {dim}")
         if "pending" not in str(fpr.get("review_regime", "")):
             fails.append("review_regime should be a pending-classification slot")
+        # countable dims describe the stack by their arms (blend), not one modal
+        # label: the fixture is 2 delegate / 1 solo / 1 workflow, so a blended stack
+        # led by delegate, flagged is_blended (no 60% majority).
+        topo = fpr.get("orchestration_topology") or {}
+        b = topo.get("blend")
+        if not isinstance(b, list) or (b[0]["value"] if b else None) != "delegate":
+            fails.append(f"topology should be a blend led by delegate (2 of 4): {b}")
+        if topo.get("is_blended") is not True:
+            fails.append("topology should be flagged is_blended (no majority engine)")
+        if sum(x["sessions"] for x in (b or [])) != 4:
+            fails.append("topology blend sessions should sum to 4")
+        if "orchestrator_model" not in fpr:
+            fails.append("fingerprint missing the orchestrator_model arm")
         # week-1 fuel/token streams: independent of the pending check above (must
         # run unconditionally, not nested in its else, or they silently stop
         # running if that precondition ever changes).

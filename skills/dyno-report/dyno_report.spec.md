@@ -120,6 +120,18 @@ after the pass report tokens actually spent against the same baseline. The tool
 eats its own dog food: an assessment's inference cost is justified by the savings
 it unlocks, and the operator sees the ratio before the spend.
 
+## The fingerprint describes the stack by its arms, not one label
+
+Real setups are blended, not a single point. The countable fingerprint dimensions
+(orchestration topology, model routing, orchestrator model, reasoning effort) are
+reported as their **blend**: a sorted distribution `[{value, sessions, share}]` per
+dimension, plus the plurality `dominant` and an `is_blended` flag (true when no
+value holds a clear majority, ~60%). A 42/35/22 delegate/solo/workflow stack reads
+as blended-and-delegate-led, never flattened to "solo". Collapsing a blend to one
+modal label misrepresents the stack (and drives spurious week-to-week "change"
+flags); the arms are the honest description. The pattern dimensions below (fine
+topology, review regime, knowledge practice) remain single classifier labels.
+
 ## The fingerprint labels cache (the pattern dimensions)
 
 Three of the six taxonomy dimensions are patterns, not counts: **fine topology**

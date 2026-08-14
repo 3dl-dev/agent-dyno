@@ -79,6 +79,27 @@ def modal(values, default="unknown"):
     return sorted(counts, key=lambda v: (-counts[v], v))[0]
 
 
+def blend(values):
+    """The distribution of a dimension across sessions, most-common first:
+    [{value, sessions, share}]. This is how a stack is described by its arms rather
+    than collapsed to one modal label (a 46/36/18 solo/delegate/workflow stack is
+    'blended', not 'solo')."""
+    counts = {}
+    for v in values:
+        counts[v] = counts.get(v, 0) + 1
+    total = sum(counts.values()) or 1
+    return [{"value": k, "sessions": counts[k], "share": round(100 * counts[k] / total, 1)}
+            for k in sorted(counts, key=lambda k: (-counts[k], str(k)))]
+
+
+def _arm(values):
+    """One fingerprint arm: its blend, the plurality value, and whether the stack is
+    genuinely blended on this axis (no value holds a clear majority)."""
+    b = blend(values)
+    return {"blend": b, "dominant": b[0]["value"] if b else None,
+            "is_blended": len(b) > 1 and b[0]["share"] < 60.0}
+
+
 def engine_of(sess):
     if (sess.get("workflows") or 0) > 0 or (sess.get("wf_agents") or 0) > 0:
         return "workflow"
@@ -586,19 +607,22 @@ def fingerprint_summary(metrics, numerator):
         return pending if v == "unclassified" else v
 
     fine, review, knowledge = (label(d) for d in PATTERN_DIMS)
-    ingested = ["topology(coarse)", "routing", "effort", "delivery-cadence"]
+    ingested = ["topology", "routing", "orchestrator-model", "effort",
+                "delivery-cadence"]
     for name, val in (("fine-topology", fine), ("review-regime", review),
                       ("knowledge-practice", knowledge)):
         if val != pending:
             ingested.append(name)
+    # Countable dims are reported as their blend (the arms of the stack), not one
+    # modal label: a blended setup should not read as a single engine/model/effort.
+    topo = _arm([m["engine"] for m in metrics])
+    topo["fanout_width_mean"] = round(sum(fanouts) / len(fanouts), 1) if fanouts else 0
+    topo["fine"] = fine
     return {
-        "orchestration_topology": {
-            "coarse": modal([m["engine"] for m in metrics]),
-            "fanout_width_mean": round(sum(fanouts) / len(fanouts), 1) if fanouts else 0,
-            "fine": fine,
-        },
-        "model_routing": modal([m["routing"] for m in metrics]),
-        "reasoning_effort": modal([m["effort"] for m in metrics]),
+        "orchestration_topology": topo,
+        "model_routing": _arm([m["routing"] for m in metrics]),
+        "orchestrator_model": _arm([m["model"] for m in metrics]),
+        "reasoning_effort": _arm([m["effort"] for m in metrics]),
         "review_regime": review,
         "knowledge_practice": knowledge,
         "delivery_cadence": {
