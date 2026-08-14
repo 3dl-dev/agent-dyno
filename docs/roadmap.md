@@ -11,9 +11,9 @@ the baseline, run every test:
 
 ```
 python3 core/test_survival_git.py
+python3 core/test_frontier.py
 python3 skills/dyno-report/test_dyno_report.py
 python3 adapters/claude-code/fingerprint_evidence.py --selftest
-python3 skills/dyno-report/demo.py --selftest
 ```
 
 Branch: `dyno-report-driver`. Baseline is committed and green.
@@ -209,8 +209,10 @@ with two app-first verbs: `/agent-dyno:run` (measure your setup) and
 `/agent-dyno:contribute` (opt-in, anonymized publish). Federation followed:
 `core/frontier.py` (merge, summarize with a k-anonymity floor, validate),
 `dyno-report --frontier <url>` and `$DYNO_FRONTIER` for the federated read side, and
-the in-tool contribute loop. `skills/dyno-report/demo.py` remains as a worked example
-plus end-to-end render test. The `hoist/` deploy recipe was removed. See git history
+the in-tool contribute loop. The fabricated `demo.py` was removed: it produced a
+synthetic "your setup" report that read as real and misled; the real run (snapshot
+computes survival now) is the proof, and `test_dyno_report.py` covers the render.
+The `hoist/` deploy recipe was removed. See git history
 from `fa2142e` onward.
 Original outcome: dyno-report ships itself -- a `hoist` formula (see
 `~/projects/hoistable`) that, on install, clones the repo, builds the snapshot, and
