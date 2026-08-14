@@ -496,6 +496,12 @@ def main():
                 fails.append("report.html is not the expected chart")
             if "Fuel and work over time" not in hh:
                 fails.append("report.html is missing the fuel-and-work small multiples")
+            # report.html must open with the surface, not just charts: the plain
+            # reading and the one lever (here the workflow/high tweak) must be present.
+            if "Larger is better" not in hh:
+                fails.append("report.html is missing the plain-language topline reading")
+            if "Your biggest lever" not in hh or "review pass behind fan-out" not in hh:
+                fails.append("report.html is missing the lever in the surface")
             # ---- (item 3) the slicer cuts by every fingerprint dimension ----
             for lbl in ("by model", "by effort", "by engine", "by routing",
                         "by review regime", "by knowledge practice"):

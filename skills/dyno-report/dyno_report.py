@@ -1007,6 +1007,42 @@ def render_md(report):
     return "\n".join(L)
 
 
+def _surface_html(report):
+    """The functional surface as HTML: the plain-language number, the one lever with
+    its predicted move, and the measure line. This is the same surface as report.md,
+    rendered into report.html so the page is the whole experience, not just charts."""
+    tl = report["topline"]
+    lever = report.get("lever")
+    measure = report.get("measure")
+    esc = _html.escape
+    cfr = tl.get("change_failure_rate")
+    cfr_s = f" Change failure rate {cfr}% (DORA)." if cfr is not None else ""
+    out = [f'<p class="surface-lead">Larger is better. Surviving decision-logic (a '
+           f'complexity proxy) per million tokens the model generated, over '
+           f'{tl.get("sessions")} sessions.{esc(cfr_s)} Nothing leaves your '
+           f'machine.</p>']
+    if lever:
+        out.append(
+            f'<div class="lever"><div class="lever-h">Your biggest lever</div>'
+            f'<p class="lever-tweak">{esc(str(lever.get("tweak") or ""))}</p>'
+            f'<p class="lever-sub">Setups shaped like yours '
+            f'({esc(str(lever.get("engine", "")))}, {esc(str(lever.get("effort", "")))} '
+            f'effort) retain {lever.get("frontier_cell_efficiency")} surviving-KB per '
+            f'dollar, against your {lever.get("your_cell_efficiency")}. Adopt it, then '
+            f're-run with --baseline to see whether the number moved.</p></div>')
+    else:
+        out.append('<p class="lever-none">You are at the frontier for every shape we '
+                   'can compare. Nothing to suggest yet; contribute your result so the '
+                   'next person learns.</p>')
+    if measure:
+        d = measure["actual_delta"]
+        arrow = "up" if d > 0 else ("flat" if d == 0 else "down")
+        out.append(f'<p class="measure"><strong>Since last time:</strong> '
+                   f'{measure["baseline_eq"]} to {measure["current_eq"]} '
+                   f'(actual {d:+}, {arrow}).</p>')
+    return "".join(out)
+
+
 def render_html(report):
     """Self-contained, theme-aware chart of EQ over time, annotated with the
     operator's own fingerprint changes. Single series (blue), direct value
@@ -1039,10 +1075,22 @@ def render_html(report):
         "border-bottom:1px solid var(--grid);}\n"
         ".viz-root th{color:var(--muted);font-weight:600;}\n"
         ".viz-root .flag{color:var(--series);font-weight:600;}\n"
+        ".viz-root .surface-lead{font-size:14px;color:var(--ink2);margin:0 0 16px;}\n"
+        ".viz-root .lever{border:1px solid var(--grid);border-left:3px solid "
+        "var(--series);border-radius:6px;padding:12px 16px;margin:0 0 16px;}\n"
+        ".viz-root .lever-h{font-size:11px;text-transform:uppercase;"
+        "letter-spacing:.05em;color:var(--muted);font-weight:600;margin:0 0 4px;}\n"
+        ".viz-root .lever-tweak{font-size:15px;color:var(--ink);font-weight:600;"
+        "margin:0 0 4px;}\n"
+        ".viz-root .lever-sub,.viz-root .lever-none,.viz-root .measure{font-size:13px;"
+        "color:var(--ink2);margin:0 0 16px;}\n"
+        ".viz-root .lever-sub{margin:0;}\n"
         "</style>\n")
     if len(tl) < 2:
         body = (f'<div class="viz-root"><h1>{esc(str(eq0))} functionality per Mtok output</h1>'
-                "<p>Not enough weeks of data to chart a trend yet.</p></div>")
+                f'{_surface_html(report)}'
+                "<p>Not enough weeks of data to chart a trend yet.</p>"
+                f'{render_small_multiples(report)}</div>')
         return _page(head + body)
 
     W, H = 760, 380
@@ -1118,8 +1166,10 @@ def render_html(report):
         legend = (f'<p style="margin-top:12px"><strong>Your changes:</strong></p>'
                   f'<ol style="font-size:13px;color:var(--ink2);margin:4px 0">{items}</ol>')
     body = (f'<div class="viz-root"><h1>{esc(str(eq0))} functionality per Mtok output</h1>'
-            f'<p>Higher is better. Each numbered flag is a change you made to your '
-            f'setup, so a move on the curve ties to a change, not noise.</p>'
+            f'{_surface_html(report)}'
+            f'<h2>Efficiency over time</h2>'
+            f'<p>Each numbered flag is a change you made to your setup, so a move on '
+            f'the curve ties to a change, not noise.</p>'
             f'{"".join(parts)}{legend}'
             f'<table><thead><tr><th>week</th><th>EQ</th><th>sessions</th>'
             f'<th>changes</th></tr></thead><tbody>{rows}</tbody></table>'

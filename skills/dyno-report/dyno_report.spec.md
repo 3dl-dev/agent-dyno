@@ -179,8 +179,11 @@ Three artifacts under `--out`, all a pure function of inputs:
 - `report.md`: the functional surface only, from a fixed template, no model in
   the loop: the topline number, the one lever with its predicted delta, the
   measure line, and a compact annotated timeline. Short by design.
-- `report.html`: a self-contained, theme-aware page with two charts. (1) EQ over
-  time annotated with the operator's fingerprint changes. (2) **Fuel and work over
+- `report.html`: a self-contained, theme-aware page that **opens with the functional
+  surface** (the topline number as the headline, the plain-language reading, the one
+  lever with its predicted move, and the measure line when `--baseline` was given),
+  so the page is the whole experience and not just charts, then two charts. (1) EQ
+  over time annotated with the operator's fingerprint changes. (2) **Fuel and work over
   time** as aligned small multiples: the three token streams (cache-read, read,
   output) and the net code retained, each on its own scale, sharing one time axis
   at the `--granularity` bucket (day / week / month). Different scales by design,
