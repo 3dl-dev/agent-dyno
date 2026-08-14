@@ -42,7 +42,7 @@ parent unless told to. Nothing is shared without an explicit push.
      team's or your own board. Done. Nothing left your control.
    - **Push up (`--push`):** only on explicit request. For a team frontier, write
      or PR against that frontier's file. For `public`, print the exact `git`/PR
-     steps to open a pull request against `3dl-dev/agent-dyno`, curated by Third
+     steps to open a pull request against `3dl-dev/vibrant`, curated by Third
      Division Labs. Show the operator the entry and get a yes before doing it.
 
 5. **Render, optionally.** Point `leaderboard/dyno.html` at the frontier file, or

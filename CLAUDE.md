@@ -1,4 +1,4 @@
-# CLAUDE.md: developing and curating Agent Dyno
+# CLAUDE.md: developing and curating Vibrant
 
 Instructions for an agent working ON this repo (not just using the tool). For
 using the tool to measure a setup, read `AGENTS.md`. For getting started as a
@@ -6,7 +6,7 @@ user, read `docs/getting-started.md`.
 
 ## What this repo is
 
-Agent Dyno measures the token-efficiency of an AI coding setup: surviving work per
+Vibrant measures the token-efficiency of an AI coding setup: surviving work per
 token, harness-neutral, self-owned, federated. The philosophy is in
 `docs/governance.md` and `docs/protocol.md`. Read them before changing anything;
 they are load-bearing, not decoration.
@@ -49,7 +49,7 @@ The curator agent's job is to keep the board honest, in proportion to the claim:
    For the rest, comment with what would raise the tier. Reproduction cost is the
    sybil tax; low-effort floods sit behind verified, cost-bearing submissions.
 
-The public frontier lives here at `3dl-dev/agent-dyno`. It is one frontier among
+The public frontier lives here at `3dl-dev/vibrant`. It is one frontier among
 many; teams run their own (see `docs/federation.md`). Curation applies only to what
 this repo publishes.
 

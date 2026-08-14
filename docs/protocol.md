@@ -1,4 +1,4 @@
-# The Agent Dyno protocol
+# The Vibrant protocol
 
 Read [governance.md](governance.md) first. This document is the method.
 

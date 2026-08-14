@@ -4,7 +4,7 @@ This is the constitution. Everything else serves it.
 
 ## The unit is the individual's own engine
 
-Agent Dyno measures tokens in, surviving output out, for a single person's own
+Vibrant measures tokens in, surviving output out, for a single person's own
 setup. It exists for **self-improvement**, you tuning your engine against your
 own past self. That is the whole intended use.
 

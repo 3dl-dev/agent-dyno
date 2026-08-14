@@ -8,11 +8,11 @@ description: "Opt-in: turn a dyno run into an anonymized frontier entry and add 
 Only with the operator's explicit consent. Nothing is published as a side effect of
 measuring; this is the deliberate step.
 
-## 1. Get Agent Dyno onto the machine
+## 1. Get Vibrant onto the machine
 
-Same as `/agent-dyno:run` step 1: run from the current agent-dyno checkout, the
-marketplace clone at `~/.claude/plugins/marketplaces/agent-dyno`, or a fresh
-`git clone https://github.com/3dl-dev/agent-dyno`.
+Same as `/vibrant:run` step 1: run from the current agent-dyno checkout, the
+marketplace clone at `~/.claude/plugins/marketplaces/vibrant`, or a fresh
+`git clone https://github.com/3dl-dev/vibrant`.
 
 ## 1b. First time? Stand up their board (offer it, do not make them hunt)
 

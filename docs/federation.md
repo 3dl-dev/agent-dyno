@@ -1,6 +1,6 @@
 # Federation and trust: run your own, share if you want
 
-Agent Dyno has no central service and no signup. A leaderboard is a file you host,
+Vibrant has no central service and no signup. A leaderboard is a file you host,
 so there is nothing to run and nobody to register with. Third Division Labs keeps
 one public, curated frontier; anyone can keep their own for a project, team, or
 company and share upward by hand. The design is many frontiers, not one central
@@ -24,7 +24,7 @@ no server to run.
 - **Team / company:** keep it in a private repo or shared location; your team
   writes their entries there and the viewer reflects your group.
 - **Public:** Third Division Labs runs one public frontier at
-  `3dl-dev/agent-dyno`. It is just another frontier, with no special status beyond
+  `3dl-dev/vibrant`. It is just another frontier, with no special status beyond
   being the shared one.
 
 ## Surfaces
@@ -43,7 +43,7 @@ Frontiers form a tree only by choice, and today only by hand. Your entry stays i
 your scope unless you move it up, and moving it up is one explicit action:
 
 - to a team or org frontier: write to (or open a PR against) that frontier's file.
-- to the public frontier: open a PR against `3dl-dev/agent-dyno`, curated by Third
+- to the public frontier: open a PR against `3dl-dev/vibrant`, curated by Third
   Division Labs.
 
 Nothing auto-shares. `dyno-contribute` writes to your local frontier by default and

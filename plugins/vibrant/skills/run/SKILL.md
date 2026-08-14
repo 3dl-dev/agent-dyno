@@ -3,21 +3,21 @@ name: run
 description: "Measure your AI coding setup: surviving work per token, from your own logs and git history, on your machine. One number, your worst bottleneck, the change most likely to move it. Nothing uploaded. Use for 'how efficient is my setup' or 'which engine is cheapest per surviving line'."
 ---
 
-# Run Agent Dyno on your setup
+# Run Vibrant on your setup
 
 The numbers come from a deterministic driver, not from you. Your job is to read the
 constitution, get the tool onto this machine, run the driver on the operator's
 repos, and narrate what it returns. Do not compute vectors, survival, or dollars
 yourself. If a number is not in `report.json`, do not report it.
 
-## 1. Get Agent Dyno onto the machine (once)
+## 1. Get Vibrant onto the machine (once)
 
-Find an Agent Dyno checkout to run from, in this order:
+Find an Vibrant checkout to run from, in this order:
 
 1. The current directory, if it is the agent-dyno repo (it has `core/survival_git.py`).
-2. The marketplace clone at `~/.claude/plugins/marketplaces/agent-dyno` (the whole
+2. The marketplace clone at `~/.claude/plugins/marketplaces/vibrant` (the whole
    repo lands there when the operator adds the marketplace).
-3. Otherwise clone it: `git clone https://github.com/3dl-dev/agent-dyno ~/.cache/agent-dyno`.
+3. Otherwise clone it: `git clone https://github.com/3dl-dev/vibrant ~/.cache/vibrant`.
 
 Then verify the install once, silently, from that checkout:
 
@@ -72,11 +72,11 @@ To rerun after a change and see if the number moved, run again with
 
 ## 6. Offer to contribute (in the flow, opt-in)
 
-Contributing is part of using Agent Dyno, not a separate errand. After you show the
+Contributing is part of using Vibrant, not a separate errand. After you show the
 surface, ask the operator plainly: "Want to add this run to your frontier? It is
 anonymized, engine fingerprint and numbers only, and it goes to your own frontier,
 not a public one, unless you say so." If they say yes, do the
-`/agent-dyno:contribute` steps inline against their configured frontier
+`/vibrant:contribute` steps inline against their configured frontier
 (`$DYNO_FRONTIER`, else the local file). If they say no, stop; publishing is never a
 side effect of a run. The default target is always their own scope; a push to any
 parent is a separate, explicit choice.

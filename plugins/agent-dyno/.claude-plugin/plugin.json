@@ -1,4 +1,0 @@
-{
-  "name": "agent-dyno",
-  "description": "Measure your AI coding setup (/agent-dyno:run), and optionally contribute an anonymized result to a frontier (/agent-dyno:contribute). Runs on your machine, standard library only, nothing uploaded."
-}

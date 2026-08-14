@@ -1,6 +1,6 @@
-# Agent Dyno
+# Vibrant
 
-Agent Dyno measures how efficiently your AI coding setup turns tokens into work
+Vibrant measures how efficiently your AI coding setup turns tokens into work
 that lasts. It reads your own logs and your git history, on your machine, and gives
 you one number, your worst bottleneck, and the single change most likely to move
 it. Nothing leaves your machine unless you choose to share it.
@@ -10,23 +10,23 @@ it. Nothing leaves your machine unless you choose to share it.
 In Claude Code, add the marketplace and install the plugin:
 
 ```
-/plugin marketplace add 3dl-dev/agent-dyno
-/plugin install agent-dyno@agent-dyno
+/plugin marketplace add 3dl-dev/vibrant
+/plugin install vibrant@vibrant
 ```
 
 Then measure your setup:
 
 ```
-/agent-dyno:run
+/vibrant:run
 ```
 
 It reads your local Claude Code logs and your git history for the repos you code in,
 and writes three files: `report.md`, `report.html`, and `report.json`. On first use
-it fetches Agent Dyno onto your machine and checks the install; after that it just
+it fetches Vibrant onto your machine and checks the install; after that it just
 measures. It runs on the Python standard library, with no other install and no keys.
 Nothing is uploaded.
 
-When you want to share a result, `/agent-dyno:contribute` drafts an anonymized entry
+When you want to share a result, `/vibrant:contribute` drafts an anonymized entry
 (engine fingerprint and numbers only, no code or identities) and adds it to a
 frontier you choose, or prints the pull request for you to open. Publishing is
 always a separate, deliberate step.

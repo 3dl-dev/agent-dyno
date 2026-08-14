@@ -1,12 +1,12 @@
 # Getting started
 
-Run Agent Dyno against your own data in a couple of minutes. Nothing is uploaded;
+Run Vibrant against your own data in a couple of minutes. Nothing is uploaded;
 every command reads your local git and your local logs.
 
 ## 0. Fresh clone
 
 ```bash
-git clone https://github.com/3dl-dev/agent-dyno
+git clone https://github.com/3dl-dev/vibrant
 cd agent-dyno
 ```
 
@@ -91,10 +91,10 @@ at your own `frontier/reference-frontier.json` to see your own board.
 Draft an anonymized entry for your frontier following
 `skills/dyno-contribute/SKILL.md`: the technique, the fingerprint, the vector, the
 horizon, the proof tier. Append it to your own `frontier/reference-frontier.json`
-for internal use, or open a PR against `3dl-dev/agent-dyno` to go public.
+for internal use, or open a PR against `3dl-dev/vibrant` to go public.
 
 ## If something looks off
 
-Open an issue at https://github.com/3dl-dev/agent-dyno/issues with the command
+Open an issue at https://github.com/3dl-dev/vibrant/issues with the command
 you ran, the output, and your setup. A number that surprises you is often the
 interesting part, not a bug, so include what you expected too.

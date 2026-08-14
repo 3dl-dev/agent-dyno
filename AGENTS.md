@@ -1,4 +1,4 @@
-# Operating Agent Dyno (for agents)
+# Operating Vibrant (for agents)
 
 This repo is run by agents as much as by people. If you are an agent asked to
 measure a setup's efficiency, this is your map. Read `docs/governance.md` first, 

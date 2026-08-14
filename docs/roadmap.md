@@ -201,12 +201,12 @@ keep the measure loop as the ground truth on the headline. Acceptance: test asse
 the new confound strings when the conditions hold; lever fields are honestly named.
 
 ### 5. Distribution (the hoist/deploy path was built, then superseded)
-The initial build wrapped Agent Dyno as a hoistable graded-install skill (a "deploy"
-verb). That was dropped: Agent Dyno is a measurement tool, not a service, so nothing
+The initial build wrapped Vibrant as a hoistable graded-install skill (a "deploy"
+verb). That was dropped: Vibrant is a measurement tool, not a service, so nothing
 is deployed. The distribution now ships as its own plugin marketplace
-(`/plugin marketplace add 3dl-dev/agent-dyno`, `/plugin install agent-dyno@agent-dyno`)
-with two app-first verbs: `/agent-dyno:run` (measure your setup) and
-`/agent-dyno:contribute` (opt-in, anonymized publish). Federation followed:
+(`/plugin marketplace add 3dl-dev/vibrant`, `/plugin install vibrant@vibrant`)
+with two app-first verbs: `/vibrant:run` (measure your setup) and
+`/vibrant:contribute` (opt-in, anonymized publish). Federation followed:
 `core/frontier.py` (merge, summarize with a k-anonymity floor, validate),
 `dyno-report --frontier <url>` and `$DYNO_FRONTIER` for the federated read side, and
 the in-tool contribute loop. The fabricated `demo.py` was removed: it produced a
