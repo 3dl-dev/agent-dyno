@@ -60,7 +60,12 @@ Steps:
 
 2. **Trajectory.** Sort joined sessions by `(day, sid)`. Waypoints are
    `[{"day": day, "cell": [r, c]}, ...]`, downsampled to at most 24 with the driver's
-   `_downsample` (always keep the last).
+   `_downsample` (always keep the last). Also emit `drift`: the smoothed mood path
+   over the ordered cells (`_drift_path`, a slow chase at response 0.20, downsampled
+   to at most 14), `[{"day", "pos": [r, c]}]` in float lattice coordinates. The raw
+   per-session cells jump (fast noise); the drift is the signal, the same fast/slow
+   split as the hand-written layered trajectory. The map draws the drift; the raw
+   cells stay as the support dots.
 
 3. **Current cell.** The `[r, c]` of the last waypoint (latest `(day, sid)`).
 
@@ -94,6 +99,7 @@ Output block:
  "lattice": {"rows": R, "cols": C},
  "sessions_mapped": <int>,
  "trajectory": [{"day": str, "cell": [r, c]}, ...],
+ "drift": [{"day": str, "pos": [r, c]}, ...],
  "current_cell": [r, c],
  "field_metric": "d_per_survkb",
  "field_lower_is_better": true,

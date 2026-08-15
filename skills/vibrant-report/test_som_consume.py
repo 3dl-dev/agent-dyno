@@ -121,6 +121,20 @@ def test_field_and_window(fails):
     check(field[3][3] is None and support[3][3] == 0, "empty cell not null", fails)
 
 
+def test_drift(fails):
+    blk = vr.som_map(METRICS, _cache(METRICS), MOVE)
+    drift = blk.get("drift")
+    check(isinstance(drift, list) and drift, "drift missing/empty", fails)
+    if not drift:
+        return
+    check(all("pos" in d and len(d["pos"]) == 2 for d in drift), "drift pos shape", fails)
+    check(all(isinstance(x, float) for d in drift for x in d["pos"]),
+          "drift pos not floats", fails)
+    # starts at the first ordered cell [1,1] (the chase leaves it in place on step 0)
+    check(drift[0]["pos"] == [1.0, 1.0], f"drift head {drift[0]['pos']}", fails)
+    check(len(drift) <= 14, f"drift not downsampled {len(drift)}", fails)
+
+
 def test_gradient(fails):
     blk = vr.som_map(METRICS, _cache(METRICS), MOVE)
     g = blk["gradient"]
@@ -160,8 +174,9 @@ def test_determinism(fails):
 def main():
     fails = []
     for t in (test_load_som, test_none_when_empty, test_map_structure,
-              test_trajectory_and_current, test_field_and_window, test_gradient,
-              test_gradient_edge_cases, test_undated_dropped, test_determinism):
+              test_trajectory_and_current, test_drift, test_field_and_window,
+              test_gradient, test_gradient_edge_cases, test_undated_dropped,
+              test_determinism):
         t(fails)
     if fails:
         print("FAIL  som_consume:")

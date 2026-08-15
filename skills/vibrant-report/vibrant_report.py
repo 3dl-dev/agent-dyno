@@ -33,6 +33,7 @@ import hashlib
 import time
 import html as _html
 import json
+import math
 import os
 import re
 import sys
@@ -959,6 +960,22 @@ def _downsample(seq, cap):
     return [seq[i] for i in idx]
 
 
+def _drift_path(cells, days, response=0.20, cap=14):
+    """The smoothed mood path over the ordered session cells. Per-session BMUs jump
+    (fast noise); the mood chases them at `response` so the line is a gentle drift
+    (the signal), the same fast/slow split as _layered_trajectory. Returns
+    [{"day", "pos": [r, c]}] in float lattice coordinates, downsampled. Deterministic."""
+    if not cells:
+        return []
+    pos = [float(cells[0][0]), float(cells[0][1])]
+    out = []
+    for (r, c), day in zip(cells, days):
+        pos[0] += response * (r - pos[0])
+        pos[1] += response * (c - pos[1])
+        out.append({"day": day, "pos": [round(pos[0], 3), round(pos[1], 3)]})
+    return _downsample(out, cap)
+
+
 def som_map(metrics, som_cache, move, field_window_days=14, now_day=None):
     """The learned-map consumer (som_consume.spec.md): joins the trained SOM's
     per-session BMU coordinates to the driver's metrics, and turns the join into
@@ -979,6 +996,10 @@ def som_map(metrics, som_cache, move, field_window_days=14, now_day=None):
     waypoints = [{"day": m["day"], "cell": list(sid_to_bmu[m["sid"]])} for m in joined]
     trajectory = _downsample(waypoints, 24)
     current_cell = trajectory[-1]["cell"]
+    # the smoothed drift (mood) the map draws: the raw per-session cells are the noise,
+    # the drift is the signal. See _drift_path.
+    drift = _drift_path([w["cell"] for w in waypoints],
+                        [w["day"] for w in waypoints])
 
     anchor = now_day or max(m["day"] for m in joined)
     cutoff = (datetime.date.fromisoformat(anchor)
@@ -1017,6 +1038,7 @@ def som_map(metrics, som_cache, move, field_window_days=14, now_day=None):
             "lattice": {"rows": rows, "cols": cols},
             "sessions_mapped": len(joined),
             "trajectory": trajectory,
+            "drift": drift,
             "current_cell": current_cell,
             "field_metric": "d_per_survkb",
             "field_lower_is_better": True,
@@ -1818,7 +1840,7 @@ _CSS = """
  --line:#e7e5dd;--grid:#e7e5dd;--axis:#cfcdc3;--accent:#2a78d6;--series:#2a78d6;
  --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;
  --c-cacheread:#2a78d6;--c-read:#eb6834;--c-output:#1baf7a;--c-work:#008300;
- --good:#008300;--up:#008300;--down:#e34948;--shadow:20,19,16;
+ --good:#008300;--up:#008300;--down:#e34948;--down-rgb:227,73,72;--shadow:20,19,16;
  font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
  color:var(--ink);background:var(--surface);max-width:760px;margin:0 auto;
  padding:28px 20px 40px;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
@@ -1827,12 +1849,13 @@ _CSS = """
  --muted:#918e85;--line:#2e2d29;--grid:#2c2c2a;--axis:#3a3a36;--accent:#3987e5;
  --series:#3987e5;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;
  --c-cacheread:#3987e5;--c-read:#d95926;--c-output:#199e70;--c-work:#159015;
- --good:#199e70;--up:#199e70;--down:#e66767;--shadow:0,0,0;}}
+ --good:#199e70;--up:#199e70;--down:#e66767;--down-rgb:230,103,103;--shadow:0,0,0;}}
 :root[data-theme=dark] .vibrant{color-scheme:dark;--surface:#141412;--card:#1c1b19;
  --ink:#f6f5f0;--ink2:#c7c5bb;--muted:#918e85;--line:#2e2d29;--grid:#2c2c2a;
  --axis:#3a3a36;--accent:#3987e5;--series:#3987e5;--s1:#3987e5;--s2:#d95926;
  --s3:#199e70;--s4:#c98500;--s5:#d55181;--c-cacheread:#3987e5;--c-read:#d95926;
- --c-output:#199e70;--c-work:#159015;--good:#199e70;--up:#199e70;--down:#e66767;--shadow:0,0,0;}
+ --c-output:#199e70;--c-work:#159015;--good:#199e70;--up:#199e70;--down:#e66767;
+ --down-rgb:230,103,103;--shadow:0,0,0;}
 .vibrant *{box-sizing:border-box;}
 .vibrant .card{background:var(--card);border:1px solid var(--line);border-radius:18px;
  padding:30px 32px;box-shadow:0 1px 2px rgba(var(--shadow),.05),0 10px 34px rgba(var(--shadow),.07);}
@@ -2003,6 +2026,224 @@ def _sparkline(eqs, W=224, H=58):
             f'fill="var(--accent)"/></svg>')
 
 
+def _som_field_opacity(v, lo, hi, lower_better):
+    """Normalize a field value to a fill opacity: single-hue ramp, monotonic in
+    lightness. Low opacity blends toward the card background (cheap reads light
+    and calm), high opacity is the saturated cost hue (costly reads dark and
+    hot). Never encodes meaning by hue alone."""
+    # log scale: d_per_survkb is a ratio with a long tail, so linear normalization
+    # squashes the whole cheap-to-mid range against one expensive outlier and the
+    # map loses its midrange contrast. Log spreads it so cells actually differ.
+    if hi <= lo or v <= 0 or lo <= 0:
+        t = 0.5
+    else:
+        t = (math.log(v) - math.log(lo)) / (math.log(hi) - math.log(lo))
+        if not lower_better:
+            t = 1 - t
+    t = min(max(t, 0.0), 1.0)
+    return 0.10 + 0.80 * t
+
+
+def render_som_map(som_block):
+    """The learned SOM lattice (item 4): a rows x cols grid shaded by cost per
+    cell, the trajectory that walked it, the current cell, and the arrow to a
+    cheaper cell already sometimes used. Pure function of rig_space['som'];
+    matches the sparkline / efficiency-over-time SVG idiom (viewBox, role=img,
+    aria-label, the report's own CSS vars), no external assets. Jitter on the
+    trajectory is a deterministic function of index, never random, so the
+    render is byte-identical for the same input."""
+    if not som_block:
+        return ""
+    esc = _html.escape
+    lattice = som_block.get("lattice") or {}
+    rows, cols = lattice.get("rows") or 0, lattice.get("cols") or 0
+    if rows <= 0 or cols <= 0:
+        return ""
+    field = som_block.get("field") or []
+    support = som_block.get("support") or []
+    lower_better = som_block.get("field_lower_is_better", True)
+    metric = som_block.get("field_metric", "d_per_survkb")
+
+    def fval(r, c):
+        try:
+            return field[r][c]
+        except (IndexError, TypeError):
+            return None
+
+    def sval(r, c):
+        try:
+            v = support[r][c]
+            return v if v is not None else 0
+        except (IndexError, TypeError):
+            return 0
+
+    have = [v for v in (fval(r, c) for r in range(rows) for c in range(cols))
+            if v is not None]
+    lo, hi = (min(have), max(have)) if have else (0.0, 0.0)
+    smax = max([sval(r, c) for r in range(rows) for c in range(cols)] + [0]) or 1
+
+    cell, gap = 42, 3
+    pad_l, pad_t, pad_r, pad_b = 40, 14, 14, 32
+    gw, gh = cols * cell + (cols - 1) * gap, rows * cell + (rows - 1) * gap
+    W, H = pad_l + gw + pad_r, pad_t + gh + pad_b
+
+    def x0(c):
+        return pad_l + c * (cell + gap)
+
+    def y0(r):
+        return pad_t + r * (cell + gap)
+
+    def ccx(c):
+        return x0(c) + cell / 2
+
+    def ccy(r):
+        return y0(r) + cell / 2
+
+    parts = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="learned working-style '
+             f'map: cost-shaded cells, your trajectory, current position and the '
+             f'cheaper cell nearby">']
+    for r in range(rows):
+        for c in range(cols):
+            v = fval(r, c)
+            x, y = x0(c), y0(r)
+            if v is None:
+                parts.append(f'<rect class="som-cell" x="{x}" y="{y}" width="{cell}" '
+                             f'height="{cell}" rx="4" fill="none" stroke="var(--line)" '
+                             f'stroke-width="1" stroke-dasharray="2 2" opacity="0.7"/>')
+                continue
+            op = _som_field_opacity(v, lo, hi, lower_better)
+            title = esc(f"row {r}, col {c}: {v:.2f} {metric}")
+            parts.append(f'<rect class="som-cell" x="{x}" y="{y}" width="{cell}" '
+                         f'height="{cell}" rx="4" fill="rgba(var(--down-rgb),{op:.2f})" '
+                         f'stroke="var(--line)" stroke-width="1">'
+                         f'<title>{title}</title></rect>')
+            s = sval(r, c)
+            if s > 0:
+                frac = min(s / smax, 1.0)
+                rad = 2 + 4 * frac
+                parts.append(f'<circle cx="{ccx(c):.1f}" cy="{ccy(r):.1f}" '
+                             f'r="{rad:.1f}" fill="var(--ink)" opacity="0.14"/>')
+
+    # trajectory: the map draws the smoothed drift (mood) so the direction of travel
+    # reads as one clean line, not the criss-cross of raw per-session jumps (which
+    # stay as the support dots). Thin/light (older) to thick/opaque (recent). Falls
+    # back to the raw cell path with deterministic jitter when no drift is present.
+    drift = som_block.get("drift") or []
+    pts = []
+    for p in drift:
+        pos = p.get("pos") if isinstance(p, dict) else None
+        if pos and len(pos) == 2:
+            pts.append((ccx(pos[1]), ccy(pos[0])))
+    if not pts:
+        for i, p in enumerate(som_block.get("trajectory") or []):
+            rc = p.get("cell") if isinstance(p, dict) else None
+            if not rc or len(rc) != 2:
+                continue
+            r, c = rc
+            jx = ((i * 7) % 5 - 2) * 1.3
+            jy = ((i * 11) % 5 - 2) * 1.3
+            pts.append((ccx(c) + jx, ccy(r) + jy))
+    n = len(pts)
+    # a comet trail, not a connected path: graduated dots (old = small and faint,
+    # recent = large and bold) read as movement and concentration without the
+    # criss-cross a connected line makes when the operator oscillates between distant
+    # cells. The size/opacity gradient alone carries the direction of travel.
+    for i, (x, y) in enumerate(pts):
+        t = i / (n - 1) if n > 1 else 1.0
+        rad = 1.8 + 3.2 * t
+        op = 0.22 + 0.55 * t
+        parts.append(f'<circle class="som-path" cx="{x:.1f}" cy="{y:.1f}" '
+                     f'r="{rad:.1f}" fill="var(--accent)" opacity="{op:.2f}"/>')
+
+    current = som_block.get("current_cell")
+    if current and len(current) == 2:
+        cr, cc = current
+        cx, cy = ccx(cc), ccy(cr)
+        parts.append(f'<circle class="som-current" cx="{cx:.1f}" cy="{cy:.1f}" r="9" '
+                     f'fill="var(--card)" stroke="var(--ink)" stroke-width="2.2"/>')
+        parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="2.6" fill="var(--ink)"/>')
+
+    gradient = som_block.get("gradient") or {}
+    target = gradient.get("target_cell")
+    arm_change = gradient.get("arm_change")
+    if target and len(target) == 2 and current and len(current) == 2:
+        sr, sc = current
+        tr, tc = target
+        sx, sy = ccx(sc), ccy(sr)
+        tx, ty = ccx(tc), ccy(tr)
+        dx, dy = tx - sx, ty - sy
+        dist = (dx * dx + dy * dy) ** 0.5
+        if dist > 1e-6:
+            ux, uy = dx / dist, dy / dist
+            px, py = -uy, ux
+            head = 9.0
+            tip_x, tip_y = tx - ux * 4, ty - uy * 4
+            base_x, base_y = tip_x - ux * head, tip_y - uy * head
+            start_x, start_y = sx + ux * 12, sy + uy * 12
+            parts.append(f'<line class="som-arrow" x1="{start_x:.1f}" '
+                         f'y1="{start_y:.1f}" x2="{base_x:.1f}" y2="{base_y:.1f}" '
+                         f'stroke="var(--good)" stroke-width="2.4" '
+                         f'stroke-linecap="round"/>')
+            l_x, l_y = base_x + px * 4.5, base_y + py * 4.5
+            r_x, r_y = base_x - px * 4.5, base_y - py * 4.5
+            parts.append(f'<polygon class="som-arrow" points="{tip_x:.1f},{tip_y:.1f} '
+                         f'{l_x:.1f},{l_y:.1f} {r_x:.1f},{r_y:.1f}" fill="var(--good)"/>')
+
+    # axis hint: small and muted, a hint not a claim (the SOM's PCA-oriented
+    # init roughly tracks these axes; the exact mapping is emergent).
+    parts.append(f'<text x="{pad_l + gw / 2:.1f}" y="{H - 6}" text-anchor="middle" '
+                 f'font-size="9.5" fill="var(--muted)">firepower / rigor '
+                 f'→</text>')
+    parts.append(f'<text x="10" y="{pad_t + gh / 2:.1f}" text-anchor="middle" '
+                 f'font-size="9.5" fill="var(--muted)" '
+                 f'transform="rotate(-90 10 {pad_t + gh / 2:.1f})">fanout '
+                 f'→</text>')
+    parts.append("</svg>")
+
+    caption = ""
+    if arm_change:
+        if isinstance(arm_change, dict) and arm_change.get("tweak"):
+            cap_text = str(arm_change["tweak"])
+        elif isinstance(arm_change, dict):
+            axis = arm_change.get("axis", "setup")
+            frm, to = arm_change.get("from"), arm_change.get("to")
+            cap_text = f"A cheaper cell nearby: {axis} {frm} to {to}."
+        else:
+            cap_text = str(arm_change)
+        caption = f'<div class="measure">{esc(cap_text)}</div>'
+
+    occupied = len(have)
+    mean_field = sum(have) / len(have) if have else None
+    window = som_block.get("field_window_days")
+    sessions_mapped = som_block.get("sessions_mapped")
+    legend_bits = [
+        "Each cell is a learned working style (engine, firepower, rigor, "
+        "fanout); neighboring cells are similar setups.",
+        f"Shading is {esc(str(metric))}, lower is better: light and calm cells "
+        f"are cheap, dark and hot cells are costly. Outlined cells have no "
+        f"sessions in the current window and are not scored good or bad.",
+        "The line is where you have been working, thin and light for older "
+        "sessions, thick and solid for recent ones. The ring is where you are "
+        "now.",
+    ]
+    if target:
+        legend_bits.append("The arrow points at a cheaper cell you already "
+                           "sometimes use.")
+    raw = ((f"mean field {mean_field:.2f}" if mean_field is not None
+           else "mean field n/a") +
+          f", {occupied}/{rows * cols} cells occupied, "
+          f"{window if window is not None else 'n/a'} day window" +
+          (f", {sessions_mapped} sessions mapped"
+           if sessions_mapped is not None else ""))
+    legend = (f'<details class="breakdown"><summary>what the map means</summary>'
+             f'<p class="fine">{" ".join(legend_bits)}</p>'
+             f'<p class="fine">{esc(raw)}</p></details>')
+
+    return (f'<h2>Where you work <span class="sub">a learned map of your '
+           f'setups, cost-shaded</span></h2><div class="som-wrap">'
+           f'{"".join(parts)}</div>{caption}{legend}')
+
+
 def _hero_card(report):
     """The shareable scorecard, sparse by design: the VIBRANT wordmark, the hero
     number, the rig as a bar, a trend. Every element is a fact about the operator's
@@ -2145,10 +2386,11 @@ def render_html(report):
     esc = _html.escape
     head = "<style>\n" + _CSS + "</style>\n"
     hero = _hero_card(report)
+    som = render_som_map((report.get("rig_space") or {}).get("som"))
     tl = [r for r in report.get("timeline", []) if r["eq"] is not None]
     if len(tl) < 2:
         body = (f'<div class="vibrant">{hero}{_coverage_banner(report)}{_lever_html(report)}'
-                f'{render_small_multiples(report)}{render_attribution(report)}</div>')
+                f'{som}{render_small_multiples(report)}{render_attribution(report)}</div>')
         return _page(head + body)
 
     W, H = 760, 300
@@ -2247,6 +2489,7 @@ def render_html(report):
               f'<h2>Efficiency over time <span class="sub">shipped changes per Mtok, '
               f'per era</span></h2>'
               f'{"".join(parts)}{legend}'
+              f'{som}'
               f'<details class="breakdown"><summary>full breakdown: fuel streams and '
               f'per-rig work</summary>'
               f'{render_small_multiples(report)}{render_attribution(report)}</details>')
