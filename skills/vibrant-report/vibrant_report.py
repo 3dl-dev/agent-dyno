@@ -2089,7 +2089,7 @@ _SOM_STYLES = {
 
 
 def render_som_map(som_block, title="Where you work",
-                   subtitle="a learned map of your setups, cost-shaded",
+                   subtitle="each hexagon is a way you work, shaded by what it costs",
                    legend_bits=None, style="classic"):
     """The learned SOM lattice (item 4): a rows x cols grid shaded by cost per
     cell, the trajectory that walked it, the current cell, and the arrow to a
@@ -2132,7 +2132,7 @@ def render_som_map(som_block, title="Where you work",
     pal = _SOM_STYLES.get(style, _SOM_STYLES["classic"])
     hexed = pal["hex"]
     cell, gap = 42, 3
-    pad_l, pad_t, pad_r, pad_b = 40, 14, 14, 32
+    pad_l, pad_t, pad_r, pad_b = 14, 24, 14, 14
     if hexed:
         hstep, vstep = cell + gap, (cell + gap) * 0.87
         gw = cols * hstep + hstep / 2
@@ -2180,85 +2180,62 @@ def render_som_map(som_block, title="Where you work",
             parts.append(cell_shape(
                 cx, cy, f'fill="rgba({pal["cell"]},{op:.2f})" stroke="var(--line)" '
                 f'stroke-width="1"', title=cell_title))
-            s = sval(r, c)
-            if s > 0:
-                frac = min(s / smax, 1.0)
-                rad = 2 + 4 * frac
-                parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" '
-                             f'r="{rad:.1f}" fill="var(--ink)" opacity="0.14"/>')
+    # deliberately no session-count dots and no history trail: they were mark types a
+    # viewer could not decode. The map now carries only what reads at a glance: cost by
+    # shade, where you are, and the direction to a cheaper setup.
 
-    # trajectory: the map draws the smoothed drift (mood) so the direction of travel
-    # reads as one clean line, not the criss-cross of raw per-session jumps (which
-    # stay as the support dots). Thin/light (older) to thick/opaque (recent). Falls
-    # back to the raw cell path with deterministic jitter when no drift is present.
-    drift = som_block.get("drift") or []
-    pts = []
-    for p in drift:
-        pos = p.get("pos") if isinstance(p, dict) else None
-        if pos and len(pos) == 2:
-            pts.append(center(pos[0], pos[1]))
-    if not pts:
-        for i, p in enumerate(som_block.get("trajectory") or []):
-            rc = p.get("cell") if isinstance(p, dict) else None
-            if not rc or len(rc) != 2:
-                continue
-            r, c = rc
-            cx, cy = center(r, c)
-            pts.append((cx + ((i * 7) % 5 - 2) * 1.3, cy + ((i * 11) % 5 - 2) * 1.3))
-    n = len(pts)
-    # a comet trail, not a connected path: graduated dots (old = small and faint,
-    # recent = large and bold) read as movement and concentration without the
-    # criss-cross a connected line makes when the operator oscillates between distant
-    # cells. The size/opacity gradient alone carries the direction of travel.
-    for i, (x, y) in enumerate(pts):
-        t = i / (n - 1) if n > 1 else 1.0
-        rad = 1.8 + 3.2 * t
-        op = 0.22 + 0.55 * t
-        parts.append(f'<circle class="som-path" cx="{x:.1f}" cy="{y:.1f}" '
-                     f'r="{rad:.1f}" fill="{pal["trail"]}" opacity="{op:.2f}"/>')
+    def _pill(px, py, text, color):
+        w = 6.6 * len(text) + 16
+        return (f'<rect x="{px - w / 2:.1f}" y="{py - 9:.1f}" width="{w:.1f}" '
+                f'height="18" rx="9" fill="var(--paper)" stroke="{color}" '
+                f'stroke-width="1.2"/><text x="{px:.1f}" y="{py + 3.6:.1f}" '
+                f'text-anchor="middle" font-size="10.5" font-weight="700" '
+                f'fill="{color}">{esc(text)}</text>')
 
     current = som_block.get("current_cell")
+    cur_xy = None
     if current and len(current) == 2:
         cx, cy = center(current[0], current[1])
-        parts.append(f'<circle class="som-current" cx="{cx:.1f}" cy="{cy:.1f}" r="9" '
+        cur_xy = (cx, cy)
+        parts.append(f'<circle class="som-current" cx="{cx:.1f}" cy="{cy:.1f}" r="10" '
                      f'fill="{pal["cur_fill"]}" stroke="{pal["cur_stroke"]}" '
-                     f'stroke-width="2.6"/>')
-        parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="2.8" '
+                     f'stroke-width="2.8"/>')
+        parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="3" '
                      f'fill="{pal["cur_dot"]}"/>')
 
     gradient = som_block.get("gradient") or {}
     target = gradient.get("target_cell")
     arm_change = gradient.get("arm_change")
-    if target and len(target) == 2 and current and len(current) == 2:
-        sx, sy = center(current[0], current[1])
+    tgt_xy = None
+    if target and len(target) == 2 and cur_xy:
+        sx, sy = cur_xy
         tx, ty = center(target[0], target[1])
+        tgt_xy = (tx, ty)
         dx, dy = tx - sx, ty - sy
         dist = (dx * dx + dy * dy) ** 0.5
         if dist > 1e-6:
             ux, uy = dx / dist, dy / dist
             px, py = -uy, ux
             head = 9.0
-            tip_x, tip_y = tx - ux * 4, ty - uy * 4
+            tip_x, tip_y = tx - ux * 13, ty - uy * 13
             base_x, base_y = tip_x - ux * head, tip_y - uy * head
-            start_x, start_y = sx + ux * 12, sy + uy * 12
+            start_x, start_y = sx + ux * 14, sy + uy * 14
             parts.append(f'<line class="som-arrow" x1="{start_x:.1f}" '
                          f'y1="{start_y:.1f}" x2="{base_x:.1f}" y2="{base_y:.1f}" '
-                         f'stroke="{pal["arrow"]}" stroke-width="2.6" '
+                         f'stroke="{pal["arrow"]}" stroke-width="2.8" '
                          f'stroke-linecap="round"/>')
-            l_x, l_y = base_x + px * 4.5, base_y + py * 4.5
-            r_x, r_y = base_x - px * 4.5, base_y - py * 4.5
+            l_x, l_y = base_x + px * 4.7, base_y + py * 4.7
+            r_x, r_y = base_x - px * 4.7, base_y - py * 4.7
             parts.append(f'<polygon class="som-arrow" points="{tip_x:.1f},{tip_y:.1f} '
                          f'{l_x:.1f},{l_y:.1f} {r_x:.1f},{r_y:.1f}" fill="{pal["arrow"]}"/>')
 
-    # axis hint: small and muted, a hint not a claim (the SOM's PCA-oriented
-    # init roughly tracks these axes; the exact mapping is emergent).
-    parts.append(f'<text x="{pad_l + gw / 2:.1f}" y="{H - 6}" text-anchor="middle" '
-                 f'font-size="9.5" fill="var(--muted)">firepower / rigor '
-                 f'→</text>')
-    parts.append(f'<text x="10" y="{pad_t + gh / 2:.1f}" text-anchor="middle" '
-                 f'font-size="9.5" fill="var(--muted)" '
-                 f'transform="rotate(-90 10 {pad_t + gh / 2:.1f})">fanout '
-                 f'→</text>')
+    # labels last, on top: name the only two marks that matter, right on the figure.
+    def _label_y(cy):
+        return cy - 18 if cy - 18 > pad_t + 4 else cy + 18
+    if cur_xy:
+        parts.append(_pill(cur_xy[0], _label_y(cur_xy[1]), "you", pal["cur_stroke"]))
+    if tgt_xy:
+        parts.append(_pill(tgt_xy[0], _label_y(tgt_xy[1]), "cheaper", pal["arrow"]))
     parts.append("</svg>")
 
     caption = ""
@@ -2277,36 +2254,51 @@ def render_som_map(som_block, title="Where you work",
     mean_field = sum(have) / len(have) if have else None
     window = som_block.get("field_window_days")
     sessions_mapped = som_block.get("sessions_mapped")
+
+    def _money(x):
+        return f"${x:,.0f}" if x >= 10 else f"${x:.1f}"
+
+    metric_h = ("cost per KB of code you kept"
+                if metric == "d_per_survkb" else esc(str(metric)))
+    scale_note = (f"= {metric_h} ({_money(lo)} to {_money(hi)})"
+                  if have else f"= {metric_h}")
+    # the always-visible key: no one should need the collapsed detail to read the map.
+    key = (
+        '<div class="som-key" style="display:flex;flex-wrap:wrap;gap:16px;'
+        'align-items:center;margin-top:10px;font-size:12px;color:var(--ink2)">'
+        '<span style="display:inline-flex;align-items:center;gap:7px">cheaper'
+        f'<i style="width:70px;height:11px;border-radius:6px;display:inline-block;'
+        f'background:linear-gradient(90deg,rgba({pal["cell"]},0.12),'
+        f'rgba({pal["cell"]},0.92))"></i>costlier</span>'
+        f'<span>{scale_note}</span>'
+        f'<span><b style="color:{pal["cur_stroke"]};font-size:15px">◉</b> you</span>'
+        + (f'<span><b style="color:{pal["arrow"]};font-size:15px">→</b> '
+           f'a cheaper setup you already use</span>' if target else '')
+        + '</div>')
+
     if legend_bits is None:
         legend_bits = [
-            "Each cell is a learned working style (engine, firepower, rigor, "
-            "fanout); neighboring cells are similar setups.",
-            f"Shading is {esc(str(metric))}, lower is better: light and calm cells "
-            f"are cheap, dark and hot cells are costly. Outlined cells have no "
-            f"sessions in the current window and are not scored good or bad.",
+            "Each hexagon is one way you run your setup (which model, how much "
+            "review, how many agents in parallel). Similar setups sit next to each "
+            "other, so the map is a landscape, not a table.",
+            "A hexagon's shade is how much that setup costs per KB of code that "
+            "survived: pale is cheap, dark is expensive. Empty hexes are setups you "
+            "have not used lately.",
+            "You are at the ring; the arrow points to a nearby setup that costs less "
+            "and that you already use sometimes.",
         ]
-        if n:
-            legend_bits.append(
-                "The trail is where you have been working, faint and small for "
-                "older sessions, bold for recent ones. The ring is where you are "
-                "now.")
-        else:
-            legend_bits.append("The ring is where you are now.")
-        if target:
-            legend_bits.append("The arrow points at a cheaper cell you already "
-                               "sometimes use.")
-    raw = ((f"mean field {mean_field:.2f}" if mean_field is not None
-           else "mean field n/a") +
-          f", {occupied}/{rows * cols} cells occupied, "
+    raw = ((f"mean cost {mean_field:.2f}" if mean_field is not None
+           else "mean cost n/a") +
+          f", {occupied}/{rows * cols} setups used, "
           f"{window if window is not None else 'n/a'} day window" +
           (f", {sessions_mapped} sessions mapped"
            if sessions_mapped is not None else ""))
-    legend = (f'<details class="breakdown"><summary>what the map means</summary>'
+    legend = (f'<details class="breakdown"><summary>more detail</summary>'
              f'<p class="fine">{" ".join(legend_bits)}</p>'
              f'<p class="fine">{esc(raw)}</p></details>')
 
     return (f'<h2>{esc(title)} <span class="sub">{esc(subtitle)}</span></h2>'
-           f'<div class="som-wrap">{"".join(parts)}</div>{caption}{legend}')
+           f'<div class="som-wrap">{"".join(parts)}</div>{key}{caption}{legend}')
 
 
 def render_shared_map(merged, current_cell, gradient, style="classic"):
@@ -2327,11 +2319,11 @@ def render_shared_map(merged, current_cell, gradient, style="classic"):
         delta = g.get("delta")
         sup = g.get("support")
         contrib = g.get("contributors")
-        piece = (f"about {delta:.2f} lower" if isinstance(delta, (int, float))
-                 else "cheaper")
+        piece = (f"about ${delta:.2f} cheaper per KB kept"
+                 if isinstance(delta, (int, float)) else "cheaper")
         arm_change = {"tweak": (
-            f"The frontier: a cell {piece} in {_html.escape(merged.get('field_metric', 'cost'))}, "
-            f"backed by {sup} peer sessions across {contrib} operators.")}
+            f"The frontier: a setup {piece}, backed by {sup} peer sessions across "
+            f"{contrib} operators.")}
     # a som-block shaped view the drawing understands: field + support + your cell +
     # the frontier arrow. No trajectory: the field is the whole federation's, not a walk.
     block = {"lattice": lattice,
@@ -2345,20 +2337,17 @@ def render_shared_map(merged, current_cell, gradient, style="classic"):
              "current_cell": current_cell,
              "gradient": {"arm_change": arm_change, "target_cell": target,
                           "vector": g.get("vector")}}
-    metric = _html.escape(merged.get("field_metric", "d_per_survkb"))
     legend_bits = [
-        "Each cell is a working style on the shared reference map; every operator "
-        "assigns their sessions to the same cells, so the costs add up honestly.",
-        f"Shading is {metric} pooled across operators, lower is better: cheap cells "
-        f"are light, costly cells are dark. Bigger dots mean more sessions behind "
-        f"the cell. Outlined cells have no data.",
-        "The ring is where your own work sits on the shared map.",
+        "Same map, but the shade is the cost pooled across many operators, not just "
+        "you. Everyone assigns their work to the same hexagons, so the costs add up "
+        "honestly without anyone sharing their logs.",
+        "Pale is cheap, dark is expensive. Empty hexes are setups no one reported "
+        "lately.",
+        "You are at the ring; the arrow points to the cheaper setup the wider group "
+        "confirms, weighted by how much real work backs it.",
     ]
-    if target:
-        legend_bits.append("The arrow points to the cheaper region the wider "
-                           "federation confirms, weighted by the work behind it.")
     return render_som_map(block, title="The shared frontier",
-                          subtitle="cost pooled across operators, no logs shared",
+                          subtitle="the same map, cost pooled across operators, no logs shared",
                           legend_bits=legend_bits, style=style)
 
 
