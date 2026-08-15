@@ -107,11 +107,10 @@ def test_waveform(fails):
     for color in ("var(--accent)", "var(--teal)", "var(--good)"):
         check(color in out, f"missing {color} band", fails)
     check(out.count("<rect") >= 4, f"too few wave bars: {out.count('<rect')}", fails)
-    # the smoothed generational overlay: a per-era score label, a lit-able band segment,
-    # and the rainfall hook, plus the daily bars carry their era for the emphasis.
-    for hook in ('class="wv-score"', 'class="wv-band"', 'class="wv-rain"', 'data-era='):
+    # the generational overlay: a per-era score label, a lit-able solid ribbon segment,
+    # and the daily bars carry their era for the emphasis + Sankey flow.
+    for hook in ('class="wv-score"', 'class="wv-band"', 'data-era='):
         check(hook in out, f"missing generational hook {hook}", fails)
-    check("<polyline" in out, "missing the smoothed generational contour", fails)
     # gap-filled: the bucket with no misery/no shipped still contributes (overall fill)
     check(len(vr._combined_series(rep)) == 4, "combined series should gap-fill to 4", fails)
     check(vr.render_waveform({"topline": {"eq": 1}, "timeline": []}) == "",

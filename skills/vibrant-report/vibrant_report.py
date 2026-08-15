@@ -1958,7 +1958,10 @@ _CSS = """
  --ink-rgb:237,234,230;--rust:#e2683a;--teal:#2dd4bf;--paper:#1c1b19;}
 .vibrant *{box-sizing:border-box;}
 .vibrant .card{background:var(--card);border:1px solid var(--line);border-radius:18px;
- padding:30px 32px;box-shadow:0 1px 2px rgba(var(--shadow),.05),0 10px 34px rgba(var(--shadow),.07);}
+ padding:30px 32px;box-shadow:0 1px 2px rgba(var(--shadow),.05),0 10px 34px rgba(var(--shadow),.07);
+ position:relative;}
+.vibrant .card .flow-ov{position:absolute;left:0;top:0;width:100%;height:100%;
+ pointer-events:none;z-index:2;}
 .vibrant .top{display:flex;justify-content:space-between;align-items:center;margin:0 0 26px;}
 .vibrant .brand{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800;
  letter-spacing:.16em;color:var(--ink);text-transform:uppercase;}
@@ -2637,9 +2640,30 @@ _WALK_JS = r"""<script>
   function emphasize(){var ws=document.getElementById('wave-svg');if(!ws)return;var day=(CURP!=null),ae=activeEra();
     ws.querySelectorAll('.wv-bar').forEach(function(gg){var i=+gg.getAttribute('data-i'),e=+gg.getAttribute('data-era');
       var on=day?(i===CURP):(ae==null||e===ae);gg.setAttribute('opacity',on?'1':(day?'0.28':'0.42'));});
-    ws.querySelectorAll('.wv-band').forEach(function(bd){bd.setAttribute('opacity',(!day&&+bd.getAttribute('data-era')===ae)?'0.16':'0');});
-    ws.querySelectorAll('.wv-rain').forEach(function(rn){rn.setAttribute('opacity',(!day&&+rn.getAttribute('data-era')===ae)?'0.4':'0');});
-    ws.querySelectorAll('.wv-score').forEach(function(tx){var e=+tx.getAttribute('data-era');tx.setAttribute('opacity',(ae==null||e===ae)?'1':'0.4');});}
+    // the active generation's ribbon segment turns rust (the region feeding the score).
+    ws.querySelectorAll('.wv-band').forEach(function(bd){bd.setAttribute('opacity',(!day&&+bd.getAttribute('data-era')===ae)?'0.9':'0');});
+    ws.querySelectorAll('.wv-score').forEach(function(tx){var e=+tx.getAttribute('data-era');tx.setAttribute('opacity',(ae==null||e===ae)?'1':'0.4');});
+    drawFlow();}
+  // the subtle Sankey flow: a soft ribbon from the topline score down to the region of the
+  // timeline feeding it (the hovered day, or the held generation's bars). Recomputed from
+  // live layout so it tracks responsive reflow.
+  function drawFlow(){var host=document.querySelector('.vibrant .card');if(!host||!vbScore)return;
+    var ov=host.querySelector('.flow-ov');
+    if(!ov){ov=document.createElementNS('http://www.w3.org/2000/svg','svg');ov.setAttribute('class','flow-ov');host.insertBefore(ov,host.firstChild);}
+    var hr=host.getBoundingClientRect();if(hr.width<1)return;
+    ov.setAttribute('viewBox','0 0 '+hr.width.toFixed(1)+' '+hr.height.toFixed(1));
+    var day=(CURP!=null),ae=activeEra();
+    var bars=[].slice.call(document.querySelectorAll('#wave-svg .wv-bar')).filter(function(gg){
+      return day?(+gg.getAttribute('data-i')===CURP):(ae==null||+gg.getAttribute('data-era')===ae);});
+    if(!bars.length){ov.innerHTML='';return;}
+    var L=1e9,R=-1e9,T=1e9;
+    bars.forEach(function(gg){var r=gg.getBoundingClientRect();L=Math.min(L,r.left-hr.left);R=Math.max(R,r.right-hr.left);T=Math.min(T,r.top-hr.top);});
+    if(R-L<6){var mm=(L+R)/2;L=mm-3;R=mm+3;}
+    var sr=vbScore.getBoundingClientRect();var tL=sr.left-hr.left,tR=sr.right-hr.left,tB=sr.bottom-hr.top;
+    var my=(tB+T)/2;
+    var d='M'+tL.toFixed(1)+','+tB.toFixed(1)+' C'+tL.toFixed(1)+','+my.toFixed(1)+' '+L.toFixed(1)+','+my.toFixed(1)+' '+L.toFixed(1)+','+T.toFixed(1)
+      +' L'+R.toFixed(1)+','+T.toFixed(1)+' C'+R.toFixed(1)+','+my.toFixed(1)+' '+tR.toFixed(1)+','+my.toFixed(1)+' '+tR.toFixed(1)+','+tB.toFixed(1)+' Z';
+    ov.innerHTML='<path d="'+d+'" fill="var(--rust)" opacity="0.09"/>';}
   function setRec(e){if(!vbRec)return;var bc=best(e);
     if(bc&&recOk(e)){vbRec.innerHTML='<span class="rec-arrow">'+REC+'</span> shift toward <b>'+setup(bc)+'</b>';return;}
     // no move clears the noise (or no measurable baseline): say hold, do not point.
@@ -2690,6 +2714,7 @@ _WALK_JS = r"""<script>
     g.addEventListener('click',function(){var p=PERIODS[+g.getAttribute('data-i')];if(p&&p.era!=null)ERAIDX=p.era;CURP=null;refresh();});});
   var wsvg=document.getElementById('wave-svg');
   if(wsvg)wsvg.addEventListener('mouseleave',function(){CURP=null;refresh();});
+  window.addEventListener('resize',function(){drawFlow();});
   refresh();
 })();
 </script>"""
@@ -3065,29 +3090,11 @@ def render_waveform(report):
 
     def cx(i):
         return i * bw + bw / 2
-    # the continuous smoothed band: a symmetric envelope around the centre, spanning the
-    # full width. The daily bars ride over this; where a day falls short of it a dashed
-    # notch shows the deficit (trend + residual, horizon-chart style).
-    top = [(0.0, cy - g[0] / 2)] + [(cx(i), cy - g[i] / 2) for i in range(n)] + [(W, cy - g[-1] / 2)]
-    bot = [(W, cy + g[-1] / 2)] + [(cx(i), cy + g[i] / 2) for i in range(n - 1, -1, -1)] + [(0.0, cy + g[0] / 2)]
-    band = ('<polygon points="'
-            + " ".join(f"{x:.1f},{y:.1f}" for x, y in top + bot)
-            + '" fill="var(--ink)" opacity="0.09"/>'
-            + f'<line x1="0" y1="{cy}" x2="{W}" y2="{cy}" stroke="var(--ink)" '
-              f'stroke-width="0.8" opacity="0.22"/>')
-    # a per-era highlight of that band segment, lit by JS for the generation feeding the
-    # score (hidden otherwise).
-    bandhl = []
-    for e in range(neras):
-        a, b = espan[e]
-        seg = ([(cx(i), cy - g[i] / 2) for i in range(a, b)]
-               + [(cx(i), cy + g[i] / 2) for i in range(b - 1, a - 1, -1)])
-        bandhl.append(f'<polygon class="wv-band" data-era="{e}" points="'
-                      + " ".join(f"{x:.1f},{y:.1f}" for x, y in seg)
-                      + '" fill="var(--ink)" opacity="0"/>')
+    RT = 0.30  # ribbon half-thickness as a fraction of the smoothed amplitude: tight core
 
-    wd = max(bw - 1.4, 0.8)
-    bars, deficits = [], []
+    # tighter, so the wave reads clean and the solid ribbon is the hero.
+    wd = max(bw * 0.78, 0.8)
+    bars = []
     for i in range(n):
         segs = [(nrm[i] * unit, color, m) for nrm, color, m in comps]
         total = totals[i]
@@ -3098,65 +3105,56 @@ def render_waveform(report):
                f'fill="transparent" pointer-events="all"/>']
         for hgt, color, m in segs:
             if hgt >= 0.4:
-                grp.append(f'<rect data-m="{m}" x="{x:.1f}" y="{y:.1f}" width="{wd:.1f}" '
-                           f'height="{hgt:.1f}" fill="{color}"/>')
+                grp.append(f'<rect data-m="{m}" x="{x + (bw - wd) / 2:.1f}" y="{y:.1f}" '
+                           f'width="{wd:.1f}" height="{hgt:.1f}" fill="{color}"/>')
             y += hgt
         grp.append('</g>')
         bars.append("".join(grp))
-        # a day below its generation: a dashed notch fills the gap up to the smoothed line,
-        # top and bottom, so a short day reads as a shortfall, not just a small bar.
-        if g[i] - total > 1.2:
-            dw = max(wd - 1.0, 0.8)
-            deficits.append(
-                f'<line x1="{cx(i):.1f}" y1="{cy - g[i] / 2:.1f}" x2="{cx(i):.1f}" '
-                f'y2="{cy - total / 2:.1f}" stroke="var(--muted)" stroke-width="{dw:.1f}" '
-                f'stroke-dasharray="1.5 2" opacity="0.5"/>'
-                f'<line x1="{cx(i):.1f}" y1="{cy + total / 2:.1f}" x2="{cx(i):.1f}" '
-                f'y2="{cy + g[i] / 2:.1f}" stroke="var(--muted)" stroke-width="{dw:.1f}" '
-                f'stroke-dasharray="1.5 2" opacity="0.5"/>')
 
-    labels, rain, dividers = [], [], []
+    # the SOLID, tight generational ribbon threaded through the centre: its thickness is
+    # the smoothed generational amplitude, so a bold flowing core reads the trend while the
+    # daily bars ride over it (colour pokes past on a strong day; the ribbon shows through a
+    # weak one). One continuous ribbon, always visible, plus per-era segments the JS lights
+    # rust for the generation feeding the score.
+    rtop = ([(0.0, cy - g[0] * RT)] + [(cx(i), cy - g[i] * RT) for i in range(n)]
+            + [(W, cy - g[-1] * RT)])
+    rbot = ([(W, cy + g[-1] * RT)] + [(cx(i), cy + g[i] * RT) for i in range(n - 1, -1, -1)]
+            + [(0.0, cy + g[0] * RT)])
+    ribbon = ('<polygon points="' + " ".join(f"{x:.1f},{y:.1f}" for x, y in rtop + rbot)
+              + '" fill="var(--ink)" opacity="0.82"/>')
+    bandhl = []
+    for e in range(neras):
+        a, b = espan[e]
+        seg = ([(cx(i), cy - g[i] * RT) for i in range(a, b)]
+               + [(cx(i), cy + g[i] * RT) for i in range(b - 1, a - 1, -1)])
+        bandhl.append(f'<polygon class="wv-band" data-era="{e}" points="'
+                      + " ".join(f"{x:.1f},{y:.1f}" for x, y in seg)
+                      + '" fill="var(--rust)" opacity="0"/>')
+
+    labels, dividers = [], []
     for e in range(neras):
         a, b = espan[e]
         xm = ((a * bw) + (b * bw)) / 2
         gt = cy - max(g[i] for i in range(a, b)) / 2
-        ly = max(9.0, gt - 4)
-        labels.append(f'<text class="wv-score" data-era="{e}" x="{xm:.1f}" y="{ly:.1f}" '
-                      f'text-anchor="middle" font-size="10.5" font-weight="700" '
-                      f'fill="var(--ink2)">{_fmt_tok(escore[e])}</text>')
-        # the "rainfall": short dotted lines from the score down onto the region it sums,
-        # lit by JS only for the active generation (ties the number to its own days).
-        for k in range(3):
-            rx = xm + (k - 1) * 5.5
-            rain.append(f'<line class="wv-rain" data-era="{e}" x1="{rx:.1f}" y1="{ly + 3:.1f}" '
-                        f'x2="{rx:.1f}" y2="{gt - 1:.1f}" stroke="var(--ink2)" '
-                        f'stroke-width="1" stroke-dasharray="1 2" opacity="0"/>')
+        labels.append(f'<text class="wv-score" data-era="{e}" x="{xm:.1f}" '
+                      f'y="{max(9.0, gt - 4):.1f}" text-anchor="middle" font-size="10.5" '
+                      f'font-weight="700" fill="var(--ink2)">{_fmt_tok(escore[e])}</text>')
         if a > 0:
             dividers.append(f'<line x1="{a * bw:.1f}" y1="2" x2="{a * bw:.1f}" y2="{H - 2}" '
                             f'stroke="var(--ink)" stroke-width="1" stroke-dasharray="2 3" '
                             f'opacity="0.28"/>')
-    # the smoothed generational contour, drawn ON TOP of the bars so the centre line reads
-    # as the reference the daily bars ride over (above = beat the generation, below = the
-    # dashed deficit). Continuous polylines, one per envelope edge.
-    te = " ".join(f"{cx(i):.1f},{cy - g[i] / 2:.1f}" for i in range(n))
-    be = " ".join(f"{cx(i):.1f},{cy + g[i] / 2:.1f}" for i in range(n))
-    edges = (f'<polyline points="{te}" fill="none" stroke="var(--ink)" stroke-width="1.7" '
-             f'opacity="0.6" stroke-linejoin="round"/>'
-             f'<polyline points="{be}" fill="none" stroke="var(--ink)" stroke-width="1.7" '
-             f'opacity="0.6" stroke-linejoin="round"/>')
-    # back to front: smooth band + its per-era highlights + centre, deficits, dividers,
-    # the daily bars, the smoothed contour, then the rainfall and era scores on top.
+    # back to front: dividers, the daily bars, the solid ribbon and its lit-able per-era
+    # segments over them, then the era scores on top.
     svg = (f'<svg id="wave-svg" viewBox="0 0 {W} {H}" role="img" aria-label="the combined '
-           f'score over time: a smoothed generational band with daily bars riding over it, '
-           f'a dashed notch where a day fell below its generation, each generation labelled '
-           f'with its score">{band}{"".join(bandhl)}{"".join(deficits)}{"".join(dividers)}'
-           f'{"".join(bars)}{edges}{"".join(rain)}{"".join(labels)}</svg>')
+           f'score over time: daily bars of efficiency, flow and simplicity riding over a '
+           f'solid smoothed generational ribbon, each generation labelled with its score">'
+           f'{"".join(dividers)}{"".join(bars)}{ribbon}{"".join(bandhl)}{"".join(labels)}</svg>')
     note = ('<div class="wlegend"><span class="wl-key">'
             '<span><i style="background:var(--accent)"></i>efficiency</span>'
             '<span><i style="background:var(--teal)"></i>flow</span>'
             '<span><i style="background:var(--good)"></i>simplicity</span></span>'
-            '<span class="wl-note">smooth band = each generation\'s level; a dashed notch '
-            '= a day below its generation</span></div>')
+            '<span class="wl-note">solid ribbon = each generation\'s level; daily bars ride '
+            'over it</span></div>')
     return (f'<div class="wave">{svg}{note}</div>')
 
 
