@@ -2044,14 +2044,17 @@ def _som_field_opacity(v, lo, hi, lower_better):
     return 0.10 + 0.80 * t
 
 
-def render_som_map(som_block):
+def render_som_map(som_block, title="Where you work",
+                   subtitle="a learned map of your setups, cost-shaded",
+                   legend_bits=None):
     """The learned SOM lattice (item 4): a rows x cols grid shaded by cost per
     cell, the trajectory that walked it, the current cell, and the arrow to a
     cheaper cell already sometimes used. Pure function of rig_space['som'];
     matches the sparkline / efficiency-over-time SVG idiom (viewBox, role=img,
     aria-label, the report's own CSS vars), no external assets. Jitter on the
     trajectory is a deterministic function of index, never random, so the
-    render is byte-identical for the same input."""
+    render is byte-identical for the same input. title/subtitle/legend_bits let
+    the shared-frontier map (item C) reuse the same drawing with its own words."""
     if not som_block:
         return ""
     esc = _html.escape
@@ -2112,11 +2115,11 @@ def render_som_map(som_block):
                              f'stroke-width="1" stroke-dasharray="2 2" opacity="0.7"/>')
                 continue
             op = _som_field_opacity(v, lo, hi, lower_better)
-            title = esc(f"row {r}, col {c}: {v:.2f} {metric}")
+            cell_title = esc(f"row {r}, col {c}: {v:.2f} {metric}")
             parts.append(f'<rect class="som-cell" x="{x}" y="{y}" width="{cell}" '
                          f'height="{cell}" rx="4" fill="rgba(var(--down-rgb),{op:.2f})" '
                          f'stroke="var(--line)" stroke-width="1">'
-                         f'<title>{title}</title></rect>')
+                         f'<title>{cell_title}</title></rect>')
             s = sval(r, c)
             if s > 0:
                 frac = min(s / smax, 1.0)
@@ -2216,19 +2219,24 @@ def render_som_map(som_block):
     mean_field = sum(have) / len(have) if have else None
     window = som_block.get("field_window_days")
     sessions_mapped = som_block.get("sessions_mapped")
-    legend_bits = [
-        "Each cell is a learned working style (engine, firepower, rigor, "
-        "fanout); neighboring cells are similar setups.",
-        f"Shading is {esc(str(metric))}, lower is better: light and calm cells "
-        f"are cheap, dark and hot cells are costly. Outlined cells have no "
-        f"sessions in the current window and are not scored good or bad.",
-        "The line is where you have been working, thin and light for older "
-        "sessions, thick and solid for recent ones. The ring is where you are "
-        "now.",
-    ]
-    if target:
-        legend_bits.append("The arrow points at a cheaper cell you already "
-                           "sometimes use.")
+    if legend_bits is None:
+        legend_bits = [
+            "Each cell is a learned working style (engine, firepower, rigor, "
+            "fanout); neighboring cells are similar setups.",
+            f"Shading is {esc(str(metric))}, lower is better: light and calm cells "
+            f"are cheap, dark and hot cells are costly. Outlined cells have no "
+            f"sessions in the current window and are not scored good or bad.",
+        ]
+        if n:
+            legend_bits.append(
+                "The trail is where you have been working, faint and small for "
+                "older sessions, bold for recent ones. The ring is where you are "
+                "now.")
+        else:
+            legend_bits.append("The ring is where you are now.")
+        if target:
+            legend_bits.append("The arrow points at a cheaper cell you already "
+                               "sometimes use.")
     raw = ((f"mean field {mean_field:.2f}" if mean_field is not None
            else "mean field n/a") +
           f", {occupied}/{rows * cols} cells occupied, "
@@ -2239,9 +2247,61 @@ def render_som_map(som_block):
              f'<p class="fine">{" ".join(legend_bits)}</p>'
              f'<p class="fine">{esc(raw)}</p></details>')
 
-    return (f'<h2>Where you work <span class="sub">a learned map of your '
-           f'setups, cost-shaded</span></h2><div class="som-wrap">'
-           f'{"".join(parts)}</div>{caption}{legend}')
+    return (f'<h2>{esc(title)} <span class="sub">{esc(subtitle)}</span></h2>'
+           f'<div class="som-wrap">{"".join(parts)}</div>{caption}{legend}')
+
+
+def render_shared_map(merged, current_cell, gradient):
+    """The federated shared frontier (item C): the peer-validated cost field merged
+    across operators, with YOUR cell on it and the support-weighted arrow to the
+    cheaper, corroborated region. Reuses render_som_map: no personal trajectory (the
+    field is everyone's), a shared-frontier title and legend. Pure; returns '' when
+    there is no merged map. Additive: absence renders nothing."""
+    if not merged:
+        return ""
+    lattice = merged.get("lattice") or {}
+    if not lattice.get("rows") or not lattice.get("cols"):
+        return ""
+    g = gradient or {}
+    target = g.get("target_cell")
+    arm_change = None
+    if target and current_cell:
+        delta = g.get("delta")
+        sup = g.get("support")
+        contrib = g.get("contributors")
+        piece = (f"about {delta:.2f} lower" if isinstance(delta, (int, float))
+                 else "cheaper")
+        arm_change = {"tweak": (
+            f"The frontier: a cell {piece} in {_html.escape(merged.get('field_metric', 'cost'))}, "
+            f"backed by {sup} peer sessions across {contrib} operators.")}
+    # a som-block shaped view the drawing understands: field + support + your cell +
+    # the frontier arrow. No trajectory: the field is the whole federation's, not a walk.
+    block = {"lattice": lattice,
+             "field": merged.get("field"),
+             "support": merged.get("support"),
+             "field_metric": merged.get("field_metric", "d_per_survkb"),
+             "field_lower_is_better": merged.get("field_lower_is_better", True),
+             "field_window_days": None,
+             "sessions_mapped": sum(x for row in (merged.get("support") or [])
+                                    for x in row),
+             "current_cell": current_cell,
+             "gradient": {"arm_change": arm_change, "target_cell": target,
+                          "vector": g.get("vector")}}
+    metric = _html.escape(merged.get("field_metric", "d_per_survkb"))
+    legend_bits = [
+        "Each cell is a working style on the shared reference map; every operator "
+        "assigns their sessions to the same cells, so the costs add up honestly.",
+        f"Shading is {metric} pooled across operators, lower is better: cheap cells "
+        f"are light, costly cells are dark. Bigger dots mean more sessions behind "
+        f"the cell. Outlined cells have no data.",
+        "The ring is where your own work sits on the shared map.",
+    ]
+    if target:
+        legend_bits.append("The arrow points to the cheaper region the wider "
+                           "federation confirms, weighted by the work behind it.")
+    return render_som_map(block, title="The shared frontier",
+                          subtitle="cost pooled across operators, no logs shared",
+                          legend_bits=legend_bits)
 
 
 def _hero_card(report):
