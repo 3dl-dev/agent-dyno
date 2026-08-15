@@ -1991,6 +1991,11 @@ _CSS = """
 .vibrant .vb-rec{font-size:13px;color:var(--ink2);margin-top:12px;min-height:18px;}
 .vibrant .vb-rec b{color:var(--rust);}
 .vibrant .vb-rec .rec-arrow{color:var(--teal);font-weight:800;margin-right:5px;}
+.vibrant .vb-detail{font-size:12px;color:var(--muted);margin-top:6px;min-height:16px;}
+.vibrant .vb-detail b{color:var(--ink2);}
+.vibrant .mk-were{color:var(--muted);font-weight:700;}
+.vibrant .mk-best{color:var(--rust);font-weight:700;}
+.vibrant .mk-went{color:var(--teal);font-weight:700;}
 .vibrant .wave{margin:0 0 24px;}
 .vibrant .wave svg{width:100%;height:auto;}
 .vibrant .wlegend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:12px;
@@ -2259,15 +2264,26 @@ def render_som_map(som_block, title="Where you work",
                     pad_t + cell / 2 + r * vstep)
         return (pad_l + c * hstep + cell / 2, pad_t + r * vstep + cell / 2)
 
+    def hexpts(cx, cy, rf=0.56):
+        rr = cell * rf
+        return " ".join(f"{cx + rr * math.cos(math.radians(a)):.1f},"
+                        f"{cy - rr * math.sin(math.radians(a)):.1f}"
+                        for a in (90, 150, 210, 270, 330, 30))
+
+    def marker(cx, cy, cls, stroke, sw, extra=""):
+        # a marker that matches the cell shape: a hex outline (or rect), not a circle.
+        if hexed:
+            return (f'<polygon class="{cls}" points="{hexpts(cx, cy)}" fill="none" '
+                    f'stroke="{stroke}" stroke-width="{sw}"{extra}/>')
+        return (f'<rect class="{cls}" x="{cx - cell / 2:.1f}" y="{cy - cell / 2:.1f}" '
+                f'width="{cell}" height="{cell}" rx="4" fill="none" stroke="{stroke}" '
+                f'stroke-width="{sw}"{extra}/>')
+
     def cell_shape(cx, cy, attrs, title=""):
         inner = f'<title>{title}</title>' if title else ''
         if hexed:
-            rr = cell * 0.56
-            pdata = " ".join(
-                f"{cx + rr * math.cos(math.radians(a)):.1f},"
-                f"{cy - rr * math.sin(math.radians(a)):.1f}"
-                for a in (90, 150, 210, 270, 330, 30))
-            return f'<polygon class="som-cell" points="{pdata}" {attrs}>{inner}</polygon>'
+            return (f'<polygon class="som-cell" points="{hexpts(cx, cy)}" '
+                    f'{attrs}>{inner}</polygon>')
         return (f'<rect class="som-cell" x="{cx - cell / 2:.1f}" y="{cy - cell / 2:.1f}" '
                 f'width="{cell}" height="{cell}" rx="4" {attrs}>{inner}</rect>')
 
@@ -2320,12 +2336,10 @@ def render_som_map(som_block, title="Where you work",
     if current and len(current) == 2:
         cx, cy = center(current[0], current[1])
         cur_xy = (cx, cy)
-        cr, sw, dr = (5, 2.0, 1.6) if compact else (10, 2.8, 3.0)
-        parts.append(f'<circle class="som-current" cx="{cx:.1f}" cy="{cy:.1f}" r="{cr}" '
-                     f'fill="{pal["cur_fill"]}" stroke="{pal["cur_stroke"]}" '
-                     f'stroke-width="{sw}"/>')
-        parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{dr}" '
-                     f'fill="{pal["cur_dot"]}"/>')
+        # "you" is a hex border on the cell (JS re-owns markers on interactive maps).
+        if not js_arrow:
+            parts.append(marker(cx, cy, "som-current", pal["cur_stroke"],
+                                2.0 if compact else 2.8))
 
     gradient = som_block.get("gradient") or {}
     target = gradient.get("target_cell")
@@ -2377,13 +2391,9 @@ def render_som_map(som_block, title="Where you work",
             parts.append(_pill(cur_xy[0], _label_y(cur_xy[1]), "you", pal["cur_stroke"]))
         if tgt_xy and not js_arrow:
             parts.append(_pill(tgt_xy[0], _label_y(tgt_xy[1]), "cheaper", pal["arrow"]))
-    if js_arrow:
-        # JS owns the arrow so it can re-aim per objective; empty group to fill in.
-        parts.append('<g class="obj-arrow"></g>')
-    if svg_id:
-        # the scrubber's moving marker (positioned by JS from a cell's geometry).
-        parts.append('<circle class="som-here" r="0" fill="none" '
-                     'stroke="var(--teal)" stroke-width="3.4" opacity="0"/>')
+    if js_arrow or svg_id:
+        # JS owns all live markers (hex outlines) and the arrow on interactive maps.
+        parts.append('<g class="som-fx"></g>')
     parts.append("</svg>")
     if compact:
         return (f'<div class="som-compact">'
@@ -2547,18 +2557,19 @@ _WALK_JS = r"""<script>
   var CELLS=__CELLS__, PERIODS=__PERIODS__, CUR=__CUR__, AGG=__AGG__;
   var svg=document.getElementById('map-you'); if(!svg) return;
   var vbScore=document.getElementById('vb-score'), vbLabel=document.getElementById('vb-label'),
-      vbRec=document.getElementById('vb-rec');
-  var here=svg.querySelector('.som-here'), objg=svg.querySelector('.obj-arrow');
-  var OBJC={eff:'var(--accent)',flow:'var(--teal)',simp:'var(--good)'};
+      vbRec=document.getElementById('vb-rec'), vbDetail=document.getElementById('vb-detail');
+  var fx=svg.querySelector('.som-fx');
+  var OBJC={eff:'var(--accent)',flow:'var(--teal)',simp:'var(--good)'},
+      OBJN={eff:'efficiency',flow:'flow',simp:'simplicity'};
   var MID=' · ', ARR=' › ', REC='→', MK=['eff','flow','simp'];
   var cmap={}; CELLS.forEach(function(c){cmap[c.r+','+c.c]=c;});
   function cell(r,c){return cmap[r+','+c];}
-  function center(r,c){var el=svg.querySelector('[data-r="'+r+'"][data-c="'+c+'"]');
-    if(!el)return null;var b=el.getBBox();return {x:b.x+b.width/2,y:b.y+b.height/2,r:b.width/2+3};}
+  function el(r,c){return svg.querySelector('[data-r="'+r+'"][data-c="'+c+'"]');}
+  function pts(r,c){var e=el(r,c);return e?e.getAttribute('points'):null;}
+  function ctr(r,c){var e=el(r,c);if(!e)return null;var b=e.getBBox();return {x:b.x+b.width/2,y:b.y+b.height/2,r:b.width/2};}
   function money(v){return v==null?'n/a':(v<10?'$'+(+v).toFixed(1):'$'+Math.round(v));}
   function setup(c){if(!c)return 'an unused setup';
-    var w=(c.worker&&c.worker!=='solo')?(ARR+c.worker):'';
-    return c.engine+MID+c.model+w+MID+c.effort;}
+    var w=(c.worker&&c.worker!=='solo')?(ARR+c.worker):'';return c.engine+MID+c.model+w+MID+c.effort;}
   function rng(k){var vs=CELLS.map(function(c){return c[k];}).filter(function(v){return v!=null;});
     return vs.length?{lo:Math.min.apply(null,vs),hi:Math.max.apply(null,vs)}:null;}
   var R={eff:rng('eff'),flow:rng('flow'),simp:rng('simp')};
@@ -2566,22 +2577,11 @@ _WALK_JS = r"""<script>
   function good(c,en){var prod=1,cnt=0;MK.forEach(function(m){if(!en[m])return;var x=nrm(c,m);if(x==null)return;prod*=Math.max(x,.001);cnt++;});return cnt?Math.pow(prod,1/cnt):null;}
   function best(en){var bc=null,bg=-1;CELLS.forEach(function(c){if((c.sessions||0)<2)return;var g=good(c,en);if(g!=null&&g>bg){bg=g;bc=c;}});return bc;}
   function objColor(en){var on=MK.filter(function(m){return en[m];});return on.length===1?OBJC[on[0]]:'var(--rust)';}
-  function drawArrow(fc,tc,color){objg.innerHTML='';if(!fc||!tc)return;
-    var a=center(fc[0],fc[1]),b=center(tc[0],tc[1]);if(!a||!b)return;
-    var dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);if(d<1)return;
-    var ux=dx/d,uy=dy/d,px=-uy,py=ux,h=7;
-    var tx=b.x-ux*9,ty=b.y-uy*9,bx=tx-ux*h,by=ty-uy*h,sx=a.x+ux*10,sy=a.y+uy*10;
-    objg.innerHTML='<circle cx="'+b.x+'" cy="'+b.y+'" r="'+b.r+'" fill="none" stroke="'+color+'" stroke-width="2" opacity="0.5"/>'
-      +'<line x1="'+sx+'" y1="'+sy+'" x2="'+bx+'" y2="'+by+'" stroke="'+color+'" stroke-width="2.4" stroke-linecap="round"/>'
-      +'<polygon points="'+tx+','+ty+' '+(bx+px*3.6)+','+(by+py*3.6)+' '+(bx-px*3.6)+','+(by-py*3.6)+'" fill="'+color+'"/>';}
-  var pathg=document.createElementNS('http://www.w3.org/2000/svg','g'); svg.appendChild(pathg);
-  function setMarker(pc){if(!pc){here.setAttribute('opacity','0');return;}var p=center(pc[0],pc[1]);
-    if(p){here.setAttribute('cx',p.x);here.setAttribute('cy',p.y);here.setAttribute('r',p.r);here.setAttribute('opacity','1');}}
-  function clearPath(){while(pathg.firstChild)pathg.removeChild(pathg.firstChild);}
-  function drawPath(upto){clearPath();for(var k=0;k<=upto;k++){var pc=PERIODS[k].cell;if(!pc)continue;var p=center(pc[0],pc[1]);if(!p)continue;
-    var t=upto>0?k/upto:1;var el=document.createElementNS('http://www.w3.org/2000/svg','circle');
-    el.setAttribute('cx',p.x);el.setAttribute('cy',p.y);el.setAttribute('r',(1.4+2*t).toFixed(1));
-    el.setAttribute('fill','var(--ink)');el.setAttribute('opacity',(0.1+0.3*t).toFixed(2));pathg.appendChild(el);}}
+  function objName(en){var on=MK.filter(function(m){return en[m];});return on.length===3?'balance':(on.length===1?OBJN[on[0]]:on.map(function(m){return OBJN[m];}).join('+'));}
+  function hexMk(r,c,color,sw){var p=pts(r,c);return p?('<polygon points="'+p+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'"/>'):'';}
+  function arrowSvg(a,b,color){if(!a||!b)return '';var dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);if(d<1)return '';
+    var ux=dx/d,uy=dy/d,px=-uy,py=ux,h=7;var tx=b.x-ux*(b.r+2),ty=b.y-uy*(b.r+2),bx=tx-ux*h,by=ty-uy*h,sx=a.x+ux*(a.r+2),sy=a.y+uy*(a.r+2);
+    return '<line x1="'+sx+'" y1="'+sy+'" x2="'+bx+'" y2="'+by+'" stroke="'+color+'" stroke-width="2.4" stroke-linecap="round"/><polygon points="'+tx+','+ty+' '+(bx+px*3.6)+','+(by+py*3.6)+' '+(bx-px*3.6)+','+(by-py*3.6)+'" fill="'+color+'"/>';}
   function fmt(n){return (+n).toLocaleString();}
   function fmtv(m,v){if(v==null)return 'n/a';if(m==='eff')return ''+v;if(m==='simp')return ''+Math.round(v);return ''+(Math.round(v*10)/10);}
   function tog(m){return document.querySelector('.mtog[data-m="'+m+'"]');}
@@ -2589,32 +2589,45 @@ _WALK_JS = r"""<script>
   function enSet(){var e={eff:EN.eff,flow:EN.flow,simp:EN.simp};if(PV)e[PV]=!e[PV];return e;}
   function vals(){if(CURP!=null){var p=PERIODS[CURP];return {eff:p.eff,flow:p.flow,simp:p.simp};}return AGG;}
   function score(e,v){var s=1,any=false;MK.forEach(function(m){if(e[m]&&v[m]!=null){s*=v[m];any=true;}});return any?Math.round(s):0;}
-  function dimWave(e){document.querySelectorAll('#wave-svg rect[data-m]').forEach(function(r){
-    r.setAttribute('opacity', e[r.getAttribute('data-m')]?'1':'0.12');});}
-  function recommend(bc){if(!bc){vbRec.innerHTML='';return;}
-    if(bc.r===CUR[0]&&bc.c===CUR[1]){vbRec.innerHTML='You are already at the best spot for this goal.';return;}
+  function dimWave(e){document.querySelectorAll('#wave-svg rect[data-m]').forEach(function(r){r.setAttribute('opacity', e[r.getAttribute('data-m')]?'1':'0.12');});}
+  function setRec(e){var bc=best(e);if(!vbRec)return;
+    if(!bc){vbRec.innerHTML='';return;}
+    if(bc.r===CUR[0]&&bc.c===CUR[1]){vbRec.innerHTML='You are at the best spot for '+objName(e)+'.';return;}
     vbRec.innerHTML='<span class="rec-arrow">'+REC+'</span> shift toward <b>'+setup(bc)+'</b>';}
-  function refresh(){var e=enSet(), v=vals();
+  function renderFx(e){if(!fx)return;var h='';
+    if(CURP==null){var bc=best(e);
+      if(bc&&!(bc.r===CUR[0]&&bc.c===CUR[1])){h+=arrowSvg(ctr(CUR[0],CUR[1]),ctr(bc.r,bc.c),objColor(e));h+=hexMk(bc.r,bc.c,objColor(e),2.2);}
+      h+=hexMk(CUR[0],CUR[1],'var(--rust)',3);
+    } else { var p=PERIODS[CURP],a=p.cell,bc=best(e),c=(PERIODS[CURP+1]?PERIODS[CURP+1].cell:null);
+      if(a&&bc){h+=arrowSvg(ctr(a[0],a[1]),ctr(bc.r,bc.c),objColor(e));h+=hexMk(bc.r,bc.c,objColor(e),2.2);}
+      if(a)h+=hexMk(a[0],a[1],'var(--muted)',2.6);
+      if(c)h+=hexMk(c[0],c[1],'var(--teal)',3);
+    } fx.innerHTML=h;}
+  function scrubDetail(e){var p=PERIODS[CURP],a=p.cell,bc=best(e),c=(PERIODS[CURP+1]?PERIODS[CURP+1].cell:null);
+    var ac=a?cell(a[0],a[1]):null,cc=c?cell(c[0],c[1]):null;
+    if(!c) return '<span class="mk-were">you are here</span> '+setup(ac)+' (latest period).';
+    var line='<span class="mk-were">were</span> '+setup(ac)+' <span class="mk-went">'+REC+' went</span> '+setup(cc);
+    if(bc)line+=' <span class="mk-best">(best '+setup(bc)+')</span>';
+    var ga=ac?good(ac,e):null,gc=cc?good(cc,e):null,gb=bc?good(bc,e):null;
+    if(ga!=null&&gc!=null&&gb!=null&&gb>ga){var f=Math.round(((gc-ga)/(gb-ga))*100);
+      line+='. On '+objName(e)+', your move '+(f>=0?('captured '+f+'% of the gain'):'lost ground')+'.';}
+    return line;}
+  function refresh(){var e=enSet(),v=vals();
     if(vbScore)vbScore.textContent=fmt(score(e,v));
-    MK.forEach(function(m){var b=tog(m);if(!b)return;b.setAttribute('aria-pressed',e[m]?'true':'false');
-      var bb=b.querySelector('b');if(bb)bb.textContent=fmtv(m,v[m]);});
+    MK.forEach(function(m){var b=tog(m);if(!b)return;b.setAttribute('aria-pressed',e[m]?'true':'false');var bb=b.querySelector('b');if(bb)bb.textContent=fmtv(m,v[m]);});
     if(vbLabel)vbLabel.textContent=(CURP!=null?PERIODS[CURP].label+' ':'')+'score';
-    dimWave(e);
-    var bc=best(e); drawArrow(CUR, bc&&[bc.r,bc.c], objColor(e)); recommend(bc);
-    if(CURP!=null){setMarker(PERIODS[CURP].cell);drawPath(CURP);}else{setMarker(CUR);clearPath();}}
-  svg.querySelectorAll('.som-cell').forEach(function(el){el.style.cursor='pointer';
-    el.addEventListener('mouseenter',function(){var c=cell(el.getAttribute('data-r'),el.getAttribute('data-c'));
-      vbRec.innerHTML=c?('<b>'+setup(c)+'</b>'+MID+c.sessions+' session'+(c.sessions==1?'':'s')+', '+money(c.cost)
-        +' per KB, efficiency '+(c.eff==null?'n/a':c.eff)+', flow '+(c.flow==null?'n/a':c.flow)+', simplicity '+(c.simp==null?'n/a':c.simp))
-        :'an unused setup, no sessions here';});});
-  svg.addEventListener('mouseleave',function(){recommend(best(enSet()));});
+    dimWave(e);renderFx(e);setRec(e);
+    if(vbDetail)vbDetail.innerHTML=(CURP!=null?scrubDetail(e):'');}
+  svg.querySelectorAll('.som-cell').forEach(function(cl){cl.style.cursor='pointer';
+    cl.addEventListener('mouseenter',function(){var c=cell(cl.getAttribute('data-r'),cl.getAttribute('data-c'));
+      if(!vbDetail)return;
+      vbDetail.innerHTML=c?('<b>'+setup(c)+'</b>'+MID+c.sessions+' session'+(c.sessions==1?'':'s')+', '+money(c.cost)+' per KB, efficiency '+(c.eff==null?'n/a':c.eff)+', flow '+(c.flow==null?'n/a':c.flow)+', simplicity '+(c.simp==null?'n/a':c.simp)):'an unused setup, no sessions here';});});
+  svg.addEventListener('mouseleave',function(){refresh();});
   MK.forEach(function(m){var b=tog(m);if(!b)return;
     b.addEventListener('mouseenter',function(){PV=m;refresh();});
     b.addEventListener('mouseleave',function(){PV=null;refresh();});
-    b.addEventListener('click',function(){var on=MK.filter(function(k){return EN[k];});
-      if(EN[m]&&on.length<=1)return;EN[m]=!EN[m];PV=null;refresh();});});
-  document.querySelectorAll('.wv-bar').forEach(function(g){
-    g.addEventListener('mouseenter',function(){CURP=+g.getAttribute('data-i');refresh();});});
+    b.addEventListener('click',function(){var on=MK.filter(function(k){return EN[k];});if(EN[m]&&on.length<=1)return;EN[m]=!EN[m];PV=null;refresh();});});
+  document.querySelectorAll('.wv-bar').forEach(function(g){g.addEventListener('mouseenter',function(){CURP=+g.getAttribute('data-i');refresh();});});
   var wsvg=document.getElementById('wave-svg');
   if(wsvg)wsvg.addEventListener('mouseleave',function(){CURP=null;refresh();});
   refresh();
@@ -2666,7 +2679,8 @@ def _card_maps(report):
         return ""
     # the recommendation, right below the fingerprints, in the breakdown's style; the
     # objective is implied by the setup, so no "optimizing for" prefix. Filled by JS.
-    rec = '<div class="vb-rec" id="vb-rec"></div>' if som else ""
+    rec = ('<div class="vb-rec" id="vb-rec"></div>'
+           '<div class="vb-detail" id="vb-detail"></div>') if som else ""
     return f'<div class="som-maps-row">{"".join(tiles)}</div>{rec}'
 
 

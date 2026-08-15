@@ -79,9 +79,9 @@ def test_card_maps_interactive(fails):
     check("som-maps-row" in row, "no maps row", fails)
     check('id="map-you"' in row, "card map not interactive (no map-you id)", fails)
     check('data-r="2" data-c="2"' in row, "card cells not queryable", fails)
-    check("som-here" in row, "no position marker in card map", fails)
-    check("obj-arrow" in row, "no JS-owned arrow group in card map", fails)
+    check("som-fx" in row, "no JS-owned effects group (markers + arrow) in card map", fails)
     check('id="vb-rec"' in row, "no recommendation slot below the fingerprints", fails)
+    check('id="vb-detail"' in row, "no separate description/detail slot", fails)
     check("Where you work" in row, "personal fingerprint missing", fails)
 
 
