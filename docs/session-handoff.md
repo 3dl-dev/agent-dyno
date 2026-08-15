@@ -168,10 +168,42 @@ driver `--dump-sessions` -> `session_features` -> `som_train --rows 11 --cols 7`
 copy cache to snapshot -> reference codebook (`frontier/reference-codebook.json`, 11x7,
 committed) -> `contribute_map` x2 halves -> `som_merge.merge` -> `shared-map.json`.
 
-Open follow-ups (none blocking; user hadn't asked): restore the copy-paste agent prompt
-under `#vb-rec` (offered); the shared-frontier map could get hover; per-cell eff/simp are
-dominant-rig approximations (could be per-session if git complexity is joined to cells);
-"were"/"went" often coincide (real data, operator stayed put). All 13 suites green,
+### Recommender + two map nits (updated 2026-08-15, after the above)
+
+The card recommendation was chasing noise: on real data it recommended a 2-session cell
+with an outlier efficiency (18.34, a small-denominator artifact of the rig-level git
+attribution) and NO flow measurement, reading as "switch your workers to haiku." Root
+cause was three-fold: `good()` silently dropped any missing dimension (absence of data
+read as absence of weakness), `best()` had only a <2-session floor with no confidence
+weighting, and per-cell eff/simp are the dominant rig's git-attributed numbers, not the
+cell's own sessions. Fixed the first two: selection moved to a testable Python
+`_recommend_cells` (server-side, embedded as a 7-subset `BEST` lookup the JS reads) with
+(a) full-coverage eligibility (a cell needs every enabled dimension measured) and (b)
+confidence shrinkage `score * n/(n+k)`. Balanced rec on the real corpus moved from the
+haiku outlier to `solo/opus-4-8 high` (n=9, flow 76, simp 88). `good()` in the JS now
+also requires full coverage. Regression: `test_walk.test_recommend_ignores_noise`.
+
+Two map nits, same session: (1) the two fingerprints now read as ONE comparison, not two
+unrelated shapes: same 11x7 lattice, lead-in "The same map, two readings", per-tile
+subtitles (your last 14 days / everyone pooled), your position marked on both, one shared
+key; the shared-frontier tile DROPPED its own arrow (the single recommendation lives under
+your map, so the frontier is a pure comparison backdrop). (2) the time scrub is now
+legible without prior knowledge: a dotted rust line to the optimal cell from that point,
+a solid teal arrow to what you actually did next, a small key naming both (`dlineSvg` +
+`.scrub-key`). Verified in headless chromium across periods where were/best/went coincide
+and diverge (drv_*.png in the somrun scratch dir).
+
+Open follow-ups: restore the copy-paste agent prompt under `#vb-rec` (offered); the
+shared-frontier map could get hover. TWO HARDENING ITEMS the operator raised (what happens
+with more contributors, "switch everything to qwen" risk), NOT yet done, no rd project in
+this repo so tracked here: (A) NOISE GATE, p2: only surface a recommendation when the gain
+beats the target cell's own spread, so a noisy field cannot emit a confident move. (B)
+GROUND per-cell eff/simp in the cell's OWN sessions rather than the dominant rig's git
+attribution, p2: needs per-session commit/complexity attribution (sessions.json currently
+carries none), which is why eff repeats across cells and threw the 18.34 outlier. The
+deeper honesty guarantee against cheap-but-doomed models (haiku/qwen looking efficient on
+`$/survKB`) rests entirely on the survival horizon being long enough to catch reverts
+before scoring; that is the thing to watch as the frontier grows. All 13 suites green,
 deterministic, em-dash clean.
 
 ## SOM build status (updated 2026-08-15)
