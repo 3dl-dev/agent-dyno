@@ -92,13 +92,23 @@ def test_styles(fails):
     check("rgba(0,0,0,0)" in hexed, "hex grid not tapered into an oval", fails)
 
 
-def test_meter_bars(fails):
-    check(vr._meter_bars([1, 2], "var(--accent)") == "", "spark drawn with <3 points", fails)
-    out = vr._meter_bars([3.0, 5.0, 4.0, 9.0], "var(--teal)")
-    check("<svg" in out and out.count("<rect") == 4, f"bar count {out.count('<rect')}", fails)
-    check("var(--teal)" in out, "now bar not in meter color", fails)
-    check(vr._meter_bars([3.0, 5.0, 9.0], "x") == vr._meter_bars([3.0, 5.0, 9.0], "x"),
-          "meter bars not deterministic", fails)
+def test_waveform(fails):
+    rep = {"topline": {"eq": 8.0, "simplicity": 60.0}, "misery": {"flow": 55.0},
+           "timeline": [
+               {"eq": 5.0, "misery": 40, "shipped": 10, "complexity": 300, "week": "w1"},
+               {"eq": 8.0, "misery": 30, "shipped": 12, "complexity": 200, "week": "w2"},
+               {"eq": 6.0, "misery": None, "shipped": 0, "complexity": 0, "week": "w3"},
+               {"eq": 9.0, "misery": 20, "shipped": 15, "complexity": 250, "week": "w4"}]}
+    out = vr.render_waveform(rep)
+    check("<svg" in out, "no waveform svg", fails)
+    for lab in ("combined", "efficiency", "flow", "simplicity"):
+        check(lab in out, f"missing {lab} wave", fails)
+    check(out.count("<rect") >= 4, f"too few wave bars: {out.count('<rect')}", fails)
+    # gap-filled: the bucket with no misery/no shipped still contributes (overall fill)
+    check(len(vr._combined_series(rep)) == 4, "combined series should gap-fill to 4", fails)
+    check(vr.render_waveform({"topline": {"eq": 1}, "timeline": []}) == "",
+          "empty timeline not ''", fails)
+    check(vr.render_waveform(rep) == vr.render_waveform(rep), "waveform not deterministic", fails)
     # every style is deterministic
     for st in ("classic", "ink", "ink-hex"):
         check(vr.render_som_map(BLOCK, style=st) == vr.render_som_map(BLOCK, style=st),
@@ -113,7 +123,7 @@ def test_determinism(fails):
 def main():
     fails = []
     for t in (test_empty, test_structure, test_no_external_refs,
-              test_no_arrow_when_null_target, test_styles, test_meter_bars,
+              test_no_arrow_when_null_target, test_styles, test_waveform,
               test_determinism):
         t(fails)
     if fails:

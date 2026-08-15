@@ -99,8 +99,8 @@ def main():
     }
     flow = round(100 - overall, 1)
     card = vr._hero_card(report)
-    if f">{flow}<" not in card or "flow" not in card:
-        fails.append("card is missing the flow meter")
+    if "flow" not in card or f">{flow:g}</b> flow" not in card:
+        fails.append("card is missing the flow component")
     md = vr.render_md(report)
     if f"Flow {flow}/100" not in md or "never folded into efficiency" not in md:
         fails.append("report.md is missing the flow meter / its 'not folded' caveat")

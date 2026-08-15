@@ -1939,6 +1939,17 @@ _CSS = """
 .vibrant .mn{font-size:15px;font-weight:700;color:var(--ink);margin-top:14px;
  letter-spacing:.01em;}
 .vibrant .mu{font-size:11.5px;color:var(--muted);margin-top:2px;}
+.vibrant .combined{margin:4px 0 18px;}
+.vibrant .cv{font-size:78px;font-weight:760;letter-spacing:-.04em;line-height:.82;
+ color:var(--ink);font-variant-numeric:tabular-nums;}
+.vibrant .cn{font-size:14px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+ color:var(--muted);margin-top:12px;}
+.vibrant .cparts{font-size:13px;color:var(--ink2);margin-top:8px;display:flex;
+ flex-wrap:wrap;gap:16px;}
+.vibrant .cparts b{font-variant-numeric:tabular-nums;}
+.vibrant .wave{margin:0 0 24px;}
+.vibrant .wave svg{width:100%;height:auto;}
+@media (max-width:560px){.vibrant .cv{font-size:56px;}}
 .vibrant .row-h{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
  color:var(--muted);margin:0 0 10px;}
 .vibrant .fp{margin:0 0 4px;}
@@ -2545,28 +2556,76 @@ def render_shared_map_compact(merged, current_cell):
                           title="The shared frontier")
 
 
-def _meter_bars(series, color):
-    """A compact 'now vs recent' spark of BARS (not a line): the last periods' values,
-    the most recent one in the meter color, so you see where you stand against how you
-    have been doing lately. Empty when there is not enough recent data."""
-    s = [v for v in series if v is not None][-14:]
+def _combined_series(report):
+    """Per-period efficiency, flow, simplicity and their product (the combined score),
+    over the timeline, with missing components filled from the overall value so the
+    waveform has no gaps. Newest last. [] when there is too little."""
+    tline = report.get("timeline") or []
+    over_flow = (report.get("misery") or {}).get("flow")
+    over_simp = report["topline"].get("simplicity")
+    out = []
+    for r in tline:
+        eq = r.get("eq")
+        if eq is None:
+            continue
+        mis = r.get("misery")
+        flow = round(100 - mis, 1) if mis is not None else over_flow
+        shipped, cx = r.get("shipped"), r.get("complexity")
+        simp = round(max(0.0, 100 - cx / shipped), 1) if shipped else over_simp
+        if flow is None or simp is None:
+            continue
+        out.append({"eq": eq, "flow": flow, "simp": simp,
+                    "comb": eq * flow * simp, "label": r.get("week")})
+    return out
+
+
+def _wave(values, x0, y0, w, h, color, opacity=1.0):
+    """A symmetric waveform: one mirrored bar per period, height by value, like an
+    audio track. Normalized to its own range so the shape reads."""
+    n = len(values)
+    srt = sorted(values)
+    # robust range: cap the top at the ~85th percentile so one spiky day does not
+    # squash the whole wave flat; outliers saturate at full height.
+    lo = srt[0]
+    hi = srt[min(n - 1, int(0.85 * n))]
+    rng = (hi - lo) or 1.0
+    bw = w / n
+    cy = y0 + h / 2
+    out = []
+    for i, v in enumerate(values):
+        t = min(max((v - lo) / rng, 0.0), 1.0)
+        bh = h * 0.12 + h * 0.86 * t
+        out.append(f'<rect x="{x0 + i * bw:.1f}" y="{cy - bh / 2:.1f}" '
+                   f'width="{max(bw - 1.4, 0.8):.1f}" height="{bh:.1f}" rx="1" '
+                   f'fill="{color}" opacity="{opacity}"/>')
+    return "".join(out)
+
+
+def render_waveform(report):
+    """The score over time as a sound wave: the combined score (efficiency x flow x
+    simplicity) as a bold mirrored waveform, and the three components as thin colored
+    waves beneath, so one dense graph shows the whole trajectory. Empty when there is
+    too little history."""
+    s = _combined_series(report)
     if len(s) < 3:
         return ""
-    lo, hi = min(s), max(s)
-    rng = (hi - lo) or 1.0
-    step, bw, H = 6, 3.5, 24
-    W = len(s) * step - (step - bw)
-    out = [f'<svg viewBox="0 0 {W:.0f} {H}" width="{W:.0f}" height="{H}" role="img" '
-           f'aria-label="recent trend, the last bar is now">']
-    for i, v in enumerate(s):
-        bh = 4 + (H - 6) * (v - lo) / rng
-        last = i == len(s) - 1
-        out.append(f'<rect x="{i * step:.1f}" y="{H - bh:.1f}" width="{bw}" '
-                   f'height="{bh:.1f}" rx="1.4" fill="{color if last else "var(--line)"}" '
-                   f'opacity="{1 if last else 0.9}"/>')
-    out.append('</svg>')
-    return (f'<div class="ms" style="margin-top:9px" title="recent periods; the '
-            f'colored bar is now">{"".join(out)}</div>')
+    esc = _html.escape
+    W, pad = 700, 84
+    ww = W - pad
+    rows = [("comb", "var(--ink)", "combined", 62),
+            ("eq", "var(--accent)", "efficiency", 26),
+            ("flow", "var(--teal)", "flow", 26),
+            ("simp", "var(--good)", "simplicity", 26)]
+    parts, y = [], 0
+    for key, color, lab, h in rows:
+        parts.append(f'<text x="0" y="{y + h / 2 + 3:.1f}" font-size="10.5" '
+                     f'font-weight="700" fill="{color}">{esc(lab)}</text>')
+        parts.append(_wave([b[key] for b in s], pad, y, ww, h, color))
+        y += h + 10
+    svg = (f'<svg viewBox="0 0 {W} {y - 10}" role="img" aria-label="the combined score '
+           f'and its three components over time, as waveforms">{"".join(parts)}</svg>')
+    return (f'<div class="wave" title="each bar is a period; taller is better; oldest '
+            f'left, newest right">{svg}</div>')
 
 
 def _hero_card(report):
@@ -2583,46 +2642,37 @@ def _hero_card(report):
             '<rect x="0" y="9" width="4" height="7" rx="1.3"/>'
             '<rect x="7" y="5" width="4" height="11" rx="1.3"/>'
             '<rect x="14" y="1" width="4" height="15" rx="1.3"/></svg>')
-    # meters, side by side, each with a small 'now vs recent' bar spark under it.
-    tline = report.get("timeline") or []
-
-    def _ser(kind):
-        out = []
-        for r in tline:
-            if kind == "eq" and r.get("eq") is not None:
-                out.append(r["eq"])
-            elif kind == "flow" and r.get("misery") is not None:
-                out.append(round(100 - r["misery"], 1))
-            elif kind == "simplicity" and r.get("shipped"):
-                out.append(round(max(0.0, 100 - r["complexity"] / r["shipped"]), 1))
-        return out
-    meters = [f'<div class="meter"><div class="mv" title="durable shipped changes per '
-              f'Mtok output, larger is better">{esc(str(tl["eq"]))}</div>'
-              f'<div class="mn">efficiency</div><div class="mu">shipped changes / Mtok'
-              f'</div>{_meter_bars(_ser("eq"), "var(--accent)")}</div>']
-    if mb:
-        meters.append(f'<div class="meter mis" title="how much you were in flow (100 '
-                      f'minus friction from your own replies), larger is better">'
-                      f'<div class="mv">{mb.get("flow", round(100 - mb["overall"], 1))}'
-                      f'</div><div class="mn">flow</div><div class="mu">/100, in flow vs '
-                      f'fighting it</div>{_meter_bars(_ser("flow"), "var(--teal)")}</div>')
-    if tl.get("simplicity") is not None:
-        meters.append(f'<div class="meter bloat" title="leanness: 100 minus decision '
-                      f'points per shipped change; larger is simpler, less '
-                      f'over-engineered"><div class="mv">{tl["simplicity"]:.0f}</div>'
-                      f'<div class="mn">simplicity</div><div class="mu">/100, lean vs '
-                      f'over-built</div>{_meter_bars(_ser("simplicity"), "var(--good)")}'
-                      f'</div>')
-    # the fingerprint used to render here as blend bars; it now lives as the learned
-    # SOM maps below ("Where you work" and "The shared frontier"), which carry the same
-    # position more legibly. The fingerprint data stays in report["fingerprint"]. `fp`
-    # is retained for callers/tests that still read it.
-    _ = fp
+    # one headline number: the three meters were meaningless alone, so combine them
+    # (efficiency x flow x simplicity). Absolute magnitude is arbitrary; the point is
+    # its movement, which the waveform below shows. The three components ride along as
+    # context and as their own waves.
+    eff = tl["eq"]
+    flow = (mb.get("flow", round(100 - mb["overall"], 1)) if mb else None)
+    simp = tl.get("simplicity")
+    comps = [f'<span title="durable shipped changes per Mtok, larger is better">'
+             f'<b style="color:var(--accent)">{esc(str(eff))}</b> efficiency</span>']
+    if flow is not None:
+        comps.append(f'<span><b style="color:var(--teal)">{flow:g}</b> flow</span>')
+    if simp is not None:
+        comps.append(f'<span><b style="color:var(--good)">{simp:.0f}</b> simplicity</span>')
+    if eff is not None and flow is not None and simp is not None:
+        combined = round(eff * flow * simp)
+        hero = (f'<div class="combined"><div class="cv" title="efficiency x flow x '
+                f'simplicity, each larger is better, rolled into one; watch it move, '
+                f'not its absolute size">{combined:,}</div>'
+                f'<div class="cn">score</div>'
+                f'<div class="cparts">{"".join(comps)}</div></div>')
+    else:
+        hero = (f'<div class="combined"><div class="cv">{esc(str(eff))}</div>'
+                f'<div class="cn">efficiency</div>'
+                f'<div class="cparts">{"".join(comps)}</div></div>')
+    _ = fp  # fingerprint data stays in report["fingerprint"]; the maps render it below
     return "".join([
         '<div class="card">',
         f'<div class="top"><div class="brand">{mark}VIBRANT</div>',
         f'<div class="meta">{tl.get("sessions")} sessions</div></div>',
-        f'<div class="meters">{"".join(meters)}</div>',
+        hero,
+        render_waveform(report),
         _card_maps(report),
         '<div class="foot"><span>vibe-coding rig efficiency</span>'
         '<span>3dl-dev/vibrant</span></div>',
