@@ -110,12 +110,38 @@ output. Toolchain: fetch + verify sha256 + unpack (pin lives in the hoistable sk
 - Artifact (the shareable scorecard, update with `url=`):
   `https://claude.ai/code/artifact/1f5533a5-1b84-4ab9-aa69-f127e9a090fb`.
 
+## SOM build status (updated 2026-08-15)
+
+Items 1 to 4 of the SOM plan are BUILT, tested, committed, and transfer-graded (hoist
+`measure` profile: BUILT, transfer 3/3, the new `learned-som-pipeline-holds` check
+green on a clean target). Commits `59ee904` (item 1), `b783eba` (item 2), `e6595db`
+(item 3 + `--dump-sessions` seam), `db623f0` (item 4 + drift), `efa2098` (hoist).
+
+- item 1 `adapters/claude-code/session_features.py`: per-session SHAPE vector (18-dim,
+  one-hot arms + fixed-scale topology). Shape only, never outcome; fixed absolute
+  scales so operators are comparable (federation-ready). `session-features@1`.
+- item 2 `adapters/claude-code/som_train.py`: batch Kohonen SOM, deterministic
+  power-iteration PCA init, STDLIB not numpy (byte-identical determinism; numpy over
+  threaded BLAS drifts). `som-cache.json`, `som@1`. Real run: 9x9, mean QE 0.17.
+- item 3 `som_map` + `load_som` in the driver: trajectory, time-windowed per-cell
+  field (`d_per_survkb`), and the arm-change arrow GROUNDED in the operator's own
+  sessions at the recommended arm (field shades, arm-change steers, topology excluded
+  by construction). Also emits `drift` (the smoothed mood path). `som_consume.spec.md`.
+- item 4 `render_som_map` in the driver: the map drawn. Cost-shaded lattice (LOG scale,
+  the field has a long tail), a COMET TRAIL of drift dots (a connected line
+  criss-crossed into noise; the operator oscillates between distant cells), current
+  cell, the green sonnet-5 arrow. Self-contained SVG, theme-aware. VISUALLY VERIFIED by
+  rendering the real report and reading the screenshot. `som_viz.spec.md`.
+
+The SOM pipeline runs end to end on the real 232-session snapshot:
+`vibrant_report.py --dump-sessions sessions.json` then `session_features.py` then
+`som_train.py` then the driver reads `som-cache.json` from the snapshot dir.
+
 ## Honest open gaps
 
-- rig_space has NO MAP VISUALIZATION yet (numbers only in `report.json`); the SOM plan
-  item 4 is the viz.
-- The metric field is not time-windowed (git attribution is all-time), so the moving
-  frontier is still static until the SOM.
+- item 5 (federated shared map) is NOT built; it is the teed-up decision (see below).
+- The field is time-windowed in the SOM (item 3, 14-day default); the base git
+  attribution is still all-time, by design.
 - The misery cache is sparse (28 of 232 sessions scored this session); run the
   classifier over the full store.
 - efficiency (changes/Mtok) still shows the opus-5 era slightly ahead; bloat and misery
@@ -165,10 +191,34 @@ then `/swarm-dispatch`. rd is NOT initialized in this repo. Awaiting the user's 
 - The user thinks at the architecture level (PAD analogy, embeddings, gradient descent,
   SOM, control theory). Engage there, do not dumb it down.
 
-## Immediate next action
+## Immediate next action: item 5 (federated shared map), teed up
 
-Get the user's approval on the SOM plan and dispatch mode, then build item 1 (per-
-session feature extractor) source-first. The hand-written rig_space is committed and
-works; the SOM is the learned upgrade that makes the fingerprint a shared map with a
-gradient. Recent commits (newest first): `ca40e81` rig_space model, `a03c1fc` rig_space
-spec + attribution, `e5d0ec9` the spear (function + bloat), `f0b707c`/others earlier.
+Items 1 to 4 are a complete, shippable, graded local learned-SOM. Item 5 is the
+federation surface and is the operator's call because it touches two reserved things:
+
+1. LAYERING: `som_train.py` is harness-neutral (pure vector math) but currently lives
+   in `adapters/claude-code/`. The shared-map builder wants it in `core/`. Recommended:
+   relocate `som_train.py` (+ spec + test) to `core/` as part of item 5, since it is
+   shared infrastructure, and have the adapter keep a thin re-export if needed.
+2. CONFIDENTIALITY POSTURE: the shared corpus must be anonymized. The existing floor is
+   `core/frontier.py` `summarize()` (no identities, median vectors, no source id, no
+   prose). Recommended contract, following that floor: each contribution is
+   `{op: <opaque-hash>, sessions: [{vec, day, dollars, survkb}]}`, no sid, no repo, no
+   free text. Home: a new `core/shared_map.py` (keep frontier.py's three ops clean),
+   spec + test first.
+
+Design sketch (build after the operator greenlights the two decisions above): train
+ONE SOM on the union of all operators' vecs with a PINNED lattice (som@1 with fixed
+`--rows`/`--cols`); global field per cell pooled across operators (windowed); the
+frontier-optimum cell = min field with min support; each operator is a point (their
+recent BMU centroid) with a gradient toward the optimum. Reuse `render_som_map` for
+the shared map with operator points overlaid. Output `shared-map@1`.
+
+Do NOT skip the shipping loop on item 5: source-first, update `hoist/config.json`,
+re-emit with the toolchain (pin `0.5.0`, fetch+verify sha256), grade on a clean target.
+
+The toolchain self-extract + grade recipe that worked this session: fetch
+`https://github.com/3dl-dev/hoistable/releases/download/operators-v0.5.0/hoistable-operators-0.5.0.tgz`,
+verify sha256 `93c02ced...4200ad5`, unpack, then
+`python3 builder/emit.py <repo>/hoist/config.json --operators-pin pin.json --out ...`,
+then `emit.extract_config` + `hoist.hoist(cfg_path, target_dir=...)` for the grade.
