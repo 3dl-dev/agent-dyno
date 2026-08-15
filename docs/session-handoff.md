@@ -193,18 +193,31 @@ a solid teal arrow to what you actually did next, a small key naming both (`dlin
 `.scrub-key`). Verified in headless chromium across periods where were/best/went coincide
 and diverge (drv_*.png in the somrun scratch dir).
 
+### Noise gate (updated 2026-08-15, item A DONE)
+
+Item (A) is DONE. `_recommend_cells` now takes `current_cell` and returns `{cell, ok}`
+per objective subset: `cell` is the support-shrunk full-coverage argmax (the scrub's
+optimal reference), `ok` is whether a confident move exists. The gate: the best cell's
+objective gain over the current cell must beat `noise_k * sigma * sqrt(1/n_best +
+1/n_cur)`, sigma = spread of the objective (normalized geomean) across eligible cells.
+Not confident, or already on the best cell, or no measurable current baseline => `ok
+False`, the card shows "You are in a stable spot for <obj>; no confident move stands
+out" and draws no arrow. JS reads `best()` (=.cell) and `recOk()` (=.ok) separately. On
+the real corpus this turns balance/flow/simplicity into a HOLD (current cell [9,3]
+solo/opus-4-8/high is already near the top) and leaves only efficiency as a confident
+move to solo/opus-5/high. Regression: `test_walk.test_recommend_noise_gate`. NB it is a
+NORMALIZED-field gate: "marginal" means small relative to the spread of your own cells,
+not small in raw metric units.
+
 Open follow-ups: restore the copy-paste agent prompt under `#vb-rec` (offered); the
-shared-frontier map could get hover. TWO HARDENING ITEMS the operator raised (what happens
-with more contributors, "switch everything to qwen" risk), NOT yet done, no rd project in
-this repo so tracked here: (A) NOISE GATE, p2: only surface a recommendation when the gain
-beats the target cell's own spread, so a noisy field cannot emit a confident move. (B)
-GROUND per-cell eff/simp in the cell's OWN sessions rather than the dominant rig's git
-attribution, p2: needs per-session commit/complexity attribution (sessions.json currently
-carries none), which is why eff repeats across cells and threw the 18.34 outlier. The
-deeper honesty guarantee against cheap-but-doomed models (haiku/qwen looking efficient on
-`$/survKB`) rests entirely on the survival horizon being long enough to catch reverts
-before scoring; that is the thing to watch as the frontier grows. All 13 suites green,
-deterministic, em-dash clean.
+shared-frontier map could get hover. ONE HARDENING ITEM still open (no rd project in this
+repo, tracked here): (B) GROUND per-cell eff/simp in the cell's OWN sessions rather than
+the dominant rig's git attribution, p2: needs per-session commit/complexity attribution
+(sessions.json currently carries none), which is why eff repeats across cells and threw
+the 18.34 outlier. The deeper honesty guarantee against cheap-but-doomed models
+(haiku/qwen looking efficient on `$/survKB`) rests entirely on the survival horizon being
+long enough to catch reverts before scoring; that is the thing to watch as the frontier
+grows. All 13 suites green, deterministic, em-dash clean.
 
 ## SOM build status (updated 2026-08-15)
 
