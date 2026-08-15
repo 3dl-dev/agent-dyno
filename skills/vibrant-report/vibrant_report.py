@@ -1060,6 +1060,35 @@ def som_map(metrics, som_cache, move, field_window_days=14, now_day=None):
                 gradient = {"arm_change": move, "target_cell": target_cell,
                             "vector": vect, "grounded_in": len(matched)}
 
+    # per-cell meaning (for hover) and the per-session walk (for the time scrubber):
+    # what each hex is (your dominant setup there) and how each session scored and where
+    # it fell. This is what makes the map interactive and lets you replay the walk.
+    by_cell_all = defaultdict(list)
+    for m in joined:
+        by_cell_all[tuple(sid_to_bmu[m["sid"]])].append(m)
+    cell_meaning = []
+    for (r, c), ms in sorted(by_cell_all.items()):
+        cell_meaning.append({
+            "cell": [r, c],
+            "engine": modal([m.get("engine") for m in ms]),
+            "model": modal([m.get("model") for m in ms]),
+            "worker": modal([m.get("worker") for m in ms]),
+            "effort": modal([m.get("effort") for m in ms]),
+            "sessions": len(ms),
+            "cost": field[r][c]})
+
+    def _sess_cost(m):
+        survc = m["born"] - m["killed"]
+        survkb = survc / 1024 if survc > 0 else 0
+        return round(m["dollars"] / survkb, 2) if survkb > 0 else None
+
+    walk = [{"day": m["day"], "cell": list(sid_to_bmu[m["sid"]]),
+             "flow": (round(100 - m["misery"], 1) if m.get("misery") is not None
+                      else None),
+             "cost": _sess_cost(m), "engine": m.get("engine"),
+             "model": m.get("model"), "effort": m.get("effort")}
+            for m in joined]
+
     return {"source": "learned",
             "lattice": {"rows": rows, "cols": cols},
             "sessions_mapped": len(joined),
@@ -1071,6 +1100,8 @@ def som_map(metrics, som_cache, move, field_window_days=14, now_day=None):
             "field_window_days": field_window_days,
             "field": field,
             "support": support,
+            "cell_meaning": cell_meaning,
+            "walk": walk,
             "gradient": gradient}
 
 
@@ -2099,7 +2130,7 @@ _SOM_STYLES = {
 
 def render_som_map(som_block, title="Where you work",
                    subtitle="each hexagon is a way you work, shaded by what it costs",
-                   legend_bits=None, style="classic"):
+                   legend_bits=None, style="classic", compact=False, svg_id=None):
     """The learned SOM lattice (item 4): a rows x cols grid shaded by cost per
     cell, the trajectory that walked it, the current cell, and the arrow to a
     cheaper cell already sometimes used. Pure function of rig_space['som'];
@@ -2140,8 +2171,8 @@ def render_som_map(som_block, title="Where you work",
 
     pal = _SOM_STYLES.get(style, _SOM_STYLES["classic"])
     hexed = pal["hex"]
-    cell, gap = 42, 3
-    pad_l, pad_t, pad_r, pad_b = 14, 24, 14, 14
+    cell, gap = (20, 2) if compact else (42, 3)
+    pad_l, pad_t, pad_r, pad_b = (2, 2, 2, 2) if compact else (14, 24, 14, 14)
     if hexed:
         hstep, vstep = cell + gap, (cell + gap) * 0.87
         gw = cols * hstep + hstep / 2
@@ -2170,46 +2201,41 @@ def render_som_map(som_block, title="Where you work",
         return (f'<rect class="som-cell" x="{cx - cell / 2:.1f}" y="{cy - cell / 2:.1f}" '
                 f'width="{cell}" height="{cell}" rx="4" {attrs}>{inner}</rect>')
 
-    parts = [f'<svg viewBox="0 0 {W:.0f} {H:.0f}" role="img" aria-label="learned '
-             f'working-style map: cost-shaded cells, your trajectory, current position '
-             f'and the cheaper cell nearby">']
+    idattr = f' id="{svg_id}"' if svg_id else ''
+    parts = [f'<svg{idattr} viewBox="0 0 {W:.0f} {H:.0f}" role="img" aria-label="learned '
+             f'working-style map: cost-shaded cells, your current position and the '
+             f'cheaper cell nearby">']
     for r in range(rows):
         for c in range(cols):
             v = fval(r, c)
             cx, cy = center(r, c)
+            dpos = f'data-r="{r}" data-c="{c}"'
             if v is None:
                 dash = ' stroke-dasharray="2 2"' if pal["empty_dash"] else ''
                 eop = 0.7 if pal["empty_dash"] else 0.28
                 parts.append(cell_shape(
-                    cx, cy, f'fill="none" stroke="var(--line)" stroke-width="1" '
+                    cx, cy, f'{dpos} fill="none" stroke="var(--line)" stroke-width="1" '
                     f'opacity="{eop}"{dash}'))
                 continue
             op = _som_field_opacity(v, lo, hi, lower_better)
             cell_title = esc(f"row {r}, col {c}: {v:.2f} {metric}")
             parts.append(cell_shape(
-                cx, cy, f'fill="rgba({pal["cell"]},{op:.2f})" stroke="var(--line)" '
+                cx, cy, f'{dpos} fill="rgba({pal["cell"]},{op:.2f})" stroke="var(--line)" '
                 f'stroke-width="1"', title=cell_title))
     # deliberately no session-count dots and no history trail: they were mark types a
     # viewer could not decode. The map now carries only what reads at a glance: cost by
     # shade, where you are, and the direction to a cheaper setup.
-
-    def _pill(px, py, text, color):
-        w = 6.6 * len(text) + 16
-        return (f'<rect x="{px - w / 2:.1f}" y="{py - 9:.1f}" width="{w:.1f}" '
-                f'height="18" rx="9" fill="var(--paper)" stroke="{color}" '
-                f'stroke-width="1.2"/><text x="{px:.1f}" y="{py + 3.6:.1f}" '
-                f'text-anchor="middle" font-size="10.5" font-weight="700" '
-                f'fill="{color}">{esc(text)}</text>')
 
     current = som_block.get("current_cell")
     cur_xy = None
     if current and len(current) == 2:
         cx, cy = center(current[0], current[1])
         cur_xy = (cx, cy)
-        parts.append(f'<circle class="som-current" cx="{cx:.1f}" cy="{cy:.1f}" r="10" '
+        cr, sw, dr = (5, 2.0, 1.6) if compact else (10, 2.8, 3.0)
+        parts.append(f'<circle class="som-current" cx="{cx:.1f}" cy="{cy:.1f}" r="{cr}" '
                      f'fill="{pal["cur_fill"]}" stroke="{pal["cur_stroke"]}" '
-                     f'stroke-width="2.8"/>')
-        parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="3" '
+                     f'stroke-width="{sw}"/>')
+        parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{dr}" '
                      f'fill="{pal["cur_dot"]}"/>')
 
     gradient = som_block.get("gradient") or {}
@@ -2222,7 +2248,7 @@ def render_som_map(som_block, title="Where you work",
         tgt_xy = (tx, ty)
         dx, dy = tx - sx, ty - sy
         dist = (dx * dx + dy * dy) ** 0.5
-        if dist > 1e-6:
+        if not compact and dist > 1e-6:
             ux, uy = dx / dist, dy / dist
             px, py = -uy, ux
             head = 9.0
@@ -2238,14 +2264,30 @@ def render_som_map(som_block, title="Where you work",
             parts.append(f'<polygon class="som-arrow" points="{tip_x:.1f},{tip_y:.1f} '
                          f'{l_x:.1f},{l_y:.1f} {r_x:.1f},{r_y:.1f}" fill="{pal["arrow"]}"/>')
 
-    # labels last, on top: name the only two marks that matter, right on the figure.
-    def _label_y(cy):
-        return cy - 18 if cy - 18 > pad_t + 4 else cy + 18
-    if cur_xy:
-        parts.append(_pill(cur_xy[0], _label_y(cur_xy[1]), "you", pal["cur_stroke"]))
-    if tgt_xy:
-        parts.append(_pill(tgt_xy[0], _label_y(tgt_xy[1]), "cheaper", pal["arrow"]))
+    if not compact:
+        def _pill(px, py, text, color):
+            w = 6.6 * len(text) + 16
+            return (f'<rect x="{px - w / 2:.1f}" y="{py - 9:.1f}" width="{w:.1f}" '
+                    f'height="18" rx="9" fill="var(--paper)" stroke="{color}" '
+                    f'stroke-width="1.2"/><text x="{px:.1f}" y="{py + 3.6:.1f}" '
+                    f'text-anchor="middle" font-size="10.5" font-weight="700" '
+                    f'fill="{color}">{esc(text)}</text>')
+
+        def _label_y(cy):
+            return cy - 18 if cy - 18 > pad_t + 4 else cy + 18
+        if cur_xy:
+            parts.append(_pill(cur_xy[0], _label_y(cur_xy[1]), "you", pal["cur_stroke"]))
+        if tgt_xy:
+            parts.append(_pill(tgt_xy[0], _label_y(tgt_xy[1]), "cheaper", pal["arrow"]))
+    if svg_id:
+        # the scrubber's moving marker (positioned by JS from a cell's geometry).
+        parts.append('<circle class="som-here" r="0" fill="none" '
+                     'stroke="var(--teal)" stroke-width="3.4" opacity="0"/>')
     parts.append("</svg>")
+    if compact:
+        return (f'<div class="som-compact">'
+                f'<div class="som-compact-t">{esc(title)}</div>'
+                f'<div class="som-wrap">{"".join(parts)}</div></div>')
 
     caption = ""
     if arm_change:
@@ -2360,6 +2402,123 @@ def render_shared_map(merged, current_cell, gradient, style="classic"):
                           legend_bits=legend_bits, style=style)
 
 
+_WALK_CSS = (
+    '<style>'
+    '.som-maps-row{display:flex;flex-wrap:wrap;gap:20px;margin-top:14px}'
+    '.som-maps-row>div{flex:1 1 300px;min-width:0}'
+    '.som-compact-t{font-size:11px;font-weight:700;letter-spacing:.04em;'
+    'text-transform:uppercase;color:var(--muted);margin-bottom:4px}'
+    '.som-cell{transition:opacity .08s}'
+    '.walk{margin-top:12px}'
+    '.walk-detail{font-size:13px;color:var(--ink2);min-height:38px;padding:9px 12px;'
+    'border:1px solid var(--line);border-radius:8px;background:var(--paper)}'
+    '.walk-detail .wd-h{font-weight:700;color:var(--rust);margin-right:6px}'
+    '.walk-scrub-row{display:flex;align-items:center;gap:12px;margin-top:9px}'
+    '.walk-scrub-row input[type=range]{flex:1;accent-color:var(--teal)}'
+    '.walk-scrub-label{font-size:12px;color:var(--muted);'
+    'font-variant-numeric:tabular-nums;white-space:nowrap}'
+    '</style>')
+
+_WALK_JS = """<script>
+(function(){
+  var W=__WALK__, CM=__CM__;
+  var svg=document.getElementById('map-you'); if(!svg) return;
+  var detail=document.getElementById('walk-detail');
+  var scrub=document.getElementById('walk-scrub');
+  var lab=document.getElementById('walk-scrub-label');
+  var here=svg.querySelector('.som-here');
+  function ctr(r,c){var el=svg.querySelector('[data-r="'+r+'"][data-c="'+c+'"]');
+    if(!el)return null;var b=el.getBBox();
+    return {x:b.x+b.width/2,y:b.y+b.height/2,r:b.width/2+3};}
+  function money(v){return v==null?'n/a':(v<10?'$'+v.toFixed(1):'$'+Math.round(v));}
+  function meaning(r,c){var m=CM[r+','+c];
+    if(!m)return '<b>unused</b>, no sessions landed here';
+    var w=(m.worker&&m.worker!=='solo')?(' \\u203a '+m.worker):'';
+    return '<b>'+m.engine+' \\u00b7 '+m.model+w+' \\u00b7 '+m.effort+' effort</b><br>'
+      +m.sessions+' session'+(m.sessions==1?'':'s')+' \\u00b7 '+money(m.cost)+' per KB kept';}
+  svg.querySelectorAll('.som-cell').forEach(function(el){el.style.cursor='pointer';
+    el.addEventListener('mouseenter',function(){
+      detail.innerHTML='<span class="wd-h">this hex</span> '
+        +meaning(el.getAttribute('data-r'),el.getAttribute('data-c'));});});
+  function show(i){var w=W[i];var p=ctr(w.cell[0],w.cell[1]);
+    if(p){here.setAttribute('cx',p.x);here.setAttribute('cy',p.y);
+      here.setAttribute('r',p.r);here.setAttribute('opacity','1');}
+    detail.innerHTML='<span class="wd-h">'+w.day+'</span> '+(w.engine||'?')+' \\u00b7 '
+      +(w.model||'?')+' \\u00b7 '+(w.effort||'?')+', flow '+(w.flow==null?'n/a':w.flow)
+      +' \\u00b7 '+money(w.cost)+' per KB';
+    lab.textContent=w.day+'  '+(i+1)+'/'+W.length;}
+  scrub.addEventListener('input',function(){show(+scrub.value);});
+  show(W.length-1);
+})();
+</script>"""
+
+
+def render_walk(report):
+    """The interactive personal map: hover a hexagon to read what it is (your dominant
+    setup, sessions, cost there), and drag the scrubber to replay the walk session by
+    session, watching where each one landed and how it scored. Reuses render_som_map
+    for the drawing (svg id 'map-you'), then embeds the walk and per-cell meaning as
+    JSON and drives it with a small self-contained script. Empty when there is no
+    walk; the report is unchanged."""
+    som = (report.get("rig_space") or {}).get("som")
+    if not som or not som.get("walk"):
+        return ""
+    walk = som["walk"]
+    cm = {f"{m['cell'][0]},{m['cell'][1]}": {
+              "engine": m.get("engine"), "model": m.get("model"),
+              "worker": m.get("worker"), "effort": m.get("effort"),
+              "sessions": m.get("sessions"), "cost": m.get("cost")}
+          for m in som.get("cell_meaning", [])}
+    themap = render_som_map(
+        som, style="ink-hex", svg_id="map-you", title="Where you work",
+        subtitle="hover a hexagon to see what it is; drag the slider to replay your walk")
+    controls = (
+        '<div class="walk">'
+        '<div id="walk-detail" class="walk-detail">Hover a hexagon to see what it is, '
+        'or drag the slider to replay your walk session by session.</div>'
+        '<div class="walk-scrub-row">'
+        f'<input type="range" id="walk-scrub" min="0" max="{len(walk) - 1}" '
+        f'value="{len(walk) - 1}" step="1" aria-label="replay your sessions over time">'
+        '<span id="walk-scrub-label" class="walk-scrub-label"></span>'
+        '</div></div>')
+
+    def _safe(obj):
+        return json.dumps(obj, separators=(",", ":")).replace("</", "<\\/")
+    script = (_WALK_JS.replace("__WALK__", _safe(walk))
+              .replace("__CM__", _safe(cm)))
+    return _WALK_CSS + themap + controls + script
+
+
+def _card_maps(report):
+    """The two fingerprints, side by side, as the card marquee: compact, discernible,
+    no labels or key (those live on the interactive maps below). Empty when the maps
+    are absent."""
+    som = (report.get("rig_space") or {}).get("som")
+    shared = report.get("shared_map")
+    tiles = []
+    if som:
+        tiles.append(render_som_map(som, style="ink-hex", compact=True,
+                                    title="Where you work"))
+    if shared and som and som.get("current_cell"):
+        tiles.append(render_shared_map_compact(shared, som["current_cell"]))
+    if not tiles:
+        return ""
+    return f'<div class="som-maps-row">{"".join(tiles)}</div>'
+
+
+def render_shared_map_compact(merged, current_cell):
+    """The shared frontier as a compact marquee tile (no arrow/key)."""
+    if not merged or not (merged.get("lattice") or {}).get("rows"):
+        return ""
+    block = {"lattice": merged["lattice"], "field": merged.get("field"),
+             "support": merged.get("support"),
+             "field_metric": merged.get("field_metric", "d_per_survkb"),
+             "field_lower_is_better": merged.get("field_lower_is_better", True),
+             "current_cell": current_cell, "gradient": {}}
+    return render_som_map(block, style="ink-hex", compact=True,
+                          title="The shared frontier")
+
+
 def _hero_card(report):
     """The shareable scorecard, sparse by design: the VIBRANT wordmark, the hero
     number, the rig as a bar, a trend. Every element is a fact about the operator's
@@ -2402,6 +2561,7 @@ def _hero_card(report):
         f'<div class="top"><div class="brand">{mark}VIBRANT</div>',
         f'<div class="meta">{tl.get("sessions")} sessions</div></div>',
         f'<div class="meters">{"".join(meters)}</div>',
+        _card_maps(report),
         '<div class="foot"><span>vibe-coding rig efficiency</span>'
         '<span>3dl-dev/vibrant</span></div>',
         '</div>'])
@@ -2501,7 +2661,7 @@ def render_html(report):
     head = "<style>\n" + _CSS + "</style>\n"
     hero = _hero_card(report)
     som_block = (report.get("rig_space") or {}).get("som")
-    som = render_som_map(som_block, style="ink-hex")
+    som = render_walk(report)
     # the federated shared frontier, when a merged commons map is present. Your cell on
     # the shared frame is your cell on the learned map (v1 pins one reference codebook,
     # so they coincide). Absent commons -> empty, report unchanged.

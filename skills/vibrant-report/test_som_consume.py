@@ -135,6 +135,23 @@ def test_drift(fails):
     check(len(drift) <= 14, f"drift not downsampled {len(drift)}", fails)
 
 
+def test_walk_and_meaning(fails):
+    blk = vr.som_map(METRICS, _cache(METRICS), MOVE)
+    walk, cm = blk.get("walk"), blk.get("cell_meaning")
+    check(isinstance(walk, list) and len(walk) == 6, f"walk len {walk and len(walk)}", fails)
+    check(walk[0]["day"] == "2026-06-01" and walk[0]["cell"] == [1, 1],
+          f"walk head {walk[0]}", fails)
+    check(all({"day", "cell", "flow", "cost", "engine"} <= set(w) for w in walk),
+          "walk entries missing fields", fails)
+    sa = [w for w in walk if w["day"] == "2026-08-10"][0]
+    check(sa["cost"] == 5.0, f"sA cost {sa['cost']}", fails)  # $10 / 2.0 KB
+    check(sa["flow"] is None, "no-misery flow not None", fails)
+    m00 = [m for m in cm if m["cell"] == [0, 0]][0]
+    check(m00["sessions"] == 3 and m00["engine"] == "solo",
+          f"cell (0,0) meaning {m00}", fails)
+    check(m00["cost"] == 7.2, f"cell (0,0) cost {m00['cost']}", fails)
+
+
 def test_gradient(fails):
     blk = vr.som_map(METRICS, _cache(METRICS), MOVE)
     g = blk["gradient"]
@@ -174,9 +191,9 @@ def test_determinism(fails):
 def main():
     fails = []
     for t in (test_load_som, test_none_when_empty, test_map_structure,
-              test_trajectory_and_current, test_drift, test_field_and_window,
-              test_gradient, test_gradient_edge_cases, test_undated_dropped,
-              test_determinism):
+              test_trajectory_and_current, test_drift, test_walk_and_meaning,
+              test_field_and_window, test_gradient, test_gradient_edge_cases,
+              test_undated_dropped, test_determinism):
         t(fails)
     if fails:
         print("FAIL  som_consume:")
