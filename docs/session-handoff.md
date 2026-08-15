@@ -193,7 +193,36 @@ a solid teal arrow to what you actually did next, a small key naming both (`dlin
 `.scrub-key`). Verified in headless chromium across periods where were/best/went coincide
 and diverge (drv_*.png in the somrun scratch dir).
 
-### Palette + gloss + emphasis nits (updated 2026-08-15, LATEST)
+### A/B comparison fingerprints; drop shared frontier + efficiency chart (updated 2026-08-15, LATEST)
+
+Big rework. Operator: sankey down to the fingerprints; bars unreadable in the selected
+region; back trend hard to make out; no affordance to select back sections / clicks don't
+hold; drop 'the shared frontier'; use the twin fingerprints to compare two selections
+(default prev era vs current era, or clicked vs hovered sample); connect selection to panel
+with the sankey idiom; also retired the efficiency-over-time chart.
+
+- `_card_maps` now renders TWO comparison panels on the same lattice: `#map-a` (left, clay
+  `#B0553A`) and `#map-b` (right, deep teal `#3F6E66`), each with an `#fp-a-label`/
+  `#fp-b-label`. No shared frontier. `render_shared_map_compact` is now unused (left in
+  place, harmless).
+- Interaction state is `selA`/`selB` (each `{era:id}` or `{day:i}`), replacing CURP/ERAIDX.
+  Default selA=previous generation, selB=current. Bar hover => selB={day}; bar CLICK =>
+  hold selA={era} (click the held era again to release to prev). Score/toggles follow selB.
+  Both panels are hover-decodable (cell tooltips on map-a AND map-b).
+- `drawFlow` -> two `panelRibbon`s: each selection's timeline slice flows down into its
+  panel (colours ACOL/BCOL). Replaced the single score<-timeline flow. `drawMerge`
+  (metric->score, log-proportional, x node) unchanged.
+- Wave legibility: `dimWave` bars now fully opaque (uniform front, no per-section dimming);
+  `emphasize` lights only the two SELECTED generations' bands (0.9), rest 0.22; `RT=0.62`
+  so the coloured back trend pokes past the bars and reads.
+- `render_html`: removed the ~90-line efficiency-over-time chart builder; `detail` is now
+  just the breakdown `<details>`.
+- Tests updated: test_walk (map-a/map-b, fp labels, 2 som-fx), test_vibrant_report (chart
+  must be ABSENT). Verified headless (cmp_default/cmp_hover/cmp_click, cmp_top in somrun):
+  A=prev gen, B=current; hover sets B to a day sample; click holds A; two panel flows; no
+  JSERR. 13 suites green, deterministic, em-dash clean.
+
+### Palette + gloss + emphasis nits (updated 2026-08-15, superseded above)
 
 - `GEN` palette swapped to muted earth tones `["#B0553A","#C79A46","#7C6A86","#5E7E77",
   "#A56E5B","#8A7A4E"]` (paper/ink/rust family, clear of daily blue/teal/green).
