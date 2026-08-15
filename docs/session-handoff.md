@@ -112,10 +112,21 @@ output. Toolchain: fetch + verify sha256 + unpack (pin lives in the hoistable sk
 
 ## SOM build status (updated 2026-08-15)
 
-Items 1 to 4 of the SOM plan are BUILT, tested, committed, and transfer-graded (hoist
-`measure` profile: BUILT, transfer 3/3, the new `learned-som-pipeline-holds` check
-green on a clean target). Commits `59ee904` (item 1), `b783eba` (item 2), `e6595db`
-(item 3 + `--dump-sessions` seam), `db623f0` (item 4 + drift), `efa2098` (hoist).
+ALL FIVE items of the SOM plan are BUILT, tested, committed, and transfer-graded (hoist
+`measure` profile: BUILT, transfer 4/4, the `learned-som-pipeline-holds` and
+`federated-merge-holds` checks green on a clean target). Commits `59ee904` (item 1),
+`b783eba` (item 2), `e6595db` (item 3 + `--dump-sessions` seam), `db623f0` (item 4 +
+drift), `d850e5e` (item 5 federated merge), `efa2098`/`(hoist)` for the acceptance.
+
+Item 5 was REDESIGNED with the operator: federation merges MODELS + per-cell aggregates,
+never raw logs (memory `federation-by-model-merge`). Each operator publishes per-cell
+`{cost, surv, support}` over a shared reference codebook; `core/som_merge.py` merges by
+ratio-of-sums (Sigma cost / Sigma surv), giving a peer-validated field and a
+surviving-work-weighted gradient. The weighting had a real bug caught on real data:
+merging pre-divided ratios weighted by session count disagreed with the whole corpus in
+20 of 32 cells; the ratio-of-sums fix reconstructs the whole EXACTLY (0/32). A privacy
+floor rejects any contribution carrying a raw-log key. FedAvg of codebooks is a deferred
+non-goal; v1 pins one shared reference frame.
 
 - item 1 `adapters/claude-code/session_features.py`: per-session SHAPE vector (18-dim,
   one-hot arms + fixed-scale topology). Shape only, never outcome; fixed absolute
@@ -191,34 +202,33 @@ then `/swarm-dispatch`. rd is NOT initialized in this repo. Awaiting the user's 
 - The user thinks at the architecture level (PAD analogy, embeddings, gradient descent,
   SOM, control theory). Engage there, do not dumb it down.
 
-## Immediate next action: item 5 (federated shared map), teed up
+## Immediate next action: wire the federated map end to end
 
-Items 1 to 4 are a complete, shippable, graded local learned-SOM. Item 5 is the
-federation surface and is the operator's call because it touches two reserved things:
+The five SOM primitives are built and graded. What remains is INTEGRATION to make the
+federated map usable by a real operator (each a normal follow-on, none reserved):
 
-1. LAYERING: `som_train.py` is harness-neutral (pure vector math) but currently lives
-   in `adapters/claude-code/`. The shared-map builder wants it in `core/`. Recommended:
-   relocate `som_train.py` (+ spec + test) to `core/` as part of item 5, since it is
-   shared infrastructure, and have the adapter keep a thin re-export if needed.
-2. CONFIDENTIALITY POSTURE: the shared corpus must be anonymized. The existing floor is
-   `core/frontier.py` `summarize()` (no identities, median vectors, no source id, no
-   prose). Recommended contract, following that floor: each contribution is
-   `{op: <opaque-hash>, sessions: [{vec, day, dollars, survkb}]}`, no sid, no repo, no
-   free text. Home: a new `core/shared_map.py` (keep frontier.py's three ops clean),
-   spec + test first.
+1. PRODUCER TOOL: an adapter that, from a snapshot + a published reference codebook,
+   emits an operator's `som-contribution@1` (assign each session to the reference
+   codebook via `som_train.bmu` on its `session_features` vec, aggregate cost=Sigma
+   dollars, surv=Sigma surviving-KB, support=Sigma sessions per cell, windowed). This
+   session did it ad hoc in the demo (`$JOBTMP/somrun/contrib-*.json`); make it a
+   committed tool, spec+test. This is the `vibrant-contribute` shared-map path.
+2. PUBLISH THE FRAME: bootstrap reference codebook v1 with `som_merge.reference_codebook`
+   from the current SOM and commit it (e.g. `frontier/reference-codebook.json`) so every
+   operator assigns to the same frame.
+3. RENDER THE SHARED MAP: reuse `render_som_map` on the merged field with the operator's
+   own point and the `merged_gradient` arrow (support/weight/contributors shown). The
+   viz already takes a field+trajectory+gradient block; adapt the merged shape to it.
 
-Design sketch (build after the operator greenlights the two decisions above): train
-ONE SOM on the union of all operators' vecs with a PINNED lattice (som@1 with fixed
-`--rows`/`--cols`); global field per cell pooled across operators (windowed); the
-frontier-optimum cell = min field with min support; each operator is a point (their
-recent BMU centroid) with a gradient toward the optimum. Reuse `render_som_map` for
-the shared map with operator points overlaid. Output `shared-map@1`.
+Real-data proof this session (keep as the acceptance bar): splitting the 232-session
+corpus into two pseudo-operators and merging their contributions reconstructs the whole
+field EXACTLY (0/32 cells differ), 22 cells corroborated by both, weighted gradient lands
+on a peer-corroborated cell. See memory `federation-by-model-merge`.
 
-Do NOT skip the shipping loop on item 5: source-first, update `hoist/config.json`,
-re-emit with the toolchain (pin `0.5.0`, fetch+verify sha256), grade on a clean target.
-
-The toolchain self-extract + grade recipe that worked this session: fetch
+Do NOT skip the shipping loop: source-first, update `hoist/config.json`, re-emit and
+grade. The toolchain recipe that worked: fetch
 `https://github.com/3dl-dev/hoistable/releases/download/operators-v0.5.0/hoistable-operators-0.5.0.tgz`,
 verify sha256 `93c02ced...4200ad5`, unpack, then
 `python3 builder/emit.py <repo>/hoist/config.json --operators-pin pin.json --out ...`,
-then `emit.extract_config` + `hoist.hoist(cfg_path, target_dir=...)` for the grade.
+then `emit.extract_config` + `hoist.hoist(cfg_path, target_dir=...)` for the grade
+(current: BUILT, transfer 4/4).

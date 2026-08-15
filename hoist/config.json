@@ -17,7 +17,8 @@
       "acceptance": [
         { "name": "driver-verifies-on-a-fixture", "check": "python3 core/test_survival_git.py" },
         { "name": "report-and-misery-contract-hold", "check": "python3 skills/vibrant-report/test_vibrant_report.py && python3 skills/vibrant-report/test_misery.py" },
-        { "name": "learned-som-pipeline-holds", "check": "python3 adapters/claude-code/test_session_features.py && python3 adapters/claude-code/test_som_train.py && python3 skills/vibrant-report/test_som_consume.py && python3 skills/vibrant-report/test_som_viz.py" }
+        { "name": "learned-som-pipeline-holds", "check": "python3 adapters/claude-code/test_session_features.py && python3 adapters/claude-code/test_som_train.py && python3 skills/vibrant-report/test_som_consume.py && python3 skills/vibrant-report/test_som_viz.py" },
+        { "name": "federated-merge-holds", "check": "python3 core/test_som_merge.py" }
       ]
     }
   },
