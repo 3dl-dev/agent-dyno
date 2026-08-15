@@ -193,6 +193,35 @@ a solid teal arrow to what you actually did next, a small key naming both (`dlin
 `.scrub-key`). Verified in headless chromium across periods where were/best/went coincide
 and diverge (drv_*.png in the somrun scratch dir).
 
+### Era motion + dynamic shade (updated 2026-08-15, LATEST)
+
+Operator feedback: the map looked like the workflow changed ~30 times in 30 days (it
+did not), and "where you work" / "the shared frontier" stayed opaque; prose did not help
+(see memory [[prose-doesnt-fix-viz]]). Decision (operator's): KEEP the SOM, decode by
+hover, do not add interpretable axes. Two changes:
+
+1. Motion in eras, not buckets. `_timeline_periods` now segments time into the SAME eras
+   the efficiency line uses (indices where `changes` is set, i.e. `detect_changes`) and
+   sits each period on that era's PREVAILING cell (modal BMU over the whole era), so a
+   stable daily mix no longer flickers the position. Real corpus: 3 map moves, not ~30.
+   Scrub reads "held <setup>" within an era and "were X -> moved to Y" only at a boundary
+   (`eraNext` returns the next cell only when the immediate next period is a new era). The
+   card's "you" marker + recommendation baseline use `_prevailing_current` (latest era's
+   prevailing cell), so the whole card is consistent. Periods carry an `era` id.
+2. Dynamic cost shade. `_rank_opacity` replaced the fixed log ramp in `render_som_map`:
+   opacity by a value's RANK among present cells (histogram equalization), so a clumped
+   distribution no longer washes to uniform grey and the two maps visibly differ. More
+   data => more distinguishable shades.
+
+Also removed the explanatory lead-in + shade key from `_card_maps` (prose did not make it
+legible); kept titles + a one-word source subtitle; hover carries the decode. Regressions:
+`test_walk.test_timeline_periods_era_smoothed`, `test_walk.test_rank_opacity_spreads`.
+Verified in headless chromium (g_default/g_held/g_bound in the somrun scratch dir):
+default shows contrasted maps + prevailing position; held vs boundary scrub read correctly.
+NB `_prevailing_current` moved the baseline from [9,3] to [10,6], so the balanced
+recommendation is a confident move again from the new baseline (re-derived, not a regression
+of the noise gate).
+
 ### Noise gate (updated 2026-08-15, item A DONE)
 
 Item (A) is DONE. `_recommend_cells` now takes `current_cell` and returns `{cell, ok}`
