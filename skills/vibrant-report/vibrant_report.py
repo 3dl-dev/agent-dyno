@@ -2554,7 +2554,7 @@ def _arm_phrase(arm_change):
 
 _WALK_JS = r"""<script>
 (function(){
-  var CELLS=__CELLS__, PERIODS=__PERIODS__, CUR=__CUR__, AGG=__AGG__;
+  var CELLS=__CELLS__, BEST=__BEST__, PERIODS=__PERIODS__, CUR=__CUR__, AGG=__AGG__;
   var svg=document.getElementById('map-you'); if(!svg) return;
   var vbScore=document.getElementById('vb-score'), vbLabel=document.getElementById('vb-label'),
       vbRec=document.getElementById('vb-rec'), vbDetail=document.getElementById('vb-detail');
@@ -2574,8 +2574,11 @@ _WALK_JS = r"""<script>
     return vs.length?{lo:Math.min.apply(null,vs),hi:Math.max.apply(null,vs)}:null;}
   var R={eff:rng('eff'),flow:rng('flow'),simp:rng('simp')};
   function nrm(c,k){var r=R[k];if(!r||c[k]==null)return null;return (c[k]-r.lo)/((r.hi-r.lo)||1);}
-  function good(c,en){var prod=1,cnt=0;MK.forEach(function(m){if(!en[m])return;var x=nrm(c,m);if(x==null)return;prod*=Math.max(x,.001);cnt++;});return cnt?Math.pow(prod,1/cnt):null;}
-  function best(en){var bc=null,bg=-1;CELLS.forEach(function(c){if((c.sessions||0)<2)return;var g=good(c,en);if(g!=null&&g>bg){bg=g;bc=c;}});return bc;}
+  // full coverage: a cell scores only if it has every enabled dimension; a missing
+  // dimension disqualifies it rather than being silently dropped (mirrors _recommend_cells).
+  function good(c,en){var prod=1,cnt=0,miss=false;MK.forEach(function(m){if(!en[m])return;var x=nrm(c,m);if(x==null){miss=true;return;}prod*=Math.max(x,.001);cnt++;});return (miss||!cnt)?null:Math.pow(prod,1/cnt);}
+  // the recommendation is chosen server-side (support-weighted, full-coverage); look it up.
+  function best(en){var k=MK.filter(function(m){return en[m];}).join(',');var rc=BEST[k];return rc?cell(rc[0],rc[1]):null;}
   function objColor(en){var on=MK.filter(function(m){return en[m];});return on.length===1?OBJC[on[0]]:'var(--rust)';}
   function objName(en){var on=MK.filter(function(m){return en[m];});return on.length===3?'balance':(on.length===1?OBJN[on[0]]:on.map(function(m){return OBJN[m];}).join('+'));}
   function hexMk(r,c,color,sw){var p=pts(r,c);return p?('<polygon points="'+p+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'"/>'):'';}
@@ -2635,6 +2638,62 @@ _WALK_JS = r"""<script>
 </script>"""
 
 
+def _recommend_cells(cells, support_k=4.0):
+    """The cell to move toward for each non-empty objective subset of (eff, flow,
+    simp). Two honesty rules keep the recommendation from chasing noise:
+
+    - Full coverage: a cell is eligible only if it has a value for EVERY enabled
+      dimension. A missing dimension (e.g. a cell never babysitting-scored, so
+      flow is None) is not a free pass; absence of data is not absence of a
+      weakness. This is what a lone metric-maxing outlier used to exploit.
+    - Confidence shrinkage: the normalized geometric-mean score is scaled by
+      n / (n + k), so a 2-session cell cannot outrank a well-supported one on a
+      lucky reading.
+
+    Returns {subset_key: [r, c] or None}; subset_key is the enabled metric names,
+    in eff,flow,simp order, comma-joined (matching the client's MK.filter().join).
+    Note: per-cell eff/simp are still their dominant rig's git-attributed numbers,
+    not the cell's own sessions (sessions carry no per-session commit attribution);
+    grounding those per-session is a separate, deeper change."""
+    keys = ("eff", "flow", "simp")
+    rng = {}
+    for m in keys:
+        vs = [c[m] for c in cells if c.get(m) is not None]
+        rng[m] = (min(vs), max(vs)) if vs else None
+
+    def nrm(c, m):
+        r = rng[m]
+        if r is None or c.get(m) is None:
+            return None
+        lo, hi = r
+        return (c[m] - lo) / ((hi - lo) or 1)
+
+    def score(c, subset):
+        prod = 1.0
+        for m in subset:
+            x = nrm(c, m)
+            if x is None:
+                return None  # full coverage: a missing enabled dim disqualifies
+            prod *= max(x, 0.001)
+        g = prod ** (1.0 / len(subset))
+        n = c.get("sessions") or 0
+        return g * (n / (n + support_k))  # confidence shrinkage
+
+    subsets = [("eff",), ("flow",), ("simp",), ("eff", "flow"), ("eff", "simp"),
+               ("flow", "simp"), ("eff", "flow", "simp")]
+    out = {}
+    for subset in subsets:
+        best_rc, best_g = None, -1.0
+        for c in cells:
+            if (c.get("sessions") or 0) < 2:
+                continue
+            g = score(c, subset)
+            if g is not None and g > best_g:
+                best_g, best_rc = g, [c["r"], c["c"]]
+        out[",".join(subset)] = best_rc
+    return out
+
+
 def render_walk(report):
     """Emits the one self-contained script that drives the whole card: the metric
     toggles (hover to preview, click to hold) set which metrics feed the score and the
@@ -2655,6 +2714,7 @@ def render_walk(report):
     def _safe(obj):
         return json.dumps(obj, separators=(",", ":")).replace("</", "<\\/")
     script = (_WALK_JS.replace("__CELLS__", _safe(cells))
+              .replace("__BEST__", _safe(_recommend_cells(cells)))
               .replace("__PERIODS__", _safe(_timeline_periods(report)))
               .replace("__CUR__", _safe(som.get("current_cell")))
               .replace("__AGG__", _safe(agg)))

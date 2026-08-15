@@ -55,8 +55,8 @@ def test_script(fails):
     out = vr.render_walk(REPORT)
     check("<script>" in out, "no driving script", fails)
     # data embedded (placeholders substituted)
-    check("__CELLS__" not in out and "__PERIODS__" not in out and "__CUR__" not in out
-          and "__AGG__" not in out, "placeholders not filled", fails)
+    check("__CELLS__" not in out and "__BEST__" not in out and "__PERIODS__" not in out
+          and "__CUR__" not in out and "__AGG__" not in out, "placeholders not filled", fails)
     check('"simp":' in out or "simp" in out, "per-cell metrics not embedded", fails)
     # references the card elements it drives
     for hook in ("map-you", "wv-bar", "vb-score", "mtog", "vb-rec"):
@@ -94,6 +94,32 @@ def test_hero_toggles(fails):
     check("obj-chip" not in card, "duplicate objective chips still present", fails)
 
 
+def test_recommend_ignores_noise(fails):
+    # Regression: a 2-session cell with no flow data must not be recommended just
+    # because it maxes the two dimensions it happens to have. Full coverage +
+    # support weighting should prefer a proven, fully-measured cell instead.
+    cells = [
+        # metric-maxing outlier: highest eff and simp, but only 2 sessions and NO flow
+        {"r": 0, "c": 0, "eff": 18.3, "flow": None, "simp": 96.0, "sessions": 2},
+        # solid, fully measured, well supported
+        {"r": 1, "c": 1, "eff": 6.15, "flow": 64.0, "simp": 64.3, "sessions": 12},
+        {"r": 2, "c": 2, "eff": 5.75, "flow": 48.0, "simp": 88.5, "sessions": 11},
+    ]
+    rec = vr._recommend_cells(cells)
+    bal = rec["eff,flow,simp"]
+    check(bal != [0, 0], "balanced objective still picks the flow-less 2-session outlier", fails)
+    # whatever it picks for balance must actually have all three dimensions measured
+    chosen = next((c for c in cells if [c["r"], c["c"]] == bal), None)
+    check(chosen is not None
+          and chosen["eff"] is not None and chosen["flow"] is not None
+          and chosen["simp"] is not None,
+          "balanced recommendation is not a full-coverage cell", fails)
+    # a <2-session cell is never eligible
+    edge = vr._recommend_cells([{"r": 0, "c": 0, "eff": 9.0, "flow": 90.0,
+                                 "simp": 90.0, "sessions": 1}])
+    check(all(v is None for v in edge.values()), "1-session cell was recommended", fails)
+
+
 def test_determinism(fails):
     check(vr.render_walk(REPORT) == vr.render_walk(REPORT), "render_walk not deterministic", fails)
 
@@ -101,7 +127,8 @@ def test_determinism(fails):
 def main():
     fails = []
     for t in (test_empty, test_script, test_no_external_refs, test_no_em_dash,
-              test_card_maps_interactive, test_hero_toggles, test_determinism):
+              test_card_maps_interactive, test_hero_toggles, test_recommend_ignores_noise,
+              test_determinism):
         t(fails)
     if fails:
         print("FAIL  walk:")
