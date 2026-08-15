@@ -193,7 +193,27 @@ a solid teal arrow to what you actually did next, a small key naming both (`dlin
 `.scrub-key`). Verified in headless chromium across periods where were/best/went coincide
 and diverge (drv_*.png in the somrun scratch dir).
 
-### Waveform trend+residual redesign (updated 2026-08-15, LATEST)
+### Solid ribbon + Sankey flow to topline (updated 2026-08-15, LATEST)
+
+Operator refinements on the wave: (1) the generational element should be a tighter, solid
+color central bar; (2) the "which section feeds the topline" cue should be a subtle
+Sankey flow up to the headline number (the earlier in-wave rainfall was not it).
+
+- Generational level is now a SOLID tight ribbon threaded through the wave centre in
+  `render_waveform`: thickness = smoothed amplitude `g[i]` * `RT` (0.30), one continuous
+  ink polygon + per-era `.wv-band` segments. `emphasize()` turns the ACTIVE generation's
+  segment rust (opacity 0.9). Daily bars ride over it, tightened (`wd = bw*0.78`, centred).
+  Removed: faint band, double contour, dashed deficit, and the `.wv-rain` rainfall.
+- Sankey flow: `drawFlow()` (called from `emphasize()` and on window resize) overlays a
+  soft rust ribbon (`.flow-ov`, pointer-events none, opacity 0.09) INSIDE the `.card`
+  (now `position:relative`) from `#vb-score` down to the active region's bars (the hovered
+  day, or the held generation). Computed live via getBoundingClientRect so it tracks
+  reflow. Verified headless (fl_default/fl_gen1 in somrun scratch): ribbon threads and goes
+  rust on the active gen; the flow fans from the score to that region and follows clicks.
+
+`test_som_viz.test_waveform` updated (ribbon hooks; dropped wv-rain/contour checks).
+
+### Waveform trend+residual redesign (updated 2026-08-15, superseded by the section above)
 
 Operator ask: make the generational level the CONTINUOUS smoothed centre line of the wave,
 daily data riding over it like a stacked bar, below-average days shown with a dashed
