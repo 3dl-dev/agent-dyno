@@ -2005,7 +2005,7 @@ _CSS = """
 .vibrant .mk-gen{color:var(--rust);font-weight:700;}
 .vibrant .mk-day{color:var(--ink);font-weight:700;}
 .vibrant .mk-mix{color:var(--muted);}
-.vibrant .wave{margin:0 0 24px;}
+.vibrant .wave{margin:52px 0 24px;}
 .vibrant .wave svg{width:100%;height:auto;}
 .vibrant .wlegend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:12px;
  font-weight:700;align-items:center;}
@@ -2643,13 +2643,13 @@ _WALK_JS = r"""<script>
   // light the region feeding the score: in day view the single hovered bar; in generation
   // view the whole era, its band segment, and its rainfall (number -> the days it sums).
   function activeEra(){return (CURP!=null&&PERIODS[CURP])?PERIODS[CURP].era:ERAIDX;}
-  function emphasize(){var ws=document.getElementById('wave-svg');if(!ws)return;var day=(CURP!=null),ae=activeEra();
-    ws.querySelectorAll('.wv-bar').forEach(function(gg){var i=+gg.getAttribute('data-i'),e=+gg.getAttribute('data-era');
-      var on=day?(i===CURP):(ae==null||e===ae);gg.setAttribute('opacity',on?'1':(day?'0.28':'0.42'));});
-    // every generation keeps its colour; the one feeding the score is brightened, the rest
-    // dimmed (and all subdued while previewing a single day).
+  function emphasize(){var ws=document.getElementById('wave-svg');if(!ws)return;var ae=activeEra();
+    // the daily bars stay uniformly in front, at full strength, across the WHOLE timeline.
+    ws.querySelectorAll('.wv-bar').forEach(function(gg){gg.setAttribute('opacity','1');});
+    // only the backdrop carries the selection: the active generation's band is solid, the
+    // rest fall right back so unselected sections read as quiet context.
     ws.querySelectorAll('.wv-band').forEach(function(bd){var e=+bd.getAttribute('data-era');
-      bd.setAttribute('opacity', day?'0.45':(e===ae?'1':'0.6'));});
+      bd.setAttribute('opacity', e===ae?'1':'0.16');});
     ws.querySelectorAll('.wv-score').forEach(function(tx){var e=+tx.getAttribute('data-era');tx.setAttribute('opacity',(ae==null||e===ae)?'1':'0.4');});
     drawMerge();drawFlow();}
   // a smooth ribbon: cubic edges between (x0,ya..yb) at the source and (x1,ca..cb) at the
@@ -2703,7 +2703,7 @@ _WALK_JS = r"""<script>
     var tL=gcx-gw/2,tR=gcx+gw/2,tB=gr.bottom-hr.top;var my=(tB+T)/2;
     var d='M'+tL.toFixed(1)+','+tB.toFixed(1)+' C'+tL.toFixed(1)+','+my.toFixed(1)+' '+L.toFixed(1)+','+my.toFixed(1)+' '+L.toFixed(1)+','+T.toFixed(1)
       +' L'+R.toFixed(1)+','+T.toFixed(1)+' C'+R.toFixed(1)+','+my.toFixed(1)+' '+tR.toFixed(1)+','+my.toFixed(1)+' '+tR.toFixed(1)+','+tB.toFixed(1)+' Z';
-    ov.innerHTML='<path d="'+d+'" fill="var(--rust)" opacity="0.08"/>';}
+    ov.innerHTML='<path d="'+d+'" fill="var(--rust)" opacity="0.17"/>';}
   function setRec(e){if(!vbRec)return;var bc=best(e);
     if(bc&&recOk(e)){vbRec.innerHTML='<span class="rec-arrow">'+REC+'</span> shift toward <b>'+setup(bc)+'</b>';return;}
     // no move clears the noise (or no measurable baseline): say hold, do not point.
@@ -3131,9 +3131,9 @@ def render_waveform(report):
     def cx(i):
         return i * bw + bw / 2
     RT = 0.52  # ribbon half-thickness as a fraction of the smoothed amplitude: exaggerated
-    # a categorical palette for the generations, chosen to stay clear of the daily bands'
-    # blue/teal/green so the rollup colour and the component colours never collide.
-    GEN = ["#C2410C", "#7C3AED", "#CA8A04", "#DB2777", "#9333EA", "#B45309"]
+    # a muted, warm-leaning categorical palette for the generations, in the paper/ink/rust
+    # family so it sits with the brand and stays clear of the daily blue/teal/green.
+    GEN = ["#B0553A", "#C79A46", "#7C6A86", "#5E7E77", "#A56E5B", "#8A7A4E"]
 
     wd = max(bw * 0.78, 0.8)
     bars = []
@@ -3142,14 +3142,20 @@ def render_waveform(report):
         total = totals[i]
         y = cy - total / 2
         x = i * bw
+        bx = x + (bw - wd) / 2
         grp = [f'<g class="wv-bar" data-i="{i}" data-era="{era_id[i]}">'
                f'<rect x="{x:.1f}" y="0" width="{bw:.2f}" height="{H}" '
                f'fill="transparent" pointer-events="all"/>']
         for hgt, color, m in segs:
             if hgt >= 0.4:
-                grp.append(f'<rect data-m="{m}" x="{x + (bw - wd) / 2:.1f}" y="{y:.1f}" '
-                           f'width="{wd:.1f}" height="{hgt:.1f}" fill="{color}"/>')
+                grp.append(f'<rect data-m="{m}" x="{bx:.1f}" y="{y:.1f}" '
+                           f'width="{wd:.1f}" height="{hgt:.1f}" rx="2.5" fill="{color}"/>')
             y += hgt
+        # a single soft gloss over the whole bar (white sheen fading down), for a rounded,
+        # glossy read; no data-m so it does not fade with a toggled metric.
+        if total >= 0.8:
+            grp.append(f'<rect x="{bx:.1f}" y="{cy - total / 2:.1f}" width="{wd:.1f}" '
+                       f'height="{total:.1f}" rx="3" fill="url(#wgloss)" pointer-events="none"/>')
         grp.append('</g>')
         bars.append("".join(grp))
 
@@ -3181,10 +3187,15 @@ def render_waveform(report):
     # back to front: dividers, then the SOLID colour-per-generation rollup band (100%,
     # the backdrop), then the daily bars in FRONT (partly translucent, so the band shows
     # through the gaps between bars and reads as continuous), then the era scores.
+    gloss = ('<defs><linearGradient id="wgloss" x1="0" y1="0" x2="0" y2="1">'
+             '<stop offset="0" stop-color="#ffffff" stop-opacity="0.34"/>'
+             '<stop offset="0.45" stop-color="#ffffff" stop-opacity="0.06"/>'
+             '<stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient></defs>')
     svg = (f'<svg id="wave-svg" viewBox="0 0 {W} {H}" role="img" aria-label="the combined '
            f'score over time: a bold colour-per-generation rollup band behind the daily '
            f'bars of efficiency, flow and simplicity, each generation labelled with its '
-           f'score">{"".join(dividers)}{"".join(ribbons)}{"".join(bars)}{"".join(labels)}</svg>')
+           f'score">{gloss}{"".join(dividers)}{"".join(ribbons)}{"".join(bars)}'
+           f'{"".join(labels)}</svg>')
     note = ('<div class="wlegend"><span class="wl-key">'
             '<span><i style="background:var(--accent)"></i>efficiency</span>'
             '<span><i style="background:var(--teal)"></i>flow</span>'
