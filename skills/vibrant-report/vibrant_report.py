@@ -501,13 +501,22 @@ def topline(metrics, numerator, denom_metrics=None):
     # not run shipped_by_day). This is what makes the meter track shipped work, not
     # in-chat verbosity: a rig that generates a mountain but commits little that
     # sticks scores low.
-    functionality = numerator.get("durable_complexity",
-                                  numerator.get("net_complexity", 0))
+    # FUNCTION, not complexity: count the durable shipped changes (units of work that
+    # landed and were not reverted). Complexity is a COST, not the value: a model that
+    # over-engineers packs more decision-points into each change and would inflate a
+    # complexity numerator, so complexity-per-token rewarded exactly that. Counting
+    # the changes themselves is over-engineering-resistant. Complexity moves to a
+    # BLOAT meter (per change) where over-engineering is exposed, not rewarded.
+    functionality = numerator.get("durable_changes", numerator.get("total_changes", 0))
     eq = round(functionality / out_mtok, 2) if out_mtok else None
+    dcx = numerator.get("durable_complexity", numerator.get("net_complexity", 0))
+    bloat = round(dcx / functionality, 1) if functionality else None
     return {"eq": eq,
-            "unit": "durable shipped complexity (decision points) per Mtok output",
+            "unit": "durable shipped changes per Mtok output",
             "larger_is_better": True,
-            "functionality": functionality, "output_mtok": round(out_mtok, 3),
+            "functionality": functionality,
+            "bloat": bloat,  # decision points per shipped change; lower is leaner
+            "output_mtok": round(out_mtok, 3),
             "total_mtok": round(total_mtok, 3),
             "denominator_sessions": len(denom),
             "change_failure_rate": numerator.get("change_failure_rate"),
@@ -691,12 +700,12 @@ def timeline(metrics, all_fp=None, gran="week", shipped=None, complexity=None,
         survc = born - killed
         survkb = survc / 1024 if survc > 0 else 0.0
         # denominator: scoped output (measured-repo sessions) when provided, else all
-        # cells' output. eq is the HEADLINE measure: durable shipped complexity (git
-        # decision points that landed and stuck) per Mtok output, so the chart and the
-        # number agree. survkb stays a depth field, not the meter.
+        # cells' output. eq is the HEADLINE measure: durable shipped CHANGES (units of
+        # work that landed and stuck) per Mtok output; complexity is a bloat cost, not
+        # the value, so it never enters eq. survkb stays a depth field.
         out_mtok = (obk.get(k, 0.0) if out_by_day is not None
                     else sum(c["out_tok"] for c in cells)) / 1e6
-        eq = round(cxb.get(k, 0) / out_mtok, 2) if out_mtok else None
+        eq = round(ship.get(k, 0) / out_mtok, 2) if out_mtok else None
         fp = {"engine": modal([c["engine"] for c in cells]),
               "orchestrator": modal([c["model"] for c in cells]),
               "effort": modal([c["effort"] for c in cells])}
@@ -808,12 +817,14 @@ def rig_stats(metrics, attribution, misery_block):
 
 
 # the fingerprint axes the recommendation descends over, each as (label, the
-# per-session metric field, the attribution key, the misery-block key).
+# per-session metric field, the attribution key, the misery-block key). Topology is
+# deliberately NOT here: delegation buys throughput and scale (the operator uses it
+# to build large systems in parallel), so "go solo" is never a cost-optimization
+# move, it trades away the reason they delegate. The cost knobs are model + effort.
 _GRAD_DIMS = [
     ("orchestrator", "model", "by_orchestrator", "by_model"),
     ("worker", "worker", "by_worker", "by_worker"),
     ("effort", "effort", "by_effort", "by_effort"),
-    ("topology", "engine", "by_engine", "by_engine"),
 ]
 
 
@@ -830,16 +841,18 @@ def gradient_move(metrics, attribution, misery_block, min_sessions=8, misery_tol
     misery_block = misery_block or {}
     best = None
     for label, mfield, akey, mis_key in _GRAD_DIMS:
-        cx = {k: v["net_complexity"] for k, v in (attribution.get(akey) or {}).items()}
+        # count of durable shipped changes (function), NOT complexity: complexity is
+        # bloat, and dividing dollars by it would reward over-engineering.
+        chg = {k: v["commits"] for k, v in (attribution.get(akey) or {}).items()}
         mis = misery_block.get(mis_key) or {}
         dol, sess = defaultdict(float), defaultdict(int)
         for m in metrics:
             v = m.get(mfield)
             dol[v] += m.get("dollars", 0.0)
             sess[v] += 1
-        # cost ($/1k complexity) per value that has both dollars and surviving work
-        cost = {v: dol[v] / (cx[v] / 1000.0)
-                for v in cx if cx[v] > 0 and sess[v] >= min_sessions and dol[v] > 0}
+        # cost = dollars per shipped change, per value with enough evidence
+        cost = {v: dol[v] / chg[v]
+                for v in chg if chg[v] > 0 and sess[v] >= min_sessions and dol[v] > 0}
         if len(cost) < 2:
             continue
         dominant = max(cost, key=lambda v: sess[v])
@@ -1407,6 +1420,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
     # landed in non-reverted commits and still survive at HEAD, per Mtok output.
     shipped_map, fixes_map, complexity_map = shipped_by_day(bundles)
     numerator["durable_complexity"] = sum(complexity_map.values())
+    numerator["durable_changes"] = sum(shipped_map.values())
 
     frontier, fbytes = load_frontier(frontier_path)
     ss = same_shape(by_ee_cells, frontier)
@@ -1521,15 +1535,18 @@ def render_md(report):
     L = []
     if tl["eq"] is None:
         return "# Your setup\n\nNot enough surviving-work data in this window yet.\n"
-    L.append(f"# Your setup: {tl['eq']} durable shipped complexity per Mtok output")
+    bloat = tl.get("bloat")
+    bl = f" Bloat {bloat:.0f} decision points per change (over-engineering; lower is leaner)." \
+        if bloat is not None else ""
+    L.append(f"# Your setup: {tl['eq']} durable shipped changes per Mtok output")
     L.append("")
     cfr = tl.get("change_failure_rate")
     cfr_s = f" Change failure rate {cfr}% (DORA)." if cfr is not None else ""
-    L.append(f"Larger is better. Decision-logic that landed in non-reverted commits "
-             f"and still survives at HEAD, per million tokens the model generated, "
-             f"over {tl['sessions']} sessions.{cfr_s} It counts what shipped and "
-             f"stuck, not what was typed, so in-chat churn does not inflate it. "
-             f"Nothing leaves your machine.")
+    L.append(f"Larger is better. Units of work (non-reverted commits) that landed and "
+             f"still survive at HEAD, per million tokens the model generated, over "
+             f"{tl['sessions']} sessions.{cfr_s} It counts what shipped, not its "
+             f"complexity, so over-engineering cannot inflate it.{bl} Nothing leaves "
+             f"your machine.")
     L.append("")
     mb = report.get("misery")
     if mb:
@@ -1626,6 +1643,7 @@ _CSS = """
 .vibrant .mv{font-size:72px;font-weight:730;letter-spacing:-.035em;line-height:.82;
  color:var(--accent);}
 .vibrant .meter.mis .mv{color:var(--s2);}
+.vibrant .meter.bloat .mv{color:var(--s4);}
 .vibrant .mn{font-size:15px;font-weight:700;color:var(--ink);margin-top:14px;
  letter-spacing:.01em;}
 .vibrant .mu{font-size:11.5px;color:var(--muted);margin-top:2px;}
@@ -1795,15 +1813,21 @@ def _hero_card(report):
             '<rect x="0" y="9" width="4" height="7" rx="1.3"/>'
             '<rect x="7" y="5" width="4" height="11" rx="1.3"/>'
             '<rect x="14" y="1" width="4" height="15" rx="1.3"/></svg>')
-    # two meters, side by side, each a big number + one-word name + a minimal unit.
-    meters = [f'<div class="meter"><div class="mv" title="durable shipped complexity '
-              f'per Mtok output, larger is better">{esc(str(tl["eq"]))}</div>'
-              f'<div class="mn">efficiency</div><div class="mu">durable work / Mtok</div>'
-              f'</div>']
+    # meters, side by side: efficiency (function / fuel), misery, and bloat (the
+    # over-engineering tax that per-complexity efficiency used to hide).
+    meters = [f'<div class="meter"><div class="mv" title="durable shipped changes per '
+              f'Mtok output, larger is better">{esc(str(tl["eq"]))}</div>'
+              f'<div class="mn">efficiency</div><div class="mu">shipped changes / Mtok'
+              f'</div></div>']
     if mb:
         meters.append(f'<div class="meter mis"><div class="mv">{mb["overall"]}</div>'
                       f'<div class="mn">misery</div><div class="mu">/100, how much you '
                       f'fought it</div></div>')
+    if tl.get("bloat") is not None:
+        meters.append(f'<div class="meter bloat" title="decision points per shipped '
+                      f'change; high means over-engineering, lower is leaner">'
+                      f'<div class="mv">{tl["bloat"]:.0f}</div><div class="mn">bloat</div>'
+                      f'<div class="mu">complexity / change</div></div>')
     # the fingerprint: the operator's N-dim position, not one collapsed categorical.
     # Countable axes render as blend bars; the classified process axes (review,
     # knowledge) as their label.
@@ -1859,17 +1883,17 @@ def _lever_html(report):
             mis_note = (f" Misery goes {nav['from_misery']} to {nav['to_misery']}."
                         if nav["to_misery"] <= nav["from_misery"] else "")
         ev = (f"From your runs: your {nav['axis']} is {nav['from']} on "
-              f"{nav['from_sessions']} sessions, at ${nav['from_cost']:.0f} per 1k "
-              f"surviving decision points; {nav['to']} runs at ${nav['to_cost']:.0f}, "
-              f"about {nav['savings_pct']:.0f}% cheaper for the same work.{mis_note} "
-              f"Dollars, not tokens, so it prices the orchestrator's cache-read cost "
-              f"(the opus-drives-cheap-worker false economy that per-token efficiency "
-              f"misreads).")
+              f"{nav['from_sessions']} sessions, at ${nav['from_cost']:.0f} per shipped "
+              f"change; {nav['to']} runs at ${nav['to_cost']:.0f}, about "
+              f"{nav['savings_pct']:.0f}% cheaper per change shipped.{mis_note} Dollars "
+              f"per shipped change, so it prices the orchestrator's cache-read cost and "
+              f"is not fooled by over-engineering (which inflates complexity, not the "
+              f"count of changes).")
         prompt = (f"Change your default {nav['axis']} for this kind of work: use "
-                  f"{nav['to']} instead of {nav['from']}. Your own runs show it does "
-                  f"the same surviving work for about {nav['savings_pct']:.0f}% less. "
-                  f"Set it in your routing / CLAUDE.md, then re-run Vibrant with "
-                  f"--baseline to confirm the move.")
+                  f"{nav['to']} instead of {nav['from']}. Your own runs ship a change "
+                  f"for about {nav['savings_pct']:.0f}% less this way, at the same "
+                  f"topology (keep delegating). Set it in your routing / CLAUDE.md, "
+                  f"then re-run Vibrant with --baseline to confirm the move.")
         out.append(
             f'<div class="lever"><div class="lever-h">Your steepest move</div>'
             f'<div class="lever-tweak">{esc(nav["tweak"])}</div>'
@@ -1936,9 +1960,9 @@ def render_html(report):
     eras = []
     for a, b in zip(bounds, bounds[1:]):
         if b > a:
-            era_cx = sum(r.get("complexity") or 0 for r in tl[a:b])
+            era_ch = sum(r.get("shipped") or 0 for r in tl[a:b])
             era_out = sum(r.get("out_mtok") or 0 for r in tl[a:b])
-            eras.append((a, b, era_cx / era_out if era_out else 0.0))
+            eras.append((a, b, era_ch / era_out if era_out else 0.0))
     ylo = 0.0
     yhi = max([lvl for _, _, lvl in eras] + [1.0]) * 1.5
 
@@ -1994,6 +2018,13 @@ def render_html(report):
             parts.append(f'<text x="{xm:.1f}" y="{Y(mean)-9:.1f}" text-anchor="middle" '
                          f'font-size="13" font-weight="700" fill="var(--accent)">'
                          f'{mean:.0f}</text>')
+            # per-era misery, under the level, so a high-efficiency era that was
+            # miserable to work in cannot read as a win.
+            emis = [r["misery"] for r in tl[a:b] if r.get("misery") is not None]
+            if emis:
+                parts.append(f'<text x="{xm:.1f}" y="{Y(mean)+15:.1f}" '
+                             f'text-anchor="middle" font-size="10.5" font-weight="600" '
+                             f'fill="var(--s2)">{sum(emis)/len(emis):.0f} misery</text>')
 
     # thin x-labels to ~8 so a daily axis does not collide
     lstep = max(1, round(n / 8))
@@ -2009,7 +2040,7 @@ def render_html(report):
                         f'{esc("; ".join(r["changes"]))}</li>' for k, r in flags)
         legend = f'<ol>{items}</ol>'
     detail = (f'{_lever_html(report)}'
-              f'<h2>Efficiency over time <span class="sub">durable work per Mtok, '
+              f'<h2>Efficiency over time <span class="sub">shipped changes per Mtok, '
               f'per era</span></h2>'
               f'{"".join(parts)}{legend}'
               f'<details class="breakdown"><summary>full breakdown: fuel streams and '

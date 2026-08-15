@@ -371,14 +371,19 @@ def main():
         # total surviving chars: s1 9216 + s2 14336 + s3 2048 + s4 14336 = 39936
         total_dollars = sum(costs)
         total_survkb = 39936 / 1024  # = 39.0 (still drives the lever math below)
-        # topline = functionality (git complexity 6) per Mtok OUTPUT, larger better.
+        # topline = FUNCTION (durable shipped changes) per Mtok OUTPUT, larger better.
+        # The fixture repo has 2 non-fix commits -> durable_changes 2; complexity (6)
+        # is now the BLOAT meter (6/2 = 3 decision points per change), never the eq.
         # The denominator scopes to sessions whose proj names the repo: s1+s2+s3
         # (proj "repo"); s4's output (proj "elsewhere") is excluded (item 2 join).
         matched_out = sum(s["main_usage"][s["model"]]["out_tok"]
                           for s in sessions if "repo" in s.get("proj", ""))
-        eq_expected = round(6 / (matched_out / 1e6), 2)  # net_complexity 6 / scoped-Mtok
+        eq_expected = round(2 / (matched_out / 1e6), 2)  # durable_changes 2 / scoped-Mtok
         if rep["topline"]["eq"] != eq_expected:
             fails.append(f"topline EQ {rep['topline']['eq']} != {eq_expected}")
+        if rep["topline"].get("bloat") != 3.0:
+            fails.append(f"bloat should be 3.0 (complexity 6 / 2 changes), got "
+                         f"{rep['topline'].get('bloat')}")
         if rep["topline"].get("denominator_sessions") != 3:
             fails.append(f"topline denominator should scope to 3 matched sessions, "
                          f"got {rep['topline'].get('denominator_sessions')}")
@@ -439,7 +444,7 @@ def main():
 
         # the surface (report.md) must be the simple coach view, not the wall
         md = open(os.path.join(out1, "report.md")).read()
-        if "durable shipped complexity per Mtok" not in md:
+        if "durable shipped changes per Mtok" not in md:
             fails.append("surface is missing the topline number")
         if "Efficiency vector by engine" in md or "Same-shape comparison" in md:
             fails.append("surface leaked the machinery (vector/same-shape tables)")
@@ -546,7 +551,7 @@ def main():
             fails.append("report.html was not written")
         else:
             hh = open(htmlp).read()
-            if "<svg" not in hh or "durable shipped complexity" not in hh:
+            if "<svg" not in hh or "durable shipped changes" not in hh:
                 fails.append("report.html is not the expected chart")
             if "Fuel and work" not in hh:
                 fails.append("report.html is missing the fuel-and-work small multiples")
