@@ -2004,6 +2004,9 @@ _CSS = """
  font-weight:700;align-items:center;}
 .vibrant .wlegend .wl-note{color:var(--muted);font-weight:400;margin-left:auto;
  font-size:11px;}
+.vibrant .wlegend .wl-key{display:inline-flex;gap:12px;align-items:center;color:var(--ink2);}
+.vibrant .wlegend .wl-key span{display:inline-flex;align-items:center;gap:5px;}
+.vibrant .wlegend .wl-key i{width:9px;height:9px;border-radius:2px;display:inline-block;}
 .vibrant .obj-chip{font:inherit;font-weight:700;color:var(--oc);background:transparent;
  border:1.5px solid var(--line);border-radius:999px;padding:3px 11px;cursor:pointer;
  letter-spacing:.01em;}
@@ -2628,6 +2631,15 @@ _WALK_JS = r"""<script>
     var g=curEra();return g?{eff:g.eff,flow:g.flow,simp:g.simp}:AGG;}
   function score(e,v){var s=1,any=false;MK.forEach(function(m){if(e[m]&&v[m]!=null){s*=v[m];any=true;}});return any?Math.round(s):0;}
   function dimWave(e){document.querySelectorAll('#wave-svg rect[data-m]').forEach(function(r){r.setAttribute('opacity', e[r.getAttribute('data-m')]?'1':'0.12');});}
+  // light the region feeding the score: in day view the single hovered bar; in generation
+  // view the whole era, its band segment, and its rainfall (number -> the days it sums).
+  function activeEra(){return (CURP!=null&&PERIODS[CURP])?PERIODS[CURP].era:ERAIDX;}
+  function emphasize(){var ws=document.getElementById('wave-svg');if(!ws)return;var day=(CURP!=null),ae=activeEra();
+    ws.querySelectorAll('.wv-bar').forEach(function(gg){var i=+gg.getAttribute('data-i'),e=+gg.getAttribute('data-era');
+      var on=day?(i===CURP):(ae==null||e===ae);gg.setAttribute('opacity',on?'1':(day?'0.28':'0.42'));});
+    ws.querySelectorAll('.wv-band').forEach(function(bd){bd.setAttribute('opacity',(!day&&+bd.getAttribute('data-era')===ae)?'0.16':'0');});
+    ws.querySelectorAll('.wv-rain').forEach(function(rn){rn.setAttribute('opacity',(!day&&+rn.getAttribute('data-era')===ae)?'0.4':'0');});
+    ws.querySelectorAll('.wv-score').forEach(function(tx){var e=+tx.getAttribute('data-era');tx.setAttribute('opacity',(ae==null||e===ae)?'1':'0.4');});}
   function setRec(e){if(!vbRec)return;var bc=best(e);
     if(bc&&recOk(e)){vbRec.innerHTML='<span class="rec-arrow">'+REC+'</span> shift toward <b>'+setup(bc)+'</b>';return;}
     // no move clears the noise (or no measurable baseline): say hold, do not point.
@@ -2661,7 +2673,7 @@ _WALK_JS = r"""<script>
     if(vbScore)vbScore.textContent=fmt(score(e,v));
     MK.forEach(function(m){var b=tog(m);if(!b)return;b.setAttribute('aria-pressed',e[m]?'true':'false');var bb=b.querySelector('b');if(bb)bb.textContent=fmtv(m,v[m]);});
     if(vbLabel)vbLabel.textContent=(CURP!=null?PERIODS[CURP].label+' ':(isLatest()?'':'that generation '))+'score';
-    dimWave(e);renderFx(e);setRec(e);
+    dimWave(e);emphasize();renderFx(e);setRec(e);
     if(vbDetail)vbDetail.innerHTML=detailHtml(e);}
   svg.querySelectorAll('.som-cell').forEach(function(cl){cl.style.cursor='pointer';
     cl.addEventListener('mouseenter',function(){var c=cell(cl.getAttribute('data-r'),cl.getAttribute('data-c'));
@@ -3018,63 +3030,133 @@ def render_waveform(report):
     comps = [(nE, "var(--accent)", "eff"), (nF, "var(--teal)", "flow"),
              (nS, "var(--good)", "simp")]
     totals = [sum(nrm[i] * unit for nrm, _, _ in comps) for i in range(n)]
-    bars = []
+
+    # the generations (same eras the map moves in and the line numbers 1/2/3): each
+    # period's era, the era's mean amplitude, its combined score and span.
+    change_idx = [i for i, b in enumerate(s) if b.get("changes") and 0 < i < n]
+    bounds = [0] + change_idx + [n]
+    era_id = [0] * n
+    era_mean_seq = [0.0] * n
+    escore, espan = {}, {}
+    eid = 0
+    for a, b in zip(bounds, bounds[1:]):
+        if b <= a:
+            continue
+        span = b - a
+        m = sum(totals[a:b]) / span
+        mE = sum(s[j]["eq"] for j in range(a, b)) / span
+        mF = sum(s[j]["flow"] for j in range(a, b)) / span
+        mS = sum(s[j]["simp"] for j in range(a, b)) / span
+        for j in range(a, b):
+            era_id[j], era_mean_seq[j] = eid, m
+        escore[eid], espan[eid] = round(mE * mF * mS), (a, b)
+        eid += 1
+    neras = eid
+
+    def _smooth(seq, w=5):
+        half, out = w // 2, []
+        for i in range(len(seq)):
+            lo, hi = max(0, i - half), min(len(seq), i + half + 1)
+            out.append(sum(seq[lo:hi]) / (hi - lo))
+        return out
+    # the smoothed generational amplitude: the piecewise era means, softened across the
+    # boundaries so the spine flows instead of stepping. This IS the centre line.
+    g = _smooth(era_mean_seq, 5)
+
+    def cx(i):
+        return i * bw + bw / 2
+    # the continuous smoothed band: a symmetric envelope around the centre, spanning the
+    # full width. The daily bars ride over this; where a day falls short of it a dashed
+    # notch shows the deficit (trend + residual, horizon-chart style).
+    top = [(0.0, cy - g[0] / 2)] + [(cx(i), cy - g[i] / 2) for i in range(n)] + [(W, cy - g[-1] / 2)]
+    bot = [(W, cy + g[-1] / 2)] + [(cx(i), cy + g[i] / 2) for i in range(n - 1, -1, -1)] + [(0.0, cy + g[0] / 2)]
+    band = ('<polygon points="'
+            + " ".join(f"{x:.1f},{y:.1f}" for x, y in top + bot)
+            + '" fill="var(--ink)" opacity="0.09"/>'
+            + f'<line x1="0" y1="{cy}" x2="{W}" y2="{cy}" stroke="var(--ink)" '
+              f'stroke-width="0.8" opacity="0.22"/>')
+    # a per-era highlight of that band segment, lit by JS for the generation feeding the
+    # score (hidden otherwise).
+    bandhl = []
+    for e in range(neras):
+        a, b = espan[e]
+        seg = ([(cx(i), cy - g[i] / 2) for i in range(a, b)]
+               + [(cx(i), cy + g[i] / 2) for i in range(b - 1, a - 1, -1)])
+        bandhl.append(f'<polygon class="wv-band" data-era="{e}" points="'
+                      + " ".join(f"{x:.1f},{y:.1f}" for x, y in seg)
+                      + '" fill="var(--ink)" opacity="0"/>')
+
+    wd = max(bw - 1.4, 0.8)
+    bars, deficits = [], []
     for i in range(n):
         segs = [(nrm[i] * unit, color, m) for nrm, color, m in comps]
         total = totals[i]
         y = cy - total / 2
         x = i * bw
-        wd = max(bw - 1.4, 0.8)
-        g = [f'<g class="wv-bar" data-i="{i}">'
-             f'<rect x="{x:.1f}" y="0" width="{bw:.2f}" height="{H}" '
-             f'fill="transparent" pointer-events="all"/>']
+        grp = [f'<g class="wv-bar" data-i="{i}" data-era="{era_id[i]}">'
+               f'<rect x="{x:.1f}" y="0" width="{bw:.2f}" height="{H}" '
+               f'fill="transparent" pointer-events="all"/>']
         for hgt, color, m in segs:
             if hgt >= 0.4:
-                g.append(f'<rect data-m="{m}" x="{x:.1f}" y="{y:.1f}" width="{wd:.1f}" '
-                         f'height="{hgt:.1f}" fill="{color}"/>')
+                grp.append(f'<rect data-m="{m}" x="{x:.1f}" y="{y:.1f}" width="{wd:.1f}" '
+                           f'height="{hgt:.1f}" fill="{color}"/>')
             y += hgt
-        g.append('</g>')
-        bars.append("".join(g))
+        grp.append('</g>')
+        bars.append("".join(grp))
+        # a day below its generation: a dashed notch fills the gap up to the smoothed line,
+        # top and bottom, so a short day reads as a shortfall, not just a small bar.
+        if g[i] - total > 1.2:
+            dw = max(wd - 1.0, 0.8)
+            deficits.append(
+                f'<line x1="{cx(i):.1f}" y1="{cy - g[i] / 2:.1f}" x2="{cx(i):.1f}" '
+                f'y2="{cy - total / 2:.1f}" stroke="var(--muted)" stroke-width="{dw:.1f}" '
+                f'stroke-dasharray="1.5 2" opacity="0.5"/>'
+                f'<line x1="{cx(i):.1f}" y1="{cy + total / 2:.1f}" x2="{cx(i):.1f}" '
+                f'y2="{cy + g[i] / 2:.1f}" stroke="var(--muted)" stroke-width="{dw:.1f}" '
+                f'stroke-dasharray="1.5 2" opacity="0.5"/>')
 
-    # the smoothed generations, drawn ON THE SAME wave: one faint block per era (the same
-    # eras the map moves in and the line below numbers 1/2/3), its height the era's mean
-    # amplitude, labelled with the era's combined score. The daily bars vibrate inside it,
-    # so you read generation-vs-generation and day-to-day at once, without the chart below.
-    change_idx = [i for i, b in enumerate(s) if b.get("changes") and 0 < i < n]
-    bounds = [0] + change_idx + [n]
-    blocks, dividers, labels = [], [], []
-    for a, b in zip(bounds, bounds[1:]):
-        if b <= a:
-            continue
-        span = b - a
-        mean_tot = sum(totals[a:b]) / span
-        mE = sum(s[j]["eq"] for j in range(a, b)) / span
-        mF = sum(s[j]["flow"] for j in range(a, b)) / span
-        mS = sum(s[j]["simp"] for j in range(a, b)) / span
-        score = round(mE * mF * mS)
-        x0, x1 = a * bw, b * bw
-        yt, yb = cy - mean_tot / 2, cy + mean_tot / 2
-        blocks.append(f'<rect x="{x0:.1f}" y="{yt:.1f}" width="{(x1 - x0):.1f}" '
-                      f'height="{mean_tot:.1f}" fill="var(--ink)" opacity="0.055"/>'
-                      f'<line x1="{x0:.1f}" y1="{yt:.1f}" x2="{x1:.1f}" y2="{yt:.1f}" '
-                      f'stroke="var(--ink)" stroke-width="1.4" opacity="0.45"/>'
-                      f'<line x1="{x0:.1f}" y1="{yb:.1f}" x2="{x1:.1f}" y2="{yb:.1f}" '
-                      f'stroke="var(--ink)" stroke-width="1.4" opacity="0.45"/>')
-        labels.append(f'<text x="{((x0 + x1) / 2):.1f}" y="{max(9.0, yt - 3):.1f}" '
+    labels, rain, dividers = [], [], []
+    for e in range(neras):
+        a, b = espan[e]
+        xm = ((a * bw) + (b * bw)) / 2
+        gt = cy - max(g[i] for i in range(a, b)) / 2
+        ly = max(9.0, gt - 4)
+        labels.append(f'<text class="wv-score" data-era="{e}" x="{xm:.1f}" y="{ly:.1f}" '
                       f'text-anchor="middle" font-size="10.5" font-weight="700" '
-                      f'fill="var(--ink2)">{_fmt_tok(score)}</text>')
+                      f'fill="var(--ink2)">{_fmt_tok(escore[e])}</text>')
+        # the "rainfall": short dotted lines from the score down onto the region it sums,
+        # lit by JS only for the active generation (ties the number to its own days).
+        for k in range(3):
+            rx = xm + (k - 1) * 5.5
+            rain.append(f'<line class="wv-rain" data-era="{e}" x1="{rx:.1f}" y1="{ly + 3:.1f}" '
+                        f'x2="{rx:.1f}" y2="{gt - 1:.1f}" stroke="var(--ink2)" '
+                        f'stroke-width="1" stroke-dasharray="1 2" opacity="0"/>')
         if a > 0:
-            dividers.append(f'<line x1="{x0:.1f}" y1="2" x2="{x0:.1f}" y2="{H - 2}" '
+            dividers.append(f'<line x1="{a * bw:.1f}" y1="2" x2="{a * bw:.1f}" y2="{H - 2}" '
                             f'stroke="var(--ink)" stroke-width="1" stroke-dasharray="2 3" '
-                            f'opacity="0.35"/>')
-    # order: faint blocks + dividers behind, daily bars on top, era scores on top of all.
+                            f'opacity="0.28"/>')
+    # the smoothed generational contour, drawn ON TOP of the bars so the centre line reads
+    # as the reference the daily bars ride over (above = beat the generation, below = the
+    # dashed deficit). Continuous polylines, one per envelope edge.
+    te = " ".join(f"{cx(i):.1f},{cy - g[i] / 2:.1f}" for i in range(n))
+    be = " ".join(f"{cx(i):.1f},{cy + g[i] / 2:.1f}" for i in range(n))
+    edges = (f'<polyline points="{te}" fill="none" stroke="var(--ink)" stroke-width="1.7" '
+             f'opacity="0.6" stroke-linejoin="round"/>'
+             f'<polyline points="{be}" fill="none" stroke="var(--ink)" stroke-width="1.7" '
+             f'opacity="0.6" stroke-linejoin="round"/>')
+    # back to front: smooth band + its per-era highlights + centre, deficits, dividers,
+    # the daily bars, the smoothed contour, then the rainfall and era scores on top.
     svg = (f'<svg id="wave-svg" viewBox="0 0 {W} {H}" role="img" aria-label="the combined '
-           f'score over time as a stacked waveform: daily bars of efficiency, flow and '
-           f'simplicity inside one faint block per generation, labelled with its score">'
-           f'{"".join(blocks)}{"".join(dividers)}{"".join(bars)}{"".join(labels)}</svg>')
-    note = ('<div class="wlegend"><span class="wl-note">each block is a generation '
-            '(its score labelled); hover a bar for that day, click to hold a generation</span>'
-            '</div>')
+           f'score over time: a smoothed generational band with daily bars riding over it, '
+           f'a dashed notch where a day fell below its generation, each generation labelled '
+           f'with its score">{band}{"".join(bandhl)}{"".join(deficits)}{"".join(dividers)}'
+           f'{"".join(bars)}{edges}{"".join(rain)}{"".join(labels)}</svg>')
+    note = ('<div class="wlegend"><span class="wl-key">'
+            '<span><i style="background:var(--accent)"></i>efficiency</span>'
+            '<span><i style="background:var(--teal)"></i>flow</span>'
+            '<span><i style="background:var(--good)"></i>simplicity</span></span>'
+            '<span class="wl-note">smooth band = each generation\'s level; a dashed notch '
+            '= a day below its generation</span></div>')
     return (f'<div class="wave">{svg}{note}</div>')
 
 
