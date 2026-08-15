@@ -51,19 +51,21 @@ def test_structure(fails):
     out = vr.render_walk(REPORT)
     check('id="map-you"' in out, "no map-you svg id", fails)
     check('data-r="2" data-c="2"' in out, "cells not queryable by data-r/data-c", fails)
-    check("som-here" in out, "no scrubber marker", fails)
-    check('id="walk-scrub"' in out and 'id="walk-detail"' in out, "no scrubber/detail", fails)
+    check("som-here" in out, "no position marker", fails)
+    check("obj-arrow" in out, "no JS-owned objective arrow group", fails)
+    check('id="walk-detail"' in out, "no detail panel", fails)
     check("<script>" in out, "no walk script", fails)
-    # the walk and meaning are embedded (placeholders substituted)
-    check("__WALK__" not in out and "__CM__" not in out, "placeholders not filled", fails)
-    check('"cell":[2,2]' in out or '"cell": [2, 2]' in out or '[2,2]' in out,
-          "walk data not embedded", fails)
+    # per-cell metrics and per-period series are embedded (placeholders substituted)
+    check("__CELLS__" not in out and "__PERIODS__" not in out and "__CUR__" not in out,
+          "placeholders not filled", fails)
     check('"engine":"workflow"' in out or "workflow" in out, "cell meaning not embedded", fails)
+    check('"simp":' in out or "simp" in out, "per-cell metrics not embedded", fails)
 
 
 def test_no_external_refs(fails):
-    out = vr.render_walk(REPORT)
-    # internal url(#clip) fragment refs are fine; only external references are banned.
+    # the SVG namespace URI (createElementNS) is not a network load; internal url(#..)
+    # fragment refs are fine. Only genuine external references are banned.
+    out = vr.render_walk(REPORT).replace("http://www.w3.org/2000/svg", "")
     for bad in ("http://", "https://", "url(http", "url(//", "src="):
         check(bad not in out, f"external ref {bad!r}", fails)
 

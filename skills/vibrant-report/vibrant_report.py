@@ -38,7 +38,7 @@ import os
 import re
 import sys
 import urllib.request
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -843,6 +843,29 @@ def frontier_eq(entry):
     return (1.0 / d) if d else None
 
 
+def _rig_objective_metrics(metrics, attribution, misery_block):
+    """Per rig (model_roles): the three objectives the descent can optimize, grounded
+    in the by-rig git attribution so each SOM cell inherits its dominant setup's
+    numbers. efficiency = changes per Mtok output; simplicity = 100 - complexity per
+    change; flow = 100 - misery. Any may be None when its input is missing."""
+    out_by = defaultdict(float)
+    for m in metrics:
+        out_by[m.get("model_roles")] += m.get("out_tok", 0)
+    cx = (attribution or {}).get("by_model_roles") or {}
+    mis = (misery_block or {}).get("by_model_roles") or {}
+    stats = {}
+    for rig, v in cx.items():
+        om = out_by.get(rig, 0) / 1e6
+        commits = v.get("commits", 0)
+        ncx = v.get("net_complexity", 0)
+        m_ = mis.get(rig)
+        stats[rig] = {
+            "eff": round(commits / om, 2) if om else None,
+            "simp": round(max(0.0, 100 - ncx / commits), 1) if commits else None,
+            "flow": round(100 - m_, 1) if m_ is not None else None}
+    return stats
+
+
 def rig_stats(metrics, attribution, misery_block):
     """Per rig-config (orchestrator -> worker): efficiency (durable complexity per
     Mtok output), misery, and session count, from the operator's OWN data. This is
@@ -1002,7 +1025,8 @@ def _drift_path(cells, days, response=0.20, cap=14):
     return _downsample(out, cap)
 
 
-def som_map(metrics, som_cache, move, field_window_days=14, now_day=None):
+def som_map(metrics, som_cache, move, field_window_days=14, now_day=None,
+            attribution=None, misery_block=None):
     """The learned-map consumer (som_consume.spec.md): joins the trained SOM's
     per-session BMU coordinates to the driver's metrics, and turns the join into
     a trajectory across the lattice, a time-windowed descriptive field
@@ -1063,11 +1087,17 @@ def som_map(metrics, som_cache, move, field_window_days=14, now_day=None):
     # per-cell meaning (for hover) and the per-session walk (for the time scrubber):
     # what each hex is (your dominant setup there) and how each session scored and where
     # it fell. This is what makes the map interactive and lets you replay the walk.
+    rig_obj = _rig_objective_metrics(metrics, attribution, misery_block)
     by_cell_all = defaultdict(list)
     for m in joined:
         by_cell_all[tuple(sid_to_bmu[m["sid"]])].append(m)
     cell_meaning = []
     for (r, c), ms in sorted(by_cell_all.items()):
+        dom_roles = modal([m.get("model_roles") for m in ms])
+        obj = rig_obj.get(dom_roles, {})
+        # flow is directly per-cell (misery is per session); efficiency and simplicity
+        # come from the cell's dominant setup (they are git-attributed by rig).
+        cell_flows = [100 - m["misery"] for m in ms if m.get("misery") is not None]
         cell_meaning.append({
             "cell": [r, c],
             "engine": modal([m.get("engine") for m in ms]),
@@ -1075,7 +1105,11 @@ def som_map(metrics, som_cache, move, field_window_days=14, now_day=None):
             "worker": modal([m.get("worker") for m in ms]),
             "effort": modal([m.get("effort") for m in ms]),
             "sessions": len(ms),
-            "cost": field[r][c]})
+            "cost": field[r][c],
+            "eff": obj.get("eff"),
+            "flow": (round(sum(cell_flows) / len(cell_flows), 1) if cell_flows
+                     else obj.get("flow")),
+            "simp": obj.get("simp")})
 
     def _sess_cost(m):
         survc = m["born"] - m["killed"]
@@ -1146,7 +1180,8 @@ def rig_space(metrics, attribution, misery_block, field_window_days=14, som_cach
     # the learned map, additive over the hand-written trajectory above: only
     # attached when a SOM cache is present, so a no-cache run stays byte-identical.
     if som_cache:
-        result["som"] = som_map(metrics, som_cache, move, field_window_days)
+        result["som"] = som_map(metrics, som_cache, move, field_window_days,
+                                attribution=attribution, misery_block=misery_block)
     return result
 
 
@@ -1949,9 +1984,19 @@ _CSS = """
 .vibrant .cparts b{font-variant-numeric:tabular-nums;}
 .vibrant .wave{margin:0 0 24px;}
 .vibrant .wave svg{width:100%;height:auto;}
-.vibrant .wlegend{display:flex;flex-wrap:wrap;gap:16px;margin-top:8px;font-size:12px;
- font-weight:700;}
-.vibrant .wlegend .wl-note{color:var(--muted);font-weight:400;margin-left:auto;}
+.vibrant .wlegend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:12px;
+ font-weight:700;align-items:center;}
+.vibrant .wlegend .wl-note{color:var(--muted);font-weight:400;margin-left:auto;
+ font-size:11px;}
+.vibrant .obj-chip{font:inherit;font-weight:700;color:var(--oc);background:transparent;
+ border:1.5px solid var(--line);border-radius:999px;padding:3px 11px;cursor:pointer;
+ letter-spacing:.01em;}
+.vibrant .obj-chip:hover{border-color:var(--oc);}
+.vibrant .obj-chip[aria-pressed=true]{border-color:var(--oc);
+ box-shadow:inset 0 0 0 1px var(--oc);}
+.vibrant .wv-bar{cursor:crosshair;}
+.vibrant #vb-summary{font-size:12.5px;color:var(--ink2);margin-top:10px;min-height:17px;}
+.vibrant #vb-summary b{color:var(--rust);}
 @media (max-width:560px){.vibrant .cv{font-size:56px;}}
 .vibrant .row-h{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
  color:var(--muted);margin:0 0 10px;}
@@ -2145,7 +2190,8 @@ _SOM_STYLES = {
 
 def render_som_map(som_block, title="Where you work",
                    subtitle="each hexagon is a way you work, shaded by what it costs",
-                   legend_bits=None, style="classic", compact=False, svg_id=None):
+                   legend_bits=None, style="classic", compact=False, svg_id=None,
+                   js_arrow=False):
     """The learned SOM lattice (item 4): a rows x cols grid shaded by cost per
     cell, the trajectory that walked it, the current cell, and the arrow to a
     cheaper cell already sometimes used. Pure function of rig_space['som'];
@@ -2282,7 +2328,7 @@ def render_som_map(som_block, title="Where you work",
         tgt_xy = (tx, ty)
         dx, dy = tx - sx, ty - sy
         dist = (dx * dx + dy * dy) ** 0.5
-        if dist > 1e-6:
+        if dist > 1e-6 and not js_arrow:
             # the arrow to a cheaper setup shows on the minis too, so "where is better"
             # reads even at marquee size.
             head, sw, tgap, sgap, hw = (5.0, 2.0, 6, 7, 3.0) if compact \
@@ -2320,8 +2366,11 @@ def render_som_map(som_block, title="Where you work",
             return cy - 18 if cy - 18 > pad_t + 4 else cy + 18
         if cur_xy:
             parts.append(_pill(cur_xy[0], _label_y(cur_xy[1]), "you", pal["cur_stroke"]))
-        if tgt_xy:
+        if tgt_xy and not js_arrow:
             parts.append(_pill(tgt_xy[0], _label_y(tgt_xy[1]), "cheaper", pal["arrow"]))
+    if js_arrow:
+        # JS owns the arrow so it can re-aim per objective; empty group to fill in.
+        parts.append('<g class="obj-arrow"></g>')
     if svg_id:
         # the scrubber's moving marker (positioned by JS from a cell's geometry).
         parts.append('<circle class="som-here" r="0" fill="none" '
@@ -2484,81 +2533,132 @@ def _arm_phrase(arm_change):
     return f"{'Lower' if lower else 'Raise'} {name} from {frm} to {to}"
 
 
-_WALK_JS = """<script>
+_WALK_JS = r"""<script>
 (function(){
-  var W=__WALK__, CM=__CM__, ARM=__ARM__;
+  var CELLS=__CELLS__, PERIODS=__PERIODS__, CUR=__CUR__;
   var svg=document.getElementById('map-you'); if(!svg) return;
-  var detail=document.getElementById('walk-detail');
-  var scrub=document.getElementById('walk-scrub');
-  var lab=document.getElementById('walk-scrub-label');
-  var here=svg.querySelector('.som-here');
-  function ctr(r,c){var el=svg.querySelector('[data-r="'+r+'"][data-c="'+c+'"]');
-    if(!el)return null;var b=el.getBBox();
-    return {x:b.x+b.width/2,y:b.y+b.height/2,r:b.width/2+3};}
-  function money(v){return v==null?'n/a':(v<10?'$'+v.toFixed(1):'$'+Math.round(v));}
-  function meaning(r,c){var m=CM[r+','+c];
-    if(!m)return '<b>unused</b>, no sessions landed here';
-    var w=(m.worker&&m.worker!=='solo')?(' \\u203a '+m.worker):'';
-    return '<b>'+m.engine+' \\u00b7 '+m.model+w+' \\u00b7 '+m.effort+' effort</b><br>'
-      +m.sessions+' session'+(m.sessions==1?'':'s')+' \\u00b7 '+money(m.cost)+' per KB kept';}
+  var det=document.getElementById('walk-detail');
+  var vbScore=document.getElementById('vb-score'), vbParts=document.getElementById('vb-parts'),
+      vbSum=document.getElementById('vb-summary'), vbLabel=document.getElementById('vb-label');
+  var here=svg.querySelector('.som-here'), objg=svg.querySelector('.obj-arrow');
+  var OBJC={eff:'var(--accent)',flow:'var(--teal)',simp:'var(--good)',balanced:'var(--rust)'};
+  var OBJN={eff:'efficiency',flow:'flow',simp:'simplicity',balanced:'balance'};
+  var MID='·', ARR='›';
+  var cmap={}; CELLS.forEach(function(c){cmap[c.r+','+c.c]=c;});
+  function cell(r,c){return cmap[r+','+c];}
+  function center(r,c){var el=svg.querySelector('[data-r="'+r+'"][data-c="'+c+'"]');
+    if(!el)return null;var b=el.getBBox();return {x:b.x+b.width/2,y:b.y+b.height/2,r:b.width/2+3};}
+  function money(v){return v==null?'n/a':(v<10?'$'+(+v).toFixed(1):'$'+Math.round(v));}
+  function setup(c){if(!c)return 'unused';
+    var w=(c.worker&&c.worker!=='solo')?(' '+ARR+' '+c.worker):'';
+    return c.engine+' '+MID+' '+c.model+w+' '+MID+' '+c.effort;}
+  function rng(k){var vs=CELLS.map(function(c){return c[k];}).filter(function(v){return v!=null;});
+    return vs.length?{lo:Math.min.apply(null,vs),hi:Math.max.apply(null,vs)}:null;}
+  var R={eff:rng('eff'),flow:rng('flow'),simp:rng('simp')};
+  function nrm(c,k){var r=R[k];if(!r||c[k]==null)return null;return (c[k]-r.lo)/((r.hi-r.lo)||1);}
+  function good(c,o){if(o==='balanced'){var a=nrm(c,'eff'),b=nrm(c,'flow'),d=nrm(c,'simp');
+    if(a==null||b==null||d==null)return null;
+    return Math.cbrt(Math.max(a,.001)*Math.max(b,.001)*Math.max(d,.001));}
+    return nrm(c,o);}
+  function best(o){var bc=null,bg=-1;CELLS.forEach(function(c){if((c.sessions||0)<2)return;
+    var g=good(c,o);if(g!=null&&g>bg){bg=g;bc=c;}});return bc;}
+  function drawArrow(fc,tc,color){objg.innerHTML='';if(!fc||!tc)return;
+    var a=center(fc[0],fc[1]),b=center(tc[0],tc[1]);if(!a||!b)return;
+    var dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);if(d<1)return;
+    var ux=dx/d,uy=dy/d,px=-uy,py=ux,h=9;
+    var tx=b.x-ux*13,ty=b.y-uy*13,bx=tx-ux*h,by=ty-uy*h,sx=a.x+ux*14,sy=a.y+uy*14;
+    objg.innerHTML='<circle class="som-arrow" cx="'+b.x+'" cy="'+b.y+'" r="'+b.r+'" fill="none" stroke="'+color+'" stroke-width="2" opacity="0.5"/>'
+      +'<line class="som-arrow" x1="'+sx+'" y1="'+sy+'" x2="'+bx+'" y2="'+by+'" stroke="'+color+'" stroke-width="2.8" stroke-linecap="round"/>'
+      +'<polygon class="som-arrow" points="'+tx+','+ty+' '+(bx+px*4.7)+','+(by+py*4.7)+' '+(bx-px*4.7)+','+(by-py*4.7)+'" fill="'+color+'"/>';
+    objg.querySelectorAll('.som-arrow').forEach(function(el){el.style.cursor='pointer';
+      el.addEventListener('mouseenter',armHover);});}
+  var pathg=document.createElementNS('http://www.w3.org/2000/svg','g'); svg.appendChild(pathg);
+  var OBJ='balanced';
+  function fmt(n){return (+n).toLocaleString();}
+  function markCur(){var p=center(CUR[0],CUR[1]);
+    if(p){here.setAttribute('cx',p.x);here.setAttribute('cy',p.y);here.setAttribute('r',p.r);here.setAttribute('opacity','1');}}
+  function setObjective(o){OBJ=o;
+    document.querySelectorAll('.obj-chip').forEach(function(ch){
+      ch.setAttribute('aria-pressed', ch.getAttribute('data-obj')===o?'true':'false');});
+    var b=best(o); drawArrow(CUR,b&&[b.r,b.c],OBJC[o]);
+    var cur=cell(CUR[0],CUR[1]);
+    var same=b&&b.r===CUR[0]&&b.c===CUR[1];
+    vbSum.innerHTML= !b? ('Optimizing for <b>'+OBJN[o]+'</b>.')
+      : same? ('You are already where <b>'+OBJN[o]+'</b> is best ('+setup(b)+').')
+      : ('Optimizing for <b>'+OBJN[o]+'</b>: shift toward <b>'+setup(b)+'</b>, from '+setup(cur)+'.');}
+  function armHover(){var b=best(OBJ);
+    if(det&&b)det.innerHTML='<span class="wd-h">the move</span> to get more '+OBJN[OBJ]+', shift toward '+setup(b)+'.';}
+  function drawPath(upto){while(pathg.firstChild)pathg.removeChild(pathg.firstChild);
+    for(var k=0;k<=upto;k++){var pc=PERIODS[k].cell;if(!pc)continue;var p=center(pc[0],pc[1]);if(!p)continue;
+      var t=upto>0?k/upto:1;var el=document.createElementNS('http://www.w3.org/2000/svg','circle');
+      el.setAttribute('cx',p.x);el.setAttribute('cy',p.y);el.setAttribute('r',(1.6+2.4*t).toFixed(1));
+      el.setAttribute('fill','var(--ink)');el.setAttribute('opacity',(0.1+0.35*t).toFixed(2));pathg.appendChild(el);}}
+  var INIT=null;
+  function capture(){INIT={s:vbScore?vbScore.textContent:'',p:vbParts?vbParts.innerHTML:'',l:vbLabel?vbLabel.textContent:''};}
+  function setPeriod(i){var p=PERIODS[i];if(!p)return;
+    if(p.cell){var c=center(p.cell[0],p.cell[1]);
+      if(c){here.setAttribute('cx',c.x);here.setAttribute('cy',c.y);here.setAttribute('r',c.r);here.setAttribute('opacity','1');}}
+    drawPath(i);
+    if(vbScore)vbScore.textContent=fmt(p.comb);
+    if(vbParts)vbParts.innerHTML='<span><b style="color:var(--accent)">'+p.eff+'</b> efficiency</span>'
+      +'<span><b style="color:var(--teal)">'+p.flow+'</b> flow</span>'
+      +'<span><b style="color:var(--good)">'+p.simp+'</b> simplicity</span>';
+    if(vbLabel)vbLabel.textContent=p.label+' score';
+    var loc=p.cell?cell(p.cell[0],p.cell[1]):null;
+    vbSum.innerHTML='<b>'+p.label+'</b>: you mostly worked as '+setup(loc)+'.';}
+  function resetTime(){if(!INIT)return;
+    if(vbScore)vbScore.textContent=INIT.s;if(vbParts)vbParts.innerHTML=INIT.p;
+    if(vbLabel)vbLabel.textContent=INIT.l;
+    while(pathg.firstChild)pathg.removeChild(pathg.firstChild); markCur(); setObjective(OBJ);}
   svg.querySelectorAll('.som-cell').forEach(function(el){el.style.cursor='pointer';
-    el.addEventListener('mouseenter',function(){
-      detail.innerHTML='<span class="wd-h">this hex</span> '
-        +meaning(el.getAttribute('data-r'),el.getAttribute('data-c'));});});
-  svg.querySelectorAll('.som-arrow').forEach(function(el){el.style.cursor='pointer';
-    el.addEventListener('mouseenter',function(){ if(ARM)
-      detail.innerHTML='<span class="wd-h">the move</span> '+ARM+
-        '. The arrow points from where you are to a cheaper setup you already use.';});});
-  function show(i){var w=W[i];var p=ctr(w.cell[0],w.cell[1]);
-    if(p){here.setAttribute('cx',p.x);here.setAttribute('cy',p.y);
-      here.setAttribute('r',p.r);here.setAttribute('opacity','1');}
-    detail.innerHTML='<span class="wd-h">'+w.day+'</span> '+(w.engine||'?')+' \\u00b7 '
-      +(w.model||'?')+' \\u00b7 '+(w.effort||'?')+', flow '+(w.flow==null?'n/a':w.flow)
-      +' \\u00b7 '+money(w.cost)+' per KB';
-    lab.textContent=w.day+'  '+(i+1)+'/'+W.length;}
-  scrub.addEventListener('input',function(){show(+scrub.value);});
-  show(W.length-1);
+    el.addEventListener('mouseenter',function(){var c=cell(el.getAttribute('data-r'),el.getAttribute('data-c'));
+      if(!det)return;
+      det.innerHTML=c?('<span class="wd-h">'+setup(c)+'</span> '+c.sessions+' session'+(c.sessions==1?'':'s')
+        +', '+money(c.cost)+' per KB, efficiency '+(c.eff==null?'n/a':c.eff)+', flow '+(c.flow==null?'n/a':c.flow)
+        +', simplicity '+(c.simp==null?'n/a':c.simp))
+        :'<span class="wd-h">unused</span> no sessions landed here';});});
+  document.querySelectorAll('.wv-bar').forEach(function(g){
+    g.addEventListener('mouseenter',function(){setPeriod(+g.getAttribute('data-i'));});});
+  var wsvg=document.getElementById('wave-svg');
+  if(wsvg)wsvg.addEventListener('mouseleave',resetTime);
+  document.querySelectorAll('.obj-chip').forEach(function(ch){
+    ch.addEventListener('click',function(){setObjective(ch.getAttribute('data-obj'));});});
+  capture(); markCur(); setObjective('balanced');
 })();
 </script>"""
 
 
 def render_walk(report):
-    """The interactive personal map: hover a hexagon to read what it is (your dominant
-    setup, sessions, cost there), and drag the scrubber to replay the walk session by
-    session, watching where each one landed and how it scored. Reuses render_som_map
-    for the drawing (svg id 'map-you'), then embeds the walk and per-cell meaning as
-    JSON and drives it with a small self-contained script. Empty when there is no
-    walk; the report is unchanged."""
+    """The interactive map, driven from the top. The waveform in the card is the time
+    control (hover a period and the score, breakdown, your position, the path so far and
+    the summary update); the objective chips re-aim the descent arrow (efficiency, flow,
+    simplicity, or balanced); hovering a hexagon or the arrow explains it. Reuses
+    render_som_map (svg id 'map-you', JS-owned arrow), embeds the per-cell metrics and
+    per-period series, and drives it with one self-contained script. Empty when there is
+    no walk."""
     som = (report.get("rig_space") or {}).get("som")
     if not som or not som.get("walk"):
         return ""
-    walk = som["walk"]
-    cm = {f"{m['cell'][0]},{m['cell'][1]}": {
+    cells = [{"r": m["cell"][0], "c": m["cell"][1], "eff": m.get("eff"),
+              "flow": m.get("flow"), "simp": m.get("simp"), "cost": m.get("cost"),
               "engine": m.get("engine"), "model": m.get("model"),
               "worker": m.get("worker"), "effort": m.get("effort"),
-              "sessions": m.get("sessions"), "cost": m.get("cost")}
-          for m in som.get("cell_meaning", [])}
+              "sessions": m.get("sessions")} for m in som.get("cell_meaning", [])]
+    periods = _timeline_periods(report)
+    cur = som.get("current_cell")
     themap = render_som_map(
-        som, style="ink-hex", svg_id="map-you", title="Where you work",
-        subtitle="hover a hexagon to see what it is; drag the slider to replay your walk")
-    controls = (
-        '<div class="walk">'
-        '<div id="walk-detail" class="walk-detail">Hover a hexagon to see what it is, '
-        'or drag the slider to replay your walk session by session.</div>'
-        '<div class="walk-scrub-row">'
-        f'<input type="range" id="walk-scrub" min="0" max="{len(walk) - 1}" '
-        f'value="{len(walk) - 1}" step="1" aria-label="replay your sessions over time">'
-        '<span id="walk-scrub-label" class="walk-scrub-label"></span>'
-        '</div></div>')
-
-    arm = _arm_phrase(((som.get("gradient") or {}).get("arm_change")))
+        som, style="ink-hex", svg_id="map-you", js_arrow=True, title="Where you work",
+        subtitle="hover the wave to scrub time; click a goal to aim the arrow; hover a "
+        "hexagon for detail")
+    detail = ('<div class="walk"><div id="walk-detail" class="walk-detail">Hover a '
+              'hexagon for what it is; hover the arrow for the move.</div></div>')
 
     def _safe(obj):
         return json.dumps(obj, separators=(",", ":")).replace("</", "<\\/")
-    script = (_WALK_JS.replace("__WALK__", _safe(walk))
-              .replace("__CM__", _safe(cm))
-              .replace("__ARM__", _safe(arm)))
-    return _WALK_CSS + themap + controls + script
+    script = (_WALK_JS.replace("__CELLS__", _safe(cells))
+              .replace("__PERIODS__", _safe(periods))
+              .replace("__CUR__", _safe(cur)))
+    return _WALK_CSS + themap + detail + script
 
 
 def _card_maps(report):
@@ -2600,7 +2700,7 @@ def _combined_series(report):
     waveform has no gaps. Newest last. [] when there is too little."""
     tline = report.get("timeline") or []
     over_flow = (report.get("misery") or {}).get("flow")
-    over_simp = report["topline"].get("simplicity")
+    over_simp = (report.get("topline") or {}).get("simplicity")
     out = []
     for r in tline:
         eq = r.get("eq")
@@ -2614,6 +2714,31 @@ def _combined_series(report):
             continue
         out.append({"eq": eq, "flow": flow, "simp": simp,
                     "comb": eq * flow * simp, "label": r.get("week")})
+    return out
+
+
+def _timeline_periods(report):
+    """Per timeline period: the combined score and its three components, plus the cell
+    you mostly worked in that period (the modal BMU of that period's sessions, carried
+    forward when a period has none). This is what the waveform hover drives everything
+    from. [] when too little."""
+    s = _combined_series(report)
+    if len(s) < 3:
+        return []
+    som = (report.get("rig_space") or {}).get("som") or {}
+    walk = som.get("walk") or []
+    gran = ((report.get("fuel_and_work") or {}).get("granularity")) or "week"
+    by_label = defaultdict(list)
+    for w in walk:
+        if w.get("day"):
+            by_label[_bucket(w["day"], gran)[1]].append(tuple(w["cell"]))
+    out, last = [], None
+    for b in s:
+        cells = by_label.get(b["label"])
+        cell = list(Counter(cells).most_common(1)[0][0]) if cells else last
+        last = cell if cell is not None else last
+        out.append({"label": b["label"], "comb": round(b["comb"]),
+                    "eff": b["eq"], "flow": b["flow"], "simp": b["simp"], "cell": cell})
     return out
 
 
@@ -2653,20 +2778,29 @@ def render_waveform(report):
         y = cy - total / 2
         x = i * bw
         wd = max(bw - 1.4, 0.8)
+        g = [f'<g class="wv-bar" data-i="{i}">'
+             f'<rect x="{x:.1f}" y="0" width="{bw:.2f}" height="{H}" '
+             f'fill="transparent" pointer-events="all"/>']
         for hgt, color in segs:
-            if hgt < 0.4:
-                continue
-            bars.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{wd:.1f}" '
-                        f'height="{hgt:.1f}" fill="{color}"/>')
+            if hgt >= 0.4:
+                g.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{wd:.1f}" '
+                         f'height="{hgt:.1f}" fill="{color}"/>')
             y += hgt
-    svg = (f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="the combined score over '
-           f'time as a stacked waveform: efficiency, flow and simplicity in one bar per '
-           f'period">{"".join(bars)}</svg>')
-    legend = ('<div class="wlegend"><span style="color:var(--accent)">efficiency</span>'
-              '<span style="color:var(--teal)">flow</span>'
-              '<span style="color:var(--good)">simplicity</span>'
-              '<span class="wl-note">oldest left, newest right; taller is better</span>'
-              '</div>')
+        g.append('</g>')
+        bars.append("".join(g))
+    svg = (f'<svg id="wave-svg" viewBox="0 0 {W} {H}" role="img" aria-label="the combined '
+           f'score over time as a stacked waveform: efficiency, flow and simplicity in '
+           f'one bar per period">{"".join(bars)}</svg>')
+
+    def chip(obj, color, label):
+        return (f'<button type="button" class="obj-chip" data-obj="{obj}" '
+                f'style="--oc:{color}">{esc(label)}</button>')
+    legend = ('<div class="wlegend">' + chip("eff", "var(--accent)", "efficiency")
+              + chip("flow", "var(--teal)", "flow")
+              + chip("simp", "var(--good)", "simplicity")
+              + chip("balanced", "var(--rust)", "balanced")
+              + '<span class="wl-note">click a goal to aim the arrow; '
+              + 'hover the wave to scrub time</span></div>')
     return (f'<div class="wave">{svg}{legend}</div>')
 
 
@@ -2720,15 +2854,17 @@ def _hero_card(report):
         comps.append(f'<span><b style="color:var(--good)">{simp:.0f}</b> simplicity</span>')
     if eff is not None and flow is not None and simp is not None:
         combined = round(eff * flow * simp)
-        hero = (f'<div class="combined"><div class="cv" title="efficiency x flow x '
-                f'simplicity, each larger is better, rolled into one; watch it move, '
-                f'not its absolute size">{combined:,}</div>'
-                f'<div class="cn">score</div>'
-                f'<div class="cparts">{"".join(comps)}</div></div>')
+        hero = (f'<div class="combined"><div class="cv" id="vb-score" '
+                f'title="efficiency x flow x simplicity, each larger is better, rolled '
+                f'into one; watch it move, not its absolute size">{combined:,}</div>'
+                f'<div class="cn" id="vb-label">score</div>'
+                f'<div class="cparts" id="vb-parts">{"".join(comps)}</div>'
+                f'<div id="vb-summary"></div></div>')
     else:
-        hero = (f'<div class="combined"><div class="cv">{esc(str(eff))}</div>'
-                f'<div class="cn">efficiency</div>'
-                f'<div class="cparts">{"".join(comps)}</div></div>')
+        hero = (f'<div class="combined"><div class="cv" id="vb-score">{esc(str(eff))}'
+                f'</div><div class="cn" id="vb-label">efficiency</div>'
+                f'<div class="cparts" id="vb-parts">{"".join(comps)}</div>'
+                f'<div id="vb-summary"></div></div>')
     _ = fp  # fingerprint data stays in report["fingerprint"]; the maps render it below
     return "".join([
         '<div class="card">',
