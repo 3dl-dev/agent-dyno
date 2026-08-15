@@ -193,7 +193,29 @@ a solid teal arrow to what you actually did next, a small key naming both (`dlin
 `.scrub-key`). Verified in headless chromium across periods where were/best/went coincide
 and diverge (drv_*.png in the somrun scratch dir).
 
-### Solid ribbon + Sankey flow to topline (updated 2026-08-15, LATEST)
+### Merge-sankey topline + colour-per-generation ribbon (updated 2026-08-15, LATEST)
+
+Operator: exaggerate the ribbon, colour each generation, show daily+rollup together; and
+restructure the topline as a sankey (e/f/s stacked LEFT flowing into the score on the
+RIGHT, group centred, timeline flowing up into the group), smooth curves only.
+
+- Wave: rollup exaggerated (`RT=0.52`); each generation is one continuous band in its own
+  categorical colour (`GEN` palette, kept clear of daily blue/teal/green); segments extend
+  to era boundaries so colours abut. `emphasize()` brightens the active generation (0.95)
+  and dims the rest (0.5); day-preview subdues all (0.32). Score labels take the gen colour.
+- Topline (`_hero_card`): `.combined` centres a `.topgroup` (inline-flex) holding `.cparts`
+  (now a right-aligned stacked column of `.mtog`), the `.score-col`, and an absolute
+  `#merge-flow` SVG behind them. `drawMerge()` draws one smooth ribbon per ENABLED metric
+  from its button into a vertical slice of the score's left edge, coloured `OBJC[m]`;
+  toggling a metric drops its stream and its factor from the score. `ribbon()` helper =
+  cubic-bezier band (no square edges).
+- `drawFlow()` retargeted: the timeline flow now goes up into a centred slice of the
+  topgroup's bottom edge (was the score alone).
+- All flows recompute in `refresh()` and on window `resize`. Verified headless
+  (tg2_default/tg2_simpoff, rib_crop in somrun scratch): 3 streams merge; simp-off leaves
+  2 and the score drops 124,660 -> 1,744; generations render rust/purple/amber/pink.
+
+### Solid ribbon + Sankey flow to topline (updated 2026-08-15, superseded by the section above)
 
 Operator refinements on the wave: (1) the generational element should be a tighter, solid
 color central bar; (2) the "which section feeds the topline" cue should be a subtle
