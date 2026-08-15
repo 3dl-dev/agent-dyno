@@ -2203,28 +2203,32 @@ def render_som_map(som_block, title="Where you work",
                 f'width="{cell}" height="{cell}" rx="4" {attrs}>{inner}</rect>')
 
     idattr = f' id="{svg_id}"' if svg_id else ''
-    # round the hex grid so it does not read as a hard square (the 3dl mark is a
-    # rounded hex SOM): clip the cells to an oval, so the block is a rounded cluster of
-    # hexagons rather than a rectangle. That is the whole shape change, nothing else.
-    clip_def, clip_use = "", ""
-    if hexed:
-        rk = svg_id or ("rh" + hashlib.md5(
-            (str(title) + str(rows) + str(cols)).encode()).hexdigest()[:8])
-        ecx, ecy = pad_l + gw / 2, pad_t + gh / 2
-        clip_def = (f'<clipPath id="rh-{rk}"><ellipse cx="{ecx:.1f}" cy="{ecy:.1f}" '
-                    f'rx="{gw / 2 * 1.18:.1f}" ry="{gh / 2 * 1.18:.1f}"/></clipPath>')
-        clip_use = f' clip-path="url(#rh-{rk})"'
+    # shape the grid as an oval by TAPERING columns per row: middle rows full width,
+    # the top and bottom rows narrower, so the outline is a rounded oval built from
+    # whole hexagons (no clipped corners). Cells outside the taper still exist for
+    # hover and the scrubber, but draw transparent so only the oval is visible.
+    rc0 = (rows - 1) / 2.0
+
+    def _row_span(r):
+        if not hexed or rows < 3:
+            return 0, cols
+        frac = math.sqrt(max(0.0, 1.0 - ((r - rc0) / (rc0 + 0.6)) ** 2))
+        ncol = max(1, round(cols * frac))
+        start = (cols - ncol) // 2
+        return start, start + ncol
     parts = [f'<svg{idattr} viewBox="0 0 {W:.0f} {H:.0f}" role="img" aria-label="learned '
-             f'working-style map: a rounded hex grid shaded by cost, with your position '
-             f'and the cheaper region">']
-    if clip_def:
-        parts.append(f'<defs>{clip_def}</defs>')
-    parts.append(f'<g{clip_use}>')
+             f'working-style map: a tapered oval of hexagons shaded by cost, with your '
+             f'position and the cheaper region">', '<g>']
     for r in range(rows):
+        c_lo, c_hi = _row_span(r)
         for c in range(cols):
             v = fval(r, c)
             cx, cy = center(r, c)
             dpos = f'data-r="{r}" data-c="{c}"'
+            if not (c_lo <= c < c_hi):
+                # outside the oval taper: present (hover/walk) but not drawn.
+                parts.append(cell_shape(cx, cy, f'{dpos} fill="rgba(0,0,0,0)"'))
+                continue
             if v is None:
                 dash = ' stroke-dasharray="2 2"' if pal["empty_dash"] else ''
                 eop = 0.7 if pal["empty_dash"] else 0.28
