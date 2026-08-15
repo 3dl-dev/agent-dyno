@@ -40,6 +40,25 @@ def test_empty(fails):
     check(vr.render_shared_map({"lattice": {}}, CURRENT, GRAD) == "", "no-lattice not empty", fails)
 
 
+def test_load_shared_map(fails):
+    import json
+    import os
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        check(vr.load_shared_map(d) == {}, "missing shared map not {}", fails)
+        p = os.path.join(d, "shared-map.json")
+        with open(p, "w") as f:
+            json.dump(MERGED, f)
+        got = vr.load_shared_map(d)
+        check(got.get("schema") == "vibrant/som-merged@1", "good shared map not loaded", fails)
+        with open(p, "w") as f:
+            json.dump({"schema": "nope"}, f)
+        check(vr.load_shared_map(d) == {}, "bad schema not rejected", fails)
+        with open(p, "w") as f:
+            f.write("{not json")
+        check(vr.load_shared_map(d) == {}, "corrupt not rejected", fails)
+
+
 def test_structure(fails):
     out = vr.render_shared_map(MERGED, CURRENT, GRAD)
     check("<svg" in out, "no svg", fails)
@@ -70,7 +89,7 @@ def test_determinism(fails):
 
 def main():
     fails = []
-    for t in (test_empty, test_structure, test_no_external_refs,
+    for t in (test_empty, test_load_shared_map, test_structure, test_no_external_refs,
               test_no_arrow_without_target, test_determinism):
         t(fails)
     if fails:

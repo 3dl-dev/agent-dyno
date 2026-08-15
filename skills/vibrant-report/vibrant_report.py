@@ -46,6 +46,7 @@ sys.path.insert(0, os.path.join(ROOT, "core"))
 
 import survival_git  # noqa: E402  (core/survival_git.py, after path insert)
 import horizon_attribute  # noqa: E402  (core/horizon_attribute.py, the commit<->session join)
+import som_merge  # noqa: E402  (core/som_merge.py, the federated shared-map merge)
 
 # ── model -> tier, so operator cells (concrete models) match frontier role tiers
 STRONG = {"opus-5", "opus-4-8", "sonnet-5", "opus-4-6", "sonnet-4-6"}
@@ -255,6 +256,25 @@ def load_som(snapshot_dir, path=None):
     except Exception:
         return {}
     if not isinstance(d, dict) or d.get("schema") != "vibrant/som@1":
+        return {}
+    return d
+
+
+def load_shared_map(snapshot_dir, path=None):
+    """Load a published federated shared map: {schema vibrant/som-merged@1, lattice,
+    field, weight, support, contributors, ...}, the peer-validated cost field merged
+    across operators (core/som_merge.merge). The commons produces it out of band and an
+    operator drops it beside their snapshot; the driver consumes it as a pure function.
+    Absent or invalid yields {} and no shared-map section. Default location: alongside
+    the snapshot."""
+    p = path or os.path.join(snapshot_dir, "shared-map.json")
+    if not os.path.exists(p):
+        return {}
+    try:
+        d = json.load(open(p))
+    except Exception:
+        return {}
+    if not isinstance(d, dict) or d.get("schema") != "vibrant/som-merged@1":
         return {}
     return d
 
@@ -1528,6 +1548,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
     sessions, turns, code, survival = load_snapshot(snapshot_dir)
     misery = load_misery(snapshot_dir)  # {sid: {score, tags, evidence}}; {} if none
     som_cache = load_som(snapshot_dir)  # {} if absent; drives rig_space's learned map
+    shared_map = load_shared_map(snapshot_dir)  # {} if absent; the federated commons map
     metrics = []
     for sid, s in sessions.items():
         m = session_metrics(s, turns, code, survival, session_cost, usage_field)
@@ -1727,6 +1748,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
         "navigation": navigation,
         "rig_stats": rstats,
         "rig_space": rspace,
+        "shared_map": shared_map or None,
         "measure": measure,
         "timeline": tline,
         "fuel_and_work": {
@@ -2446,11 +2468,21 @@ def render_html(report):
     esc = _html.escape
     head = "<style>\n" + _CSS + "</style>\n"
     hero = _hero_card(report)
-    som = render_som_map((report.get("rig_space") or {}).get("som"))
+    som_block = (report.get("rig_space") or {}).get("som")
+    som = render_som_map(som_block)
+    # the federated shared frontier, when a merged commons map is present. Your cell on
+    # the shared frame is your cell on the learned map (v1 pins one reference codebook,
+    # so they coincide). Absent commons -> empty, report unchanged.
+    shared = ""
+    shared_data = report.get("shared_map")
+    if shared_data and som_block and som_block.get("current_cell"):
+        cur = som_block["current_cell"]
+        shared = render_shared_map(shared_data, cur,
+                                   som_merge.merged_gradient(shared_data, cur))
     tl = [r for r in report.get("timeline", []) if r["eq"] is not None]
     if len(tl) < 2:
         body = (f'<div class="vibrant">{hero}{_coverage_banner(report)}{_lever_html(report)}'
-                f'{som}{render_small_multiples(report)}{render_attribution(report)}</div>')
+                f'{som}{shared}{render_small_multiples(report)}{render_attribution(report)}</div>')
         return _page(head + body)
 
     W, H = 760, 300
@@ -2549,7 +2581,7 @@ def render_html(report):
               f'<h2>Efficiency over time <span class="sub">shipped changes per Mtok, '
               f'per era</span></h2>'
               f'{"".join(parts)}{legend}'
-              f'{som}'
+              f'{som}{shared}'
               f'<details class="breakdown"><summary>full breakdown: fuel streams and '
               f'per-rig work</summary>'
               f'{render_small_multiples(report)}{render_attribution(report)}</details>')
