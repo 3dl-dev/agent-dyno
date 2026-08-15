@@ -193,7 +193,31 @@ a solid teal arrow to what you actually did next, a small key naming both (`dlin
 `.scrub-key`). Verified in headless chromium across periods where were/best/went coincide
 and diverge (drv_*.png in the somrun scratch dir).
 
-### Era motion + dynamic shade (updated 2026-08-15, LATEST)
+### Generations on the wave + dual-mode maps (updated 2026-08-15, LATEST)
+
+Operator wanted generation-level reading folded INTO the card so the "awful chart below"
+is optional, plus the maps to show smoothed vs narrow. Done:
+
+- Wave overlay (`render_waveform`): each era is a faint amplitude block (height = era mean
+  bar height) labelled with its combined score (`_fmt_tok`), daily bars vibrating inside,
+  dashed dividers at boundaries. Same era segmentation as the line/map. No height growth.
+- Dual-mode maps (all in `_WALK_JS`): state is `CURP` (hovered bar => NARROW day) and
+  `ERAIDX` (held generation => SMOOTHED cloud, default latest). `cloudFx` draws the era's
+  occupancy cloud: one rust hex border per occupied cell, stroke-width `1.4+w*3.4` and
+  opacity `0.30+w*0.70` where `w` = sessions-in-cell normalized to the era's busiest cell
+  (prevailing boldest, flicker faint). `dayFx` draws ONE crisp ink ring on the bucket's own
+  `day_cell` (visibly unlike the cloud). Hover a bar = preview that day; CLICK a bar = hold
+  its generation (`ERAIDX=p.era`); the recommendation arrow shows only when `isLatest()`.
+  Detail line: "Aug 3 · <setup>" (day) vs "<span> · N sessions, mostly <setup> (+k others)"
+  (generation). The old were/best/went scrub is REPLACED by this; its `dlineSvg` + scrub-key
+  CSS + mk-were/mk-went removed.
+- New data: `_era_occupancy(report)` (weighted `cells`, mean eff/flow/simp, `score`, `days`,
+  date `label`, `prevailing`), `day_cell` added to `_timeline_periods`, `_walk_by_label`
+  factored out. Embedded as `ERAS`. Regressions: `test_walk.test_era_occupancy_cloud`.
+  Verified headless (g2_default/g2_day/g2_click in somrun scratch): cloud weights render,
+  day = single ink ring, click switches generations, past generations show no rec arrow.
+
+### Era motion + dynamic shade (updated 2026-08-15)
 
 Operator feedback: the map looked like the workflow changed ~30 times in 30 days (it
 did not), and "where you work" / "the shared frontier" stayed opaque; prose did not help
