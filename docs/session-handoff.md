@@ -193,7 +193,18 @@ a solid teal arrow to what you actually did next, a small key naming both (`dlin
 `.scrub-key`). Verified in headless chromium across periods where were/best/went coincide
 and diverge (drv_*.png in the somrun scratch dir).
 
-### Log-proportional merge + layering flip (updated 2026-08-15, LATEST)
+### Palette + gloss + emphasis nits (updated 2026-08-15, LATEST)
+
+- `GEN` palette swapped to muted earth tones `["#B0553A","#C79A46","#7C6A86","#5E7E77",
+  "#A56E5B","#8A7A4E"]` (paper/ink/rust family, clear of daily blue/teal/green).
+- `emphasize()` no longer dims the daily bars by section (all `.wv-bar` opacity 1, uniform
+  front); only `.wv-band` carries selection: active 1.0, unselected 0.16 (quiet context).
+- Glossy bars: rects get `rx="2.5"` plus one `url(#wgloss)` white gloss gradient (defined
+  in the wave `<defs>`) fading down over each bar.
+- Timeline flow clearance: `.wave` margin-top 52px; `drawFlow` opacity 0.08 -> 0.17.
+Verified headless (nit_crop in somrun scratch). 13 suites green, deterministic, em-dash clean.
+
+### Log-proportional merge + layering flip (updated 2026-08-15, superseded above)
 
 Operator refinements: proportional sankey widths, a cue that the score is a PRODUCT not a
 sum, and bars-in-front over a solid band.
