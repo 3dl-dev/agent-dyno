@@ -239,6 +239,25 @@ def load_misery(snapshot_dir, path=None):
     return d.get("sessions", {}) if isinstance(d, dict) else {}
 
 
+def load_som(snapshot_dir, path=None):
+    """Load the SOM cache: {schema, lattice, sessions: [{sid, day, bmu, qe}]}
+    (schema vibrant/som@1). The trainer writes it out of band; the driver
+    consumes it as a pure function, so the report stays deterministic. An
+    absent or invalid cache yields {} and a no-SOM run, leaving rig_space's
+    hand-written trajectory untouched. Default location: alongside the
+    snapshot."""
+    p = path or os.path.join(snapshot_dir, "som-cache.json")
+    if not os.path.exists(p):
+        return {}
+    try:
+        d = json.load(open(p))
+    except Exception:
+        return {}
+    if not isinstance(d, dict) or d.get("schema") != "vibrant/som@1":
+        return {}
+    return d
+
+
 def _misery_by(metrics, dim):
     """Mean misery per cell of one fingerprint dimension: {value: mean_misery}.
     Misery is a meter over the SAME parameter space as efficiency, so it slices by
@@ -940,7 +959,74 @@ def _downsample(seq, cap):
     return [seq[i] for i in idx]
 
 
-def rig_space(metrics, attribution, misery_block, field_window_days=14):
+def som_map(metrics, som_cache, move, field_window_days=14, now_day=None):
+    """The learned-map consumer (som_consume.spec.md): joins the trained SOM's
+    per-session BMU coordinates to the driver's metrics, and turns the join into
+    a trajectory across the lattice, a time-windowed descriptive field
+    (d_per_survkb per cell), and the arm-change gradient projected onto the map.
+    Pure function; no training, no numpy. None when the cache is empty or joins
+    nothing (the caller falls back to the hand-written rig_space trajectory)."""
+    if not som_cache:
+        return None
+    lattice = som_cache.get("lattice") or {}
+    rows, cols = lattice.get("rows"), lattice.get("cols")
+    sid_to_bmu = {s["sid"]: s["bmu"] for s in som_cache.get("sessions", [])}
+    joined = [m for m in metrics if m.get("sid") in sid_to_bmu and m.get("day")]
+    if not joined:
+        return None
+    joined = sorted(joined, key=lambda m: (m["day"], m["sid"]))
+
+    waypoints = [{"day": m["day"], "cell": list(sid_to_bmu[m["sid"]])} for m in joined]
+    trajectory = _downsample(waypoints, 24)
+    current_cell = trajectory[-1]["cell"]
+
+    anchor = now_day or max(m["day"] for m in joined)
+    cutoff = (datetime.date.fromisoformat(anchor)
+              - datetime.timedelta(days=field_window_days)).isoformat()
+    in_window = [m for m in joined if m["day"] >= cutoff]
+    by_cell = defaultdict(list)
+    for m in in_window:
+        r, c = sid_to_bmu[m["sid"]]
+        by_cell[(r, c)].append(m)
+    field = [[None] * cols for _ in range(rows)]
+    support = [[0] * cols for _ in range(rows)]
+    for r in range(rows):
+        for c in range(cols):
+            cells = by_cell.get((r, c), [])
+            support[r][c] = len(cells)
+            if cells:
+                v = vector(cells)["d_per_survkb"]
+                field[r][c] = round(v, 4) if v is not None else None
+
+    field_to_arm = {"orchestrator": "model", "worker": "worker", "effort": "effort"}
+    gradient = {"arm_change": move, "target_cell": None, "vector": None, "grounded_in": 0}
+    if move is not None:
+        arm = field_to_arm.get(move.get("axis"))
+        if arm:
+            matched = [m for m in joined if m.get(arm) == move.get("to")]
+            if matched:
+                cells_rc = [sid_to_bmu[m["sid"]] for m in matched]
+                mean_r = sum(rc[0] for rc in cells_rc) / len(cells_rc)
+                mean_c = sum(rc[1] for rc in cells_rc) / len(cells_rc)
+                target_cell = [round(mean_r), round(mean_c)]
+                vect = [target_cell[0] - current_cell[0], target_cell[1] - current_cell[1]]
+                gradient = {"arm_change": move, "target_cell": target_cell,
+                            "vector": vect, "grounded_in": len(matched)}
+
+    return {"source": "learned",
+            "lattice": {"rows": rows, "cols": cols},
+            "sessions_mapped": len(joined),
+            "trajectory": trajectory,
+            "current_cell": current_cell,
+            "field_metric": "d_per_survkb",
+            "field_lower_is_better": True,
+            "field_window_days": field_window_days,
+            "field": field,
+            "support": support,
+            "gradient": gradient}
+
+
+def rig_space(metrics, attribution, misery_block, field_window_days=14, som_cache=None):
     """The operator's trajectory through the collapsed rig-space, plus the gradient
     at their current position toward the better region. Additive: None when there is
     not enough dated data; never touches the other meters."""
@@ -975,9 +1061,14 @@ def rig_space(metrics, attribution, misery_block, field_window_days=14):
         cur = tuple(mood)
         gradient = {"arm_change": move, "target": target,
                     "vector": [round(target[k] - cur[k], 4) for k in range(len(cur))]}
-    return {"axes": list(RIG_AXES), "sessions": len(dated),
-            "personality": list(pers), "mood": list(mood),
-            "current": path[-1], "trajectory": waypoints, "gradient": gradient}
+    result = {"axes": list(RIG_AXES), "sessions": len(dated),
+              "personality": list(pers), "mood": list(mood),
+              "current": path[-1], "trajectory": waypoints, "gradient": gradient}
+    # the learned map, additive over the hand-written trajectory above: only
+    # attached when a SOM cache is present, so a no-cache run stays byte-identical.
+    if som_cache:
+        result["som"] = som_map(metrics, som_cache, move, field_window_days)
+    return result
 
 
 def best_lever(by_ee_cells, frontier, total_survkb, total_dollars):
@@ -1410,10 +1501,11 @@ def attribute_work(bundles, since, snapshot_dir, tail=900.0):
 
 def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
                  baseline_path=None, granularity="week", labels_path=None,
-                 coverage=None):
+                 coverage=None, dump_sessions_path=None):
     session_cost, usage_field = load_adapter_cost(harness)
     sessions, turns, code, survival = load_snapshot(snapshot_dir)
     misery = load_misery(snapshot_dir)  # {sid: {score, tags, evidence}}; {} if none
+    som_cache = load_som(snapshot_dir)  # {} if absent; drives rig_space's learned map
     metrics = []
     for sid, s in sessions.items():
         m = session_metrics(s, turns, code, survival, session_cost, usage_field)
@@ -1424,6 +1516,13 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
             m["misery"] = ms.get("score") if isinstance(ms, dict) else None
             metrics.append(m)
     metrics.sort(key=lambda m: m["sid"])  # deterministic order
+
+    # SOM seam: dump the per-session metric list (the same grain the trajectory
+    # and field join to) so session_features -> som_train can run out of band.
+    # Additive; does not change the report. Deterministic (metrics already sorted).
+    if dump_sessions_path:
+        with open(dump_sessions_path, "w") as _f:
+            _f.write(json.dumps(metrics, indent=2, sort_keys=True) + "\n")
 
     # every session's fingerprint (not just survival-having ones), for dating the
     # operator's real setup changes over ALL their runs, not the survival subset.
@@ -1572,7 +1671,8 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
     # ($/surviving-work), from the operator's OWN runs. Never the frontier.
     rstats = rig_stats(metrics, numerator.get("attribution"), misery_block)
     navigation = gradient_move(metrics, numerator.get("attribution"), misery_block)
-    rspace = rig_space(metrics, numerator.get("attribution"), misery_block)
+    rspace = rig_space(metrics, numerator.get("attribution"), misery_block,
+                       som_cache=som_cache)
 
     # provenance
     repo_prov = []
@@ -2345,6 +2445,8 @@ def main():
                     choices=["auto", "day", "week", "month"],
                     help="time bucket for the curves; auto picks day/week/month by span")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--dump-sessions", default=None,
+                    help="also write the per-session metric list here (SOM seam)")
     args = ap.parse_args()
 
     root = os.path.expanduser(args.repos_root)
@@ -2366,6 +2468,8 @@ def main():
                           granularity=args.granularity,
                           labels_path=os.path.expanduser(args.labels)
                           if args.labels else None,
+                          dump_sessions_path=os.path.expanduser(args.dump_sessions)
+                          if args.dump_sessions else None,
                           coverage=coverage)
     os.makedirs(args.out, exist_ok=True)
     with open(os.path.join(args.out, "report.json"), "w") as f:
