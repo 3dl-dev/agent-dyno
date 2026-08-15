@@ -1977,13 +1977,17 @@ _CSS = """
 .vibrant .mn{font-size:15px;font-weight:700;color:var(--ink);margin-top:14px;
  letter-spacing:.01em;}
 .vibrant .mu{font-size:11.5px;color:var(--muted);margin-top:2px;}
-.vibrant .combined{margin:4px 0 18px;}
+.vibrant .combined{margin:4px 0 18px;display:flex;justify-content:center;}
+.vibrant .topgroup{position:relative;display:inline-flex;align-items:center;gap:74px;}
+.vibrant .score-col{position:relative;z-index:1;text-align:left;}
 .vibrant .cv{font-size:78px;font-weight:760;letter-spacing:-.04em;line-height:.82;
  color:var(--ink);font-variant-numeric:tabular-nums;}
 .vibrant .cn{font-size:14px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
  color:var(--muted);margin-top:12px;}
-.vibrant .cparts{font-size:13px;color:var(--ink2);margin-top:10px;display:flex;
- flex-wrap:wrap;gap:8px;}
+.vibrant .cparts{position:relative;z-index:1;font-size:13px;color:var(--ink2);
+ display:flex;flex-direction:column;gap:9px;align-items:flex-end;margin:0;}
+.vibrant .merge-flow{position:absolute;left:0;top:0;width:100%;height:100%;
+ pointer-events:none;z-index:0;overflow:visible;}
 .vibrant .mtog{font:inherit;font-size:13px;color:var(--ink2);background:transparent;
  border:1.5px solid var(--line);border-radius:999px;padding:3px 12px;cursor:pointer;}
 .vibrant .mtog b{color:var(--oc);font-variant-numeric:tabular-nums;}
@@ -2640,14 +2644,34 @@ _WALK_JS = r"""<script>
   function emphasize(){var ws=document.getElementById('wave-svg');if(!ws)return;var day=(CURP!=null),ae=activeEra();
     ws.querySelectorAll('.wv-bar').forEach(function(gg){var i=+gg.getAttribute('data-i'),e=+gg.getAttribute('data-era');
       var on=day?(i===CURP):(ae==null||e===ae);gg.setAttribute('opacity',on?'1':(day?'0.28':'0.42'));});
-    // the active generation's ribbon segment turns rust (the region feeding the score).
-    ws.querySelectorAll('.wv-band').forEach(function(bd){bd.setAttribute('opacity',(!day&&+bd.getAttribute('data-era')===ae)?'0.9':'0');});
+    // every generation keeps its colour; the one feeding the score is brightened, the rest
+    // dimmed (and all subdued while previewing a single day).
+    ws.querySelectorAll('.wv-band').forEach(function(bd){var e=+bd.getAttribute('data-era');
+      bd.setAttribute('opacity', day?'0.32':(e===ae?'0.95':'0.5'));});
     ws.querySelectorAll('.wv-score').forEach(function(tx){var e=+tx.getAttribute('data-era');tx.setAttribute('opacity',(ae==null||e===ae)?'1':'0.4');});
-    drawFlow();}
-  // the subtle Sankey flow: a soft ribbon from the topline score down to the region of the
-  // timeline feeding it (the hovered day, or the held generation's bars). Recomputed from
-  // live layout so it tracks responsive reflow.
-  function drawFlow(){var host=document.querySelector('.vibrant .card');if(!host||!vbScore)return;
+    drawMerge();drawFlow();}
+  // a smooth ribbon: cubic edges between (x0,ya..yb) at the source and (x1,ca..cb) at the
+  // target. No square corners.
+  function ribbon(x0,ya,yb,x1,ca,cb){var mx=(x0+x1)/2;
+    return 'M'+x0.toFixed(1)+','+ya.toFixed(1)+' C'+mx.toFixed(1)+','+ya.toFixed(1)+' '+mx.toFixed(1)+','+ca.toFixed(1)+' '+x1.toFixed(1)+','+ca.toFixed(1)
+      +' L'+x1.toFixed(1)+','+cb.toFixed(1)+' C'+mx.toFixed(1)+','+cb.toFixed(1)+' '+mx.toFixed(1)+','+yb.toFixed(1)+' '+x0.toFixed(1)+','+yb.toFixed(1)+' Z';}
+  // the merge: each enabled metric flows from its stacked button on the left into a slice
+  // of the score's left edge on the right, coloured by the metric. Toggling one off drops
+  // its stream (and the score), so the number is visibly the product of these flows.
+  function drawMerge(){var e=enSet();var tg=document.getElementById('topgroup'),mf=document.getElementById('merge-flow');
+    if(!tg||!mf||!vbScore)return;var gr=tg.getBoundingClientRect();if(gr.width<1)return;
+    mf.setAttribute('viewBox','0 0 '+gr.width.toFixed(1)+' '+gr.height.toFixed(1));
+    var sr=vbScore.getBoundingClientRect();var sx=sr.left-gr.left,syc=(sr.top+sr.bottom)/2-gr.top,sh=sr.height*0.74;
+    var on=MK.filter(function(m){return e[m];});var slice=on.length?sh/on.length:sh;var h='';
+    on.forEach(function(m,idx){var btn=document.querySelector('.mtog[data-m="'+m+'"]');if(!btn)return;
+      var br=btn.getBoundingClientRect();var bx=br.right-gr.left,byc=(br.top+br.bottom)/2-gr.top,bh=br.height*0.66;
+      var dyc=syc-sh/2+slice*(idx+0.5);
+      h+='<path d="'+ribbon(bx,byc-bh/2,byc+bh/2,sx,dyc-slice*0.42,dyc+slice*0.42)+'" fill="'+OBJC[m]+'" opacity="0.3"/>';});
+    mf.innerHTML=h;}
+  // the timeline flow: a soft ribbon up into the centred group from the slice of the
+  // timeline feeding the score (the hovered day, or the held generation's bars).
+  function drawFlow(){var host=document.querySelector('.vibrant .card');if(!host)return;
+    var tg=document.getElementById('topgroup');if(!tg)return;
     var ov=host.querySelector('.flow-ov');
     if(!ov){ov=document.createElementNS('http://www.w3.org/2000/svg','svg');ov.setAttribute('class','flow-ov');host.insertBefore(ov,host.firstChild);}
     var hr=host.getBoundingClientRect();if(hr.width<1)return;
@@ -2659,11 +2683,12 @@ _WALK_JS = r"""<script>
     var L=1e9,R=-1e9,T=1e9;
     bars.forEach(function(gg){var r=gg.getBoundingClientRect();L=Math.min(L,r.left-hr.left);R=Math.max(R,r.right-hr.left);T=Math.min(T,r.top-hr.top);});
     if(R-L<6){var mm=(L+R)/2;L=mm-3;R=mm+3;}
-    var sr=vbScore.getBoundingClientRect();var tL=sr.left-hr.left,tR=sr.right-hr.left,tB=sr.bottom-hr.top;
-    var my=(tB+T)/2;
+    // destination: a centred slice of the group's bottom edge (flow into the group).
+    var gr=tg.getBoundingClientRect();var gcx=(gr.left+gr.right)/2-hr.left,gw=gr.width*0.34;
+    var tL=gcx-gw/2,tR=gcx+gw/2,tB=gr.bottom-hr.top;var my=(tB+T)/2;
     var d='M'+tL.toFixed(1)+','+tB.toFixed(1)+' C'+tL.toFixed(1)+','+my.toFixed(1)+' '+L.toFixed(1)+','+my.toFixed(1)+' '+L.toFixed(1)+','+T.toFixed(1)
       +' L'+R.toFixed(1)+','+T.toFixed(1)+' C'+R.toFixed(1)+','+my.toFixed(1)+' '+tR.toFixed(1)+','+my.toFixed(1)+' '+tR.toFixed(1)+','+tB.toFixed(1)+' Z';
-    ov.innerHTML='<path d="'+d+'" fill="var(--rust)" opacity="0.09"/>';}
+    ov.innerHTML='<path d="'+d+'" fill="var(--rust)" opacity="0.08"/>';}
   function setRec(e){if(!vbRec)return;var bc=best(e);
     if(bc&&recOk(e)){vbRec.innerHTML='<span class="rec-arrow">'+REC+'</span> shift toward <b>'+setup(bc)+'</b>';return;}
     // no move clears the noise (or no measurable baseline): say hold, do not point.
@@ -2714,7 +2739,7 @@ _WALK_JS = r"""<script>
     g.addEventListener('click',function(){var p=PERIODS[+g.getAttribute('data-i')];if(p&&p.era!=null)ERAIDX=p.era;CURP=null;refresh();});});
   var wsvg=document.getElementById('wave-svg');
   if(wsvg)wsvg.addEventListener('mouseleave',function(){CURP=null;refresh();});
-  window.addEventListener('resize',function(){drawFlow();});
+  window.addEventListener('resize',function(){drawMerge();drawFlow();});
   refresh();
 })();
 </script>"""
@@ -3090,9 +3115,11 @@ def render_waveform(report):
 
     def cx(i):
         return i * bw + bw / 2
-    RT = 0.30  # ribbon half-thickness as a fraction of the smoothed amplitude: tight core
+    RT = 0.52  # ribbon half-thickness as a fraction of the smoothed amplitude: exaggerated
+    # a categorical palette for the generations, chosen to stay clear of the daily bands'
+    # blue/teal/green so the rollup colour and the component colours never collide.
+    GEN = ["#C2410C", "#7C3AED", "#CA8A04", "#DB2777", "#9333EA", "#B45309"]
 
-    # tighter, so the wave reads clean and the solid ribbon is the hero.
     wd = max(bw * 0.78, 0.8)
     bars = []
     for i in range(n):
@@ -3111,44 +3138,37 @@ def render_waveform(report):
         grp.append('</g>')
         bars.append("".join(grp))
 
-    # the SOLID, tight generational ribbon threaded through the centre: its thickness is
-    # the smoothed generational amplitude, so a bold flowing core reads the trend while the
-    # daily bars ride over it (colour pokes past on a strong day; the ribbon shows through a
-    # weak one). One continuous ribbon, always visible, plus per-era segments the JS lights
-    # rust for the generation feeding the score.
-    rtop = ([(0.0, cy - g[0] * RT)] + [(cx(i), cy - g[i] * RT) for i in range(n)]
-            + [(W, cy - g[-1] * RT)])
-    rbot = ([(W, cy + g[-1] * RT)] + [(cx(i), cy + g[i] * RT) for i in range(n - 1, -1, -1)]
-            + [(0.0, cy + g[0] * RT)])
-    ribbon = ('<polygon points="' + " ".join(f"{x:.1f},{y:.1f}" for x, y in rtop + rbot)
-              + '" fill="var(--ink)" opacity="0.82"/>')
-    bandhl = []
+    # the exaggerated solid rollup: one bold band per generation, each its OWN colour, at
+    # the smoothed generational amplitude. The daily bars ride over it (their e/f/s tips
+    # poke past the band). Segments extend to the era boundaries so the colours abut into
+    # one continuous multi-colour ribbon; the JS brightens the generation feeding the score.
+    ribbons, labels, dividers = [], [], []
     for e in range(neras):
         a, b = espan[e]
-        seg = ([(cx(i), cy - g[i] * RT) for i in range(a, b)]
-               + [(cx(i), cy + g[i] * RT) for i in range(b - 1, a - 1, -1)])
-        bandhl.append(f'<polygon class="wv-band" data-era="{e}" points="'
-                      + " ".join(f"{x:.1f},{y:.1f}" for x, y in seg)
-                      + '" fill="var(--rust)" opacity="0"/>')
-
-    labels, dividers = [], []
-    for e in range(neras):
-        a, b = espan[e]
-        xm = ((a * bw) + (b * bw)) / 2
-        gt = cy - max(g[i] for i in range(a, b)) / 2
+        xl, xr = a * bw, b * bw
+        pts = ([(xl, cy - g[a] * RT)] + [(cx(i), cy - g[i] * RT) for i in range(a, b)]
+               + [(xr, cy - g[b - 1] * RT), (xr, cy + g[b - 1] * RT)]
+               + [(cx(i), cy + g[i] * RT) for i in range(b - 1, a - 1, -1)]
+               + [(xl, cy + g[a] * RT)])
+        col = GEN[e % len(GEN)]
+        ribbons.append(f'<polygon class="wv-band" data-era="{e}" points="'
+                       + " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
+                       + f'" fill="{col}" opacity="0.6"/>')
+        xm = (xl + xr) / 2
+        gt = cy - max(g[i] for i in range(a, b)) * RT
         labels.append(f'<text class="wv-score" data-era="{e}" x="{xm:.1f}" '
                       f'y="{max(9.0, gt - 4):.1f}" text-anchor="middle" font-size="10.5" '
-                      f'font-weight="700" fill="var(--ink2)">{_fmt_tok(escore[e])}</text>')
+                      f'font-weight="700" fill="{col}">{_fmt_tok(escore[e])}</text>')
         if a > 0:
-            dividers.append(f'<line x1="{a * bw:.1f}" y1="2" x2="{a * bw:.1f}" y2="{H - 2}" '
+            dividers.append(f'<line x1="{xl:.1f}" y1="2" x2="{xl:.1f}" y2="{H - 2}" '
                             f'stroke="var(--ink)" stroke-width="1" stroke-dasharray="2 3" '
-                            f'opacity="0.28"/>')
-    # back to front: dividers, the daily bars, the solid ribbon and its lit-able per-era
-    # segments over them, then the era scores on top.
+                            f'opacity="0.22"/>')
+    # back to front: dividers, the daily bars, the colour-per-generation rollup band over
+    # them, then the era scores on top.
     svg = (f'<svg id="wave-svg" viewBox="0 0 {W} {H}" role="img" aria-label="the combined '
            f'score over time: daily bars of efficiency, flow and simplicity riding over a '
-           f'solid smoothed generational ribbon, each generation labelled with its score">'
-           f'{"".join(dividers)}{"".join(bars)}{ribbon}{"".join(bandhl)}{"".join(labels)}</svg>')
+           f'bold colour-per-generation rollup band, each generation labelled with its '
+           f'score">{"".join(dividers)}{"".join(bars)}{"".join(ribbons)}{"".join(labels)}</svg>')
     note = ('<div class="wlegend"><span class="wl-key">'
             '<span><i style="background:var(--accent)"></i>efficiency</span>'
             '<span><i style="background:var(--teal)"></i>flow</span>'
@@ -3216,11 +3236,17 @@ def _hero_card(report):
         cv = f'{combined:,}'
     else:
         cv = esc(str(eff))
-    hero = (f'<div class="combined"><div class="cv" id="vb-score" '
-            f'title="the enabled metrics multiplied; toggle metrics below to change it. '
+    # the controls sit stacked to the LEFT and each metric flows (a small sankey) into the
+    # score on the RIGHT; the whole group is centred, and the active slice of the timeline
+    # flows up into it from underneath. Flows are drawn by JS from live layout.
+    hero = (f'<div class="combined"><div class="topgroup" id="topgroup">'
+            f'<svg class="merge-flow" id="merge-flow" aria-hidden="true"></svg>'
+            f'<div class="cparts" id="vb-parts">{"".join(comps)}</div>'
+            f'<div class="score-col"><div class="cv" id="vb-score" '
+            f'title="the enabled metrics multiplied; toggle a metric to change it. '
             f'Watch it move, not its absolute size">{cv}</div>'
-            f'<div class="cn" id="vb-label">score</div>'
-            f'<div class="cparts" id="vb-parts">{"".join(comps)}</div></div>')
+            f'<div class="cn" id="vb-label">score</div></div>'
+            f'</div></div>')
     _ = fp  # fingerprint data stays in report["fingerprint"]; the maps render it below
     return "".join([
         '<div class="card">',
