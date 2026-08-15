@@ -562,18 +562,9 @@ def main():
                 fails.append("report.html is missing the VIBRANT wordmark")
             if "larger is better" not in hh:
                 fails.append("report.html is missing the topline unit/reading")
-            # the fixture frontier cell is tier-1-self-report (unverified), so the
-            # lever must render as a hypothesis to test, NOT as substantiated advice:
-            # an unsubstantiated number presented as fact is the instakill.
-            if "review pass behind fan-out" not in hh:
-                fails.append("report.html is missing the lever tweak in the detail")
-            # unverified lever: labeled a hypothesis, with an inspectable (collapsed)
-            # copy-paste prompt rather than a wall of prose.
-            if "A lever to test" not in hh or "unverified" not in hh.lower():
-                fails.append("report.html presents an unverified lever as substantiated "
-                             "advice (should be labeled a hypothesis to test)")
-            if "prompt to apply it" not in hh or "lever-prompt" not in hh:
-                fails.append("report.html lever is missing the collapsed copy-paste prompt")
+            # the standalone "steepest move" lever was removed: the recommendation now
+            # lives in the card as the interactive fingerprint's arrow + the in-card
+            # recommendation line (driven by the metric toggles), so no separate lever.
             # the efficiency-over-time chart is one meter, self-evident: bold per-era
             # levels + dated flags, no explanatory paragraphs and no second meter
             # (velocity) conflated into the same visual channel.

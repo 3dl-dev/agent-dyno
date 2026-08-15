@@ -1979,9 +1979,18 @@ _CSS = """
  color:var(--ink);font-variant-numeric:tabular-nums;}
 .vibrant .cn{font-size:14px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
  color:var(--muted);margin-top:12px;}
-.vibrant .cparts{font-size:13px;color:var(--ink2);margin-top:8px;display:flex;
- flex-wrap:wrap;gap:16px;}
-.vibrant .cparts b{font-variant-numeric:tabular-nums;}
+.vibrant .cparts{font-size:13px;color:var(--ink2);margin-top:10px;display:flex;
+ flex-wrap:wrap;gap:8px;}
+.vibrant .mtog{font:inherit;font-size:13px;color:var(--ink2);background:transparent;
+ border:1.5px solid var(--line);border-radius:999px;padding:3px 12px;cursor:pointer;}
+.vibrant .mtog b{color:var(--oc);font-variant-numeric:tabular-nums;}
+.vibrant .mtog:hover{border-color:var(--oc);}
+.vibrant .mtog[aria-pressed=true]{border-color:var(--oc);
+ box-shadow:inset 0 0 0 1px var(--oc);}
+.vibrant .mtog[aria-pressed=false]{opacity:.5;text-decoration:line-through;}
+.vibrant .vb-rec{font-size:13px;color:var(--ink2);margin-top:12px;min-height:18px;}
+.vibrant .vb-rec b{color:var(--rust);}
+.vibrant .vb-rec .rec-arrow{color:var(--teal);font-weight:800;margin-right:5px;}
 .vibrant .wave{margin:0 0 24px;}
 .vibrant .wave svg{width:100%;height:auto;}
 .vibrant .wlegend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:12px;
@@ -2232,8 +2241,8 @@ def render_som_map(som_block, title="Where you work",
 
     pal = _SOM_STYLES.get(style, _SOM_STYLES["classic"])
     hexed = pal["hex"]
-    cell, gap = (20, 2) if compact else (42, 3)
-    pad_l, pad_t, pad_r, pad_b = (2, 2, 2, 2) if compact else (14, 24, 14, 14)
+    cell, gap = (28, 2) if compact else (42, 3)
+    pad_l, pad_t, pad_r, pad_b = (3, 3, 3, 3) if compact else (14, 24, 14, 14)
     if hexed:
         hstep, vstep = cell + gap, (cell + gap) * 0.87
         gw = cols * hstep + hstep / 2
@@ -2535,107 +2544,90 @@ def _arm_phrase(arm_change):
 
 _WALK_JS = r"""<script>
 (function(){
-  var CELLS=__CELLS__, PERIODS=__PERIODS__, CUR=__CUR__;
+  var CELLS=__CELLS__, PERIODS=__PERIODS__, CUR=__CUR__, AGG=__AGG__;
   var svg=document.getElementById('map-you'); if(!svg) return;
-  var det=document.getElementById('walk-detail');
-  var vbScore=document.getElementById('vb-score'), vbParts=document.getElementById('vb-parts'),
-      vbSum=document.getElementById('vb-summary'), vbLabel=document.getElementById('vb-label');
+  var vbScore=document.getElementById('vb-score'), vbLabel=document.getElementById('vb-label'),
+      vbRec=document.getElementById('vb-rec');
   var here=svg.querySelector('.som-here'), objg=svg.querySelector('.obj-arrow');
-  var OBJC={eff:'var(--accent)',flow:'var(--teal)',simp:'var(--good)',balanced:'var(--rust)'};
-  var OBJN={eff:'efficiency',flow:'flow',simp:'simplicity',balanced:'balance'};
-  var MID='·', ARR='›';
+  var OBJC={eff:'var(--accent)',flow:'var(--teal)',simp:'var(--good)'};
+  var MID=' · ', ARR=' › ', REC='→', MK=['eff','flow','simp'];
   var cmap={}; CELLS.forEach(function(c){cmap[c.r+','+c.c]=c;});
   function cell(r,c){return cmap[r+','+c];}
   function center(r,c){var el=svg.querySelector('[data-r="'+r+'"][data-c="'+c+'"]');
     if(!el)return null;var b=el.getBBox();return {x:b.x+b.width/2,y:b.y+b.height/2,r:b.width/2+3};}
   function money(v){return v==null?'n/a':(v<10?'$'+(+v).toFixed(1):'$'+Math.round(v));}
-  function setup(c){if(!c)return 'unused';
-    var w=(c.worker&&c.worker!=='solo')?(' '+ARR+' '+c.worker):'';
-    return c.engine+' '+MID+' '+c.model+w+' '+MID+' '+c.effort;}
+  function setup(c){if(!c)return 'an unused setup';
+    var w=(c.worker&&c.worker!=='solo')?(ARR+c.worker):'';
+    return c.engine+MID+c.model+w+MID+c.effort;}
   function rng(k){var vs=CELLS.map(function(c){return c[k];}).filter(function(v){return v!=null;});
     return vs.length?{lo:Math.min.apply(null,vs),hi:Math.max.apply(null,vs)}:null;}
   var R={eff:rng('eff'),flow:rng('flow'),simp:rng('simp')};
   function nrm(c,k){var r=R[k];if(!r||c[k]==null)return null;return (c[k]-r.lo)/((r.hi-r.lo)||1);}
-  function good(c,o){if(o==='balanced'){var a=nrm(c,'eff'),b=nrm(c,'flow'),d=nrm(c,'simp');
-    if(a==null||b==null||d==null)return null;
-    return Math.cbrt(Math.max(a,.001)*Math.max(b,.001)*Math.max(d,.001));}
-    return nrm(c,o);}
-  function best(o){var bc=null,bg=-1;CELLS.forEach(function(c){if((c.sessions||0)<2)return;
-    var g=good(c,o);if(g!=null&&g>bg){bg=g;bc=c;}});return bc;}
+  function good(c,en){var prod=1,cnt=0;MK.forEach(function(m){if(!en[m])return;var x=nrm(c,m);if(x==null)return;prod*=Math.max(x,.001);cnt++;});return cnt?Math.pow(prod,1/cnt):null;}
+  function best(en){var bc=null,bg=-1;CELLS.forEach(function(c){if((c.sessions||0)<2)return;var g=good(c,en);if(g!=null&&g>bg){bg=g;bc=c;}});return bc;}
+  function objColor(en){var on=MK.filter(function(m){return en[m];});return on.length===1?OBJC[on[0]]:'var(--rust)';}
   function drawArrow(fc,tc,color){objg.innerHTML='';if(!fc||!tc)return;
     var a=center(fc[0],fc[1]),b=center(tc[0],tc[1]);if(!a||!b)return;
     var dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);if(d<1)return;
-    var ux=dx/d,uy=dy/d,px=-uy,py=ux,h=9;
-    var tx=b.x-ux*13,ty=b.y-uy*13,bx=tx-ux*h,by=ty-uy*h,sx=a.x+ux*14,sy=a.y+uy*14;
-    objg.innerHTML='<circle class="som-arrow" cx="'+b.x+'" cy="'+b.y+'" r="'+b.r+'" fill="none" stroke="'+color+'" stroke-width="2" opacity="0.5"/>'
-      +'<line class="som-arrow" x1="'+sx+'" y1="'+sy+'" x2="'+bx+'" y2="'+by+'" stroke="'+color+'" stroke-width="2.8" stroke-linecap="round"/>'
-      +'<polygon class="som-arrow" points="'+tx+','+ty+' '+(bx+px*4.7)+','+(by+py*4.7)+' '+(bx-px*4.7)+','+(by-py*4.7)+'" fill="'+color+'"/>';
-    objg.querySelectorAll('.som-arrow').forEach(function(el){el.style.cursor='pointer';
-      el.addEventListener('mouseenter',armHover);});}
+    var ux=dx/d,uy=dy/d,px=-uy,py=ux,h=7;
+    var tx=b.x-ux*9,ty=b.y-uy*9,bx=tx-ux*h,by=ty-uy*h,sx=a.x+ux*10,sy=a.y+uy*10;
+    objg.innerHTML='<circle cx="'+b.x+'" cy="'+b.y+'" r="'+b.r+'" fill="none" stroke="'+color+'" stroke-width="2" opacity="0.5"/>'
+      +'<line x1="'+sx+'" y1="'+sy+'" x2="'+bx+'" y2="'+by+'" stroke="'+color+'" stroke-width="2.4" stroke-linecap="round"/>'
+      +'<polygon points="'+tx+','+ty+' '+(bx+px*3.6)+','+(by+py*3.6)+' '+(bx-px*3.6)+','+(by-py*3.6)+'" fill="'+color+'"/>';}
   var pathg=document.createElementNS('http://www.w3.org/2000/svg','g'); svg.appendChild(pathg);
-  var OBJ='balanced';
-  function fmt(n){return (+n).toLocaleString();}
-  function markCur(){var p=center(CUR[0],CUR[1]);
+  function setMarker(pc){if(!pc){here.setAttribute('opacity','0');return;}var p=center(pc[0],pc[1]);
     if(p){here.setAttribute('cx',p.x);here.setAttribute('cy',p.y);here.setAttribute('r',p.r);here.setAttribute('opacity','1');}}
-  function setObjective(o){OBJ=o;
-    document.querySelectorAll('.obj-chip').forEach(function(ch){
-      ch.setAttribute('aria-pressed', ch.getAttribute('data-obj')===o?'true':'false');});
-    var b=best(o); drawArrow(CUR,b&&[b.r,b.c],OBJC[o]);
-    var cur=cell(CUR[0],CUR[1]);
-    var same=b&&b.r===CUR[0]&&b.c===CUR[1];
-    vbSum.innerHTML= !b? ('Optimizing for <b>'+OBJN[o]+'</b>.')
-      : same? ('You are already where <b>'+OBJN[o]+'</b> is best ('+setup(b)+').')
-      : ('Optimizing for <b>'+OBJN[o]+'</b>: shift toward <b>'+setup(b)+'</b>, from '+setup(cur)+'.');}
-  function armHover(){var b=best(OBJ);
-    if(det&&b)det.innerHTML='<span class="wd-h">the move</span> to get more '+OBJN[OBJ]+', shift toward '+setup(b)+'.';}
-  function drawPath(upto){while(pathg.firstChild)pathg.removeChild(pathg.firstChild);
-    for(var k=0;k<=upto;k++){var pc=PERIODS[k].cell;if(!pc)continue;var p=center(pc[0],pc[1]);if(!p)continue;
-      var t=upto>0?k/upto:1;var el=document.createElementNS('http://www.w3.org/2000/svg','circle');
-      el.setAttribute('cx',p.x);el.setAttribute('cy',p.y);el.setAttribute('r',(1.6+2.4*t).toFixed(1));
-      el.setAttribute('fill','var(--ink)');el.setAttribute('opacity',(0.1+0.35*t).toFixed(2));pathg.appendChild(el);}}
-  var INIT=null;
-  function capture(){INIT={s:vbScore?vbScore.textContent:'',p:vbParts?vbParts.innerHTML:'',l:vbLabel?vbLabel.textContent:''};}
-  function setPeriod(i){var p=PERIODS[i];if(!p)return;
-    if(p.cell){var c=center(p.cell[0],p.cell[1]);
-      if(c){here.setAttribute('cx',c.x);here.setAttribute('cy',c.y);here.setAttribute('r',c.r);here.setAttribute('opacity','1');}}
-    drawPath(i);
-    if(vbScore)vbScore.textContent=fmt(p.comb);
-    if(vbParts)vbParts.innerHTML='<span><b style="color:var(--accent)">'+p.eff+'</b> efficiency</span>'
-      +'<span><b style="color:var(--teal)">'+p.flow+'</b> flow</span>'
-      +'<span><b style="color:var(--good)">'+p.simp+'</b> simplicity</span>';
-    if(vbLabel)vbLabel.textContent=p.label+' score';
-    var loc=p.cell?cell(p.cell[0],p.cell[1]):null;
-    vbSum.innerHTML='<b>'+p.label+'</b>: you mostly worked as '+setup(loc)+'.';}
-  function resetTime(){if(!INIT)return;
-    if(vbScore)vbScore.textContent=INIT.s;if(vbParts)vbParts.innerHTML=INIT.p;
-    if(vbLabel)vbLabel.textContent=INIT.l;
-    while(pathg.firstChild)pathg.removeChild(pathg.firstChild); markCur(); setObjective(OBJ);}
+  function clearPath(){while(pathg.firstChild)pathg.removeChild(pathg.firstChild);}
+  function drawPath(upto){clearPath();for(var k=0;k<=upto;k++){var pc=PERIODS[k].cell;if(!pc)continue;var p=center(pc[0],pc[1]);if(!p)continue;
+    var t=upto>0?k/upto:1;var el=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    el.setAttribute('cx',p.x);el.setAttribute('cy',p.y);el.setAttribute('r',(1.4+2*t).toFixed(1));
+    el.setAttribute('fill','var(--ink)');el.setAttribute('opacity',(0.1+0.3*t).toFixed(2));pathg.appendChild(el);}}
+  function fmt(n){return (+n).toLocaleString();}
+  function fmtv(m,v){if(v==null)return 'n/a';if(m==='eff')return ''+v;if(m==='simp')return ''+Math.round(v);return ''+(Math.round(v*10)/10);}
+  function tog(m){return document.querySelector('.mtog[data-m="'+m+'"]');}
+  var EN={eff:true,flow:true,simp:true}, PV=null, CURP=null;
+  function enSet(){var e={eff:EN.eff,flow:EN.flow,simp:EN.simp};if(PV)e[PV]=!e[PV];return e;}
+  function vals(){if(CURP!=null){var p=PERIODS[CURP];return {eff:p.eff,flow:p.flow,simp:p.simp};}return AGG;}
+  function score(e,v){var s=1,any=false;MK.forEach(function(m){if(e[m]&&v[m]!=null){s*=v[m];any=true;}});return any?Math.round(s):0;}
+  function dimWave(e){document.querySelectorAll('#wave-svg rect[data-m]').forEach(function(r){
+    r.setAttribute('opacity', e[r.getAttribute('data-m')]?'1':'0.12');});}
+  function recommend(bc){if(!bc){vbRec.innerHTML='';return;}
+    if(bc.r===CUR[0]&&bc.c===CUR[1]){vbRec.innerHTML='You are already at the best spot for this goal.';return;}
+    vbRec.innerHTML='<span class="rec-arrow">'+REC+'</span> shift toward <b>'+setup(bc)+'</b>';}
+  function refresh(){var e=enSet(), v=vals();
+    if(vbScore)vbScore.textContent=fmt(score(e,v));
+    MK.forEach(function(m){var b=tog(m);if(!b)return;b.setAttribute('aria-pressed',e[m]?'true':'false');
+      var bb=b.querySelector('b');if(bb)bb.textContent=fmtv(m,v[m]);});
+    if(vbLabel)vbLabel.textContent=(CURP!=null?PERIODS[CURP].label+' ':'')+'score';
+    dimWave(e);
+    var bc=best(e); drawArrow(CUR, bc&&[bc.r,bc.c], objColor(e)); recommend(bc);
+    if(CURP!=null){setMarker(PERIODS[CURP].cell);drawPath(CURP);}else{setMarker(CUR);clearPath();}}
   svg.querySelectorAll('.som-cell').forEach(function(el){el.style.cursor='pointer';
     el.addEventListener('mouseenter',function(){var c=cell(el.getAttribute('data-r'),el.getAttribute('data-c'));
-      if(!det)return;
-      det.innerHTML=c?('<span class="wd-h">'+setup(c)+'</span> '+c.sessions+' session'+(c.sessions==1?'':'s')
-        +', '+money(c.cost)+' per KB, efficiency '+(c.eff==null?'n/a':c.eff)+', flow '+(c.flow==null?'n/a':c.flow)
-        +', simplicity '+(c.simp==null?'n/a':c.simp))
-        :'<span class="wd-h">unused</span> no sessions landed here';});});
+      vbRec.innerHTML=c?('<b>'+setup(c)+'</b>'+MID+c.sessions+' session'+(c.sessions==1?'':'s')+', '+money(c.cost)
+        +' per KB, efficiency '+(c.eff==null?'n/a':c.eff)+', flow '+(c.flow==null?'n/a':c.flow)+', simplicity '+(c.simp==null?'n/a':c.simp))
+        :'an unused setup, no sessions here';});});
+  svg.addEventListener('mouseleave',function(){recommend(best(enSet()));});
+  MK.forEach(function(m){var b=tog(m);if(!b)return;
+    b.addEventListener('mouseenter',function(){PV=m;refresh();});
+    b.addEventListener('mouseleave',function(){PV=null;refresh();});
+    b.addEventListener('click',function(){var on=MK.filter(function(k){return EN[k];});
+      if(EN[m]&&on.length<=1)return;EN[m]=!EN[m];PV=null;refresh();});});
   document.querySelectorAll('.wv-bar').forEach(function(g){
-    g.addEventListener('mouseenter',function(){setPeriod(+g.getAttribute('data-i'));});});
+    g.addEventListener('mouseenter',function(){CURP=+g.getAttribute('data-i');refresh();});});
   var wsvg=document.getElementById('wave-svg');
-  if(wsvg)wsvg.addEventListener('mouseleave',resetTime);
-  document.querySelectorAll('.obj-chip').forEach(function(ch){
-    ch.addEventListener('click',function(){setObjective(ch.getAttribute('data-obj'));});});
-  capture(); markCur(); setObjective('balanced');
+  if(wsvg)wsvg.addEventListener('mouseleave',function(){CURP=null;refresh();});
+  refresh();
 })();
 </script>"""
 
 
 def render_walk(report):
-    """The interactive map, driven from the top. The waveform in the card is the time
-    control (hover a period and the score, breakdown, your position, the path so far and
-    the summary update); the objective chips re-aim the descent arrow (efficiency, flow,
-    simplicity, or balanced); hovering a hexagon or the arrow explains it. Reuses
-    render_som_map (svg id 'map-you', JS-owned arrow), embeds the per-cell metrics and
-    per-period series, and drives it with one self-contained script. Empty when there is
-    no walk."""
+    """Emits the one self-contained script that drives the whole card: the metric
+    toggles (hover to preview, click to hold) set which metrics feed the score and the
+    descent; the waveform scrubs time; the fingerprint's arrow re-aims to the best cell
+    for the enabled metrics; the recommendation sits below the fingerprints. The map and
+    toggles live in the card (rendered elsewhere); this only wires them. '' when no walk."""
     som = (report.get("rig_space") or {}).get("som")
     if not som or not som.get("walk"):
         return ""
@@ -2644,21 +2636,16 @@ def render_walk(report):
               "engine": m.get("engine"), "model": m.get("model"),
               "worker": m.get("worker"), "effort": m.get("effort"),
               "sessions": m.get("sessions")} for m in som.get("cell_meaning", [])]
-    periods = _timeline_periods(report)
-    cur = som.get("current_cell")
-    themap = render_som_map(
-        som, style="ink-hex", svg_id="map-you", js_arrow=True, title="Where you work",
-        subtitle="hover the wave to scrub time; click a goal to aim the arrow; hover a "
-        "hexagon for detail")
-    detail = ('<div class="walk"><div id="walk-detail" class="walk-detail">Hover a '
-              'hexagon for what it is; hover the arrow for the move.</div></div>')
+    tl, mb = report.get("topline") or {}, report.get("misery") or {}
+    agg = {"eff": tl.get("eq"), "flow": mb.get("flow"), "simp": tl.get("simplicity")}
 
     def _safe(obj):
         return json.dumps(obj, separators=(",", ":")).replace("</", "<\\/")
     script = (_WALK_JS.replace("__CELLS__", _safe(cells))
-              .replace("__PERIODS__", _safe(periods))
-              .replace("__CUR__", _safe(cur)))
-    return _WALK_CSS + themap + detail + script
+              .replace("__PERIODS__", _safe(_timeline_periods(report)))
+              .replace("__CUR__", _safe(som.get("current_cell")))
+              .replace("__AGG__", _safe(agg)))
+    return _WALK_CSS + script
 
 
 def _card_maps(report):
@@ -2669,13 +2656,18 @@ def _card_maps(report):
     shared = report.get("shared_map")
     tiles = []
     if som:
-        tiles.append(render_som_map(som, style="ink-hex", compact=True,
-                                    title="Where you work"))
+        # the interactive fingerprint lives in the card now: hover a hexagon, toggle a
+        # metric to re-aim the arrow, hover the wave to scrub position.
+        tiles.append(render_som_map(som, style="ink-hex", compact=True, svg_id="map-you",
+                                    js_arrow=True, title="Where you work"))
     if shared and som and som.get("current_cell"):
         tiles.append(render_shared_map_compact(shared, som["current_cell"]))
     if not tiles:
         return ""
-    return f'<div class="som-maps-row">{"".join(tiles)}</div>'
+    # the recommendation, right below the fingerprints, in the breakdown's style; the
+    # objective is implied by the setup, so no "optimizing for" prefix. Filled by JS.
+    rec = '<div class="vb-rec" id="vb-rec"></div>' if som else ""
+    return f'<div class="som-maps-row">{"".join(tiles)}</div>{rec}'
 
 
 def render_shared_map_compact(merged, current_cell):
@@ -2771,19 +2763,21 @@ def render_waveform(report):
     n = len(s)
     bw = W / n
     unit = (H * 0.9) / 3.0  # each component contributes up to `unit` of height
+    comps = [(nE, "var(--accent)", "eff"), (nF, "var(--teal)", "flow"),
+             (nS, "var(--good)", "simp")]
     bars = []
     for i in range(n):
-        segs = [(nrm[i] * unit, color) for nrm, color in comps]
-        total = sum(hgt for hgt, _ in segs)
+        segs = [(nrm[i] * unit, color, m) for nrm, color, m in comps]
+        total = sum(hgt for hgt, _, _ in segs)
         y = cy - total / 2
         x = i * bw
         wd = max(bw - 1.4, 0.8)
         g = [f'<g class="wv-bar" data-i="{i}">'
              f'<rect x="{x:.1f}" y="0" width="{bw:.2f}" height="{H}" '
              f'fill="transparent" pointer-events="all"/>']
-        for hgt, color in segs:
+        for hgt, color, m in segs:
             if hgt >= 0.4:
-                g.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{wd:.1f}" '
+                g.append(f'<rect data-m="{m}" x="{x:.1f}" y="{y:.1f}" width="{wd:.1f}" '
                          f'height="{hgt:.1f}" fill="{color}"/>')
             y += hgt
         g.append('</g>')
@@ -2791,17 +2785,9 @@ def render_waveform(report):
     svg = (f'<svg id="wave-svg" viewBox="0 0 {W} {H}" role="img" aria-label="the combined '
            f'score over time as a stacked waveform: efficiency, flow and simplicity in '
            f'one bar per period">{"".join(bars)}</svg>')
-
-    def chip(obj, color, label):
-        return (f'<button type="button" class="obj-chip" data-obj="{obj}" '
-                f'style="--oc:{color}">{esc(label)}</button>')
-    legend = ('<div class="wlegend">' + chip("eff", "var(--accent)", "efficiency")
-              + chip("flow", "var(--teal)", "flow")
-              + chip("simp", "var(--good)", "simplicity")
-              + chip("balanced", "var(--rust)", "balanced")
-              + '<span class="wl-note">click a goal to aim the arrow; '
-              + 'hover the wave to scrub time</span></div>')
-    return (f'<div class="wave">{svg}{legend}</div>')
+    note = ('<div class="wlegend"><span class="wl-note">hover the wave to scrub time; '
+            'toggle a metric above to change the goal and the score</span></div>')
+    return (f'<div class="wave">{svg}{note}</div>')
 
 
 def _som_mark():
@@ -2846,25 +2832,27 @@ def _hero_card(report):
     eff = tl["eq"]
     flow = (mb.get("flow", round(100 - mb["overall"], 1)) if mb else None)
     simp = tl.get("simplicity")
-    comps = [f'<span title="durable shipped changes per Mtok, larger is better">'
-             f'<b style="color:var(--accent)">{esc(str(eff))}</b> efficiency</span>']
+
+    def _tog(m, color, val, label, title=""):
+        return (f'<button type="button" class="mtog" data-m="{m}" aria-pressed="true" '
+                f'style="--oc:{color}"{f" title=\"{title}\"" if title else ""}>'
+                f'<b>{val}</b> {label}</button>')
+    comps = [_tog("eff", "var(--accent)", esc(str(eff)), "efficiency",
+                  "durable shipped changes per Mtok, larger is better")]
     if flow is not None:
-        comps.append(f'<span><b style="color:var(--teal)">{flow:g}</b> flow</span>')
+        comps.append(_tog("flow", "var(--teal)", f"{flow:g}", "flow"))
     if simp is not None:
-        comps.append(f'<span><b style="color:var(--good)">{simp:.0f}</b> simplicity</span>')
+        comps.append(_tog("simp", "var(--good)", f"{simp:.0f}", "simplicity"))
     if eff is not None and flow is not None and simp is not None:
         combined = round(eff * flow * simp)
-        hero = (f'<div class="combined"><div class="cv" id="vb-score" '
-                f'title="efficiency x flow x simplicity, each larger is better, rolled '
-                f'into one; watch it move, not its absolute size">{combined:,}</div>'
-                f'<div class="cn" id="vb-label">score</div>'
-                f'<div class="cparts" id="vb-parts">{"".join(comps)}</div>'
-                f'<div id="vb-summary"></div></div>')
+        cv = f'{combined:,}'
     else:
-        hero = (f'<div class="combined"><div class="cv" id="vb-score">{esc(str(eff))}'
-                f'</div><div class="cn" id="vb-label">efficiency</div>'
-                f'<div class="cparts" id="vb-parts">{"".join(comps)}</div>'
-                f'<div id="vb-summary"></div></div>')
+        cv = esc(str(eff))
+    hero = (f'<div class="combined"><div class="cv" id="vb-score" '
+            f'title="the enabled metrics multiplied; toggle metrics below to change it. '
+            f'Watch it move, not its absolute size">{cv}</div>'
+            f'<div class="cn" id="vb-label">score</div>'
+            f'<div class="cparts" id="vb-parts">{"".join(comps)}</div></div>')
     _ = fp  # fingerprint data stays in report["fingerprint"]; the maps render it below
     return "".join([
         '<div class="card">',
@@ -2971,22 +2959,13 @@ def render_html(report):
     esc = _html.escape
     head = "<style>\n" + _CSS + "</style>\n"
     hero = _hero_card(report)
-    som_block = (report.get("rig_space") or {}).get("som")
-    som = render_walk(report)
-    # the federated shared frontier, when a merged commons map is present. Your cell on
-    # the shared frame is your cell on the learned map (v1 pins one reference codebook,
-    # so they coincide). Absent commons -> empty, report unchanged.
-    shared = ""
-    shared_data = report.get("shared_map")
-    if shared_data and som_block and som_block.get("current_cell"):
-        cur = som_block["current_cell"]
-        shared = render_shared_map(shared_data, cur,
-                                   som_merge.merged_gradient(shared_data, cur),
-                                   style="ink-hex")
+    # the interactive fingerprints, waveform and toggles all live in the card now;
+    # render_walk emits just the script that drives them (the map is in the card).
+    walk_js = render_walk(report)
     tl = [r for r in report.get("timeline", []) if r["eq"] is not None]
     if len(tl) < 2:
-        body = (f'<div class="vibrant">{hero}{_coverage_banner(report)}{_lever_html(report)}'
-                f'{som}{shared}{render_small_multiples(report)}{render_attribution(report)}</div>')
+        body = (f'<div class="vibrant">{hero}{walk_js}{_coverage_banner(report)}'
+                f'{render_small_multiples(report)}{render_attribution(report)}</div>')
         return _page(head + body)
 
     W, H = 760, 300
@@ -3082,15 +3061,13 @@ def render_html(report):
         items = "".join(f'<li><span class="flag">{k}</span> {esc(r["week"])}: '
                         f'{esc("; ".join(r["changes"]))}</li>' for k, r in flags)
         legend = f'<ol>{items}</ol>'
-    detail = (f'{_lever_html(report)}'
-              f'<h2>Efficiency over time <span class="sub">shipped changes per Mtok, '
+    detail = (f'<h2>Efficiency over time <span class="sub">shipped changes per Mtok, '
               f'per era</span></h2>'
               f'{"".join(parts)}{legend}'
-              f'{som}{shared}'
               f'<details class="breakdown"><summary>full breakdown: fuel streams and '
               f'per-rig work</summary>'
               f'{render_small_multiples(report)}{render_attribution(report)}</details>')
-    body = f'<div class="vibrant">{hero}{_coverage_banner(report)}{detail}</div>'
+    body = f'<div class="vibrant">{hero}{walk_js}{_coverage_banner(report)}{detail}</div>'
     return _page(head + body)
 
 
