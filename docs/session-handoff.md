@@ -220,17 +220,30 @@ two operators, each runs `contribute_map` against the committed frame, `som_merg
 -> 32 valued cells, 22 corroborated by both, frontier arrow backed by 7 peer sessions
 across 2 operators. Shared map screenshot verified.
 
-## Immediate next action: consume the commons in the live report
+## Consumption wired (updated 2026-08-15); remaining polish
 
-Everything to PRODUCE and MERGE and DRAW the shared map exists. The one remaining wire
-is CONSUMPTION in a live single-operator report: publish a merged shared-map artifact
-(run `som_merge.merge` over the collected `som-contribution@1`s and commit it, the way
-`frontier/reference-frontier.json` is a published commons), then have the driver load it
-(a `load_shared_map` next to `load_som`) and call `render_shared_map(merged,
-operator_cell, merged_gradient(...))` in `render_html`, where `operator_cell =
-som_train.bmu(reference_codebook, features(latest session))`. A no-artifact report stays
-byte-identical. Also worth: fold `contribute_map` into the `vibrant-contribute` skill so
-contributing is one agent action. See memory `federation-by-model-merge`.
+The live report now renders BOTH maps. `load_shared_map` (next to `load_som`) reads a
+`shared-map.json` (schema `vibrant/som-merged@1`) beside the snapshot; `render_html`
+draws `render_shared_map(shared, current_cell, som_merge.merged_gradient(...))` after
+the personal map, using `rig_space.som.current_cell` as the operator's cell (valid while
+v1 pins one reference codebook == the operator's SOM frame). Absent artifact -> the
+section is empty and the report is byte-identical. Commit `ebca926`, graded BUILT 5/5.
+
+Verified by rendering the real 232-session report with a demo merged map present: the
+personal "Where you work" map and "The shared frontier" both render top to bottom
+(screenshots read at a glance). The two look similar ONLY because the demo splits one
+operator's corpus in two; real peers diverge.
+
+Remaining polish (none reserved, none blocking):
+- GENERAL operator cell: compute the operator's shared-frame cell by
+  `som_train.bmu(reference_codebook, features(latest session))` rather than reusing the
+  learned-map `current_cell`, so it stays correct if an operator's own SOM frame ever
+  diverges from the reference frame. Needs `session_features`+`som_train.bmu` in the
+  driver (the driver already puts `core` and the adapter dir on the path).
+- PUBLISH FLOW: fold `contribute_map` into the `vibrant-contribute` skill (one agent
+  action to produce a contribution), and a commons step that runs `som_merge.merge` over
+  collected contributions and publishes `shared-map.json`, the way
+  `frontier/reference-frontier.json` is curated. See memory `federation-by-model-merge`.
 
 Do NOT skip the shipping loop: source-first, update `hoist/config.json`, re-emit and
 grade. The toolchain recipe that worked: fetch
