@@ -2637,7 +2637,9 @@ _WALK_JS = r"""<script>
   function vals(){if(CURP!=null){var p=PERIODS[CURP];return {eff:p.eff,flow:p.flow,simp:p.simp};}
     var g=curEra();return g?{eff:g.eff,flow:g.flow,simp:g.simp}:AGG;}
   function score(e,v){var s=1,any=false;MK.forEach(function(m){if(e[m]&&v[m]!=null){s*=v[m];any=true;}});return any?Math.round(s):0;}
-  function dimWave(e){document.querySelectorAll('#wave-svg rect[data-m]').forEach(function(r){r.setAttribute('opacity', e[r.getAttribute('data-m')]?'1':'0.12');});}
+  // daily bars sit in FRONT, a touch translucent so the solid generation band behind shows
+  // through the gaps; a disabled metric fades right back.
+  function dimWave(e){document.querySelectorAll('#wave-svg rect[data-m]').forEach(function(r){r.setAttribute('opacity', e[r.getAttribute('data-m')]?'0.88':'0.12');});}
   // light the region feeding the score: in day view the single hovered bar; in generation
   // view the whole era, its band segment, and its rainfall (number -> the days it sums).
   function activeEra(){return (CURP!=null&&PERIODS[CURP])?PERIODS[CURP].era:ERAIDX;}
@@ -2647,7 +2649,7 @@ _WALK_JS = r"""<script>
     // every generation keeps its colour; the one feeding the score is brightened, the rest
     // dimmed (and all subdued while previewing a single day).
     ws.querySelectorAll('.wv-band').forEach(function(bd){var e=+bd.getAttribute('data-era');
-      bd.setAttribute('opacity', day?'0.32':(e===ae?'0.95':'0.5'));});
+      bd.setAttribute('opacity', day?'0.45':(e===ae?'1':'0.6'));});
     ws.querySelectorAll('.wv-score').forEach(function(tx){var e=+tx.getAttribute('data-era');tx.setAttribute('opacity',(ae==null||e===ae)?'1':'0.4');});
     drawMerge();drawFlow();}
   // a smooth ribbon: cubic edges between (x0,ya..yb) at the source and (x1,ca..cb) at the
@@ -2658,15 +2660,28 @@ _WALK_JS = r"""<script>
   // the merge: each enabled metric flows from its stacked button on the left into a slice
   // of the score's left edge on the right, coloured by the metric. Toggling one off drops
   // its stream (and the score), so the number is visibly the product of these flows.
-  function drawMerge(){var e=enSet();var tg=document.getElementById('topgroup'),mf=document.getElementById('merge-flow');
+  function drawMerge(){var en=enSet(),v=vals();var tg=document.getElementById('topgroup'),mf=document.getElementById('merge-flow');
     if(!tg||!mf||!vbScore)return;var gr=tg.getBoundingClientRect();if(gr.width<1)return;
     mf.setAttribute('viewBox','0 0 '+gr.width.toFixed(1)+' '+gr.height.toFixed(1));
-    var sr=vbScore.getBoundingClientRect();var sx=sr.left-gr.left,syc=(sr.top+sr.bottom)/2-gr.top,sh=sr.height*0.74;
-    var on=MK.filter(function(m){return e[m];});var slice=on.length?sh/on.length:sh;var h='';
-    on.forEach(function(m,idx){var btn=document.querySelector('.mtog[data-m="'+m+'"]');if(!btn)return;
-      var br=btn.getBoundingClientRect();var bx=br.right-gr.left,byc=(br.top+br.bottom)/2-gr.top,bh=br.height*0.66;
-      var dyc=syc-sh/2+slice*(idx+0.5);
-      h+='<path d="'+ribbon(bx,byc-bh/2,byc+bh/2,sx,dyc-slice*0.42,dyc+slice*0.42)+'" fill="'+OBJC[m]+'" opacity="0.3"/>';});
+    var sr=vbScore.getBoundingClientRect();var sx=sr.left-gr.left,syc=(sr.top+sr.bottom)/2-gr.top,sh=sr.height*0.72;
+    // widths are proportional to log(value): the score is a PRODUCT, and a product is a SUM
+    // of logs, so in log space the three stream widths honestly add up to the whole.
+    var on=MK.filter(function(m){return en[m]&&v[m]!=null;});
+    var lg=on.map(function(m){return Math.log(Math.max(+v[m],1.0001));});
+    var tot=lg.reduce(function(a,b){return a+b;},0)||1;
+    var h='',cum=syc-sh/2;
+    on.forEach(function(m,idx){var sl=sh*lg[idx]/tot,dyc=cum+sl/2;cum+=sl;
+      var btn=document.querySelector('.mtog[data-m="'+m+'"]');if(!btn)return;
+      var br=btn.getBoundingClientRect();var bx=br.right-gr.left,byc=(br.top+br.bottom)/2-gr.top;
+      var bt=Math.min(sl,br.height*0.86)/2;
+      h+='<path d="'+ribbon(bx,byc-bt,byc+bt,sx,dyc-sl/2,dyc+sl/2)+'" fill="'+OBJC[m]+'" opacity="0.34"/>';});
+    // the "machine" that grinds them together: a small multiply node at the confluence, so
+    // it reads as a product, not a plain additive flow.
+    if(on.length>1){var nx=sx-8,ny=syc;
+      h+='<circle cx="'+nx.toFixed(1)+'" cy="'+ny.toFixed(1)+'" r="8" fill="var(--card)" stroke="var(--muted)" stroke-width="1"/>'
+        +'<path d="M'+(nx-3.2).toFixed(1)+','+(ny-3.2).toFixed(1)+' L'+(nx+3.2).toFixed(1)+','+(ny+3.2).toFixed(1)
+        +' M'+(nx-3.2).toFixed(1)+','+(ny+3.2).toFixed(1)+' L'+(nx+3.2).toFixed(1)+','+(ny-3.2).toFixed(1)
+        +'" stroke="var(--muted)" stroke-width="1.5" stroke-linecap="round"/>';}
     mf.innerHTML=h;}
   // the timeline flow: a soft ribbon up into the centred group from the slice of the
   // timeline feeding the score (the hovered day, or the held generation's bars).
@@ -3153,7 +3168,7 @@ def render_waveform(report):
         col = GEN[e % len(GEN)]
         ribbons.append(f'<polygon class="wv-band" data-era="{e}" points="'
                        + " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
-                       + f'" fill="{col}" opacity="0.6"/>')
+                       + f'" fill="{col}" opacity="1"/>')
         xm = (xl + xr) / 2
         gt = cy - max(g[i] for i in range(a, b)) * RT
         labels.append(f'<text class="wv-score" data-era="{e}" x="{xm:.1f}" '
@@ -3163,12 +3178,13 @@ def render_waveform(report):
             dividers.append(f'<line x1="{xl:.1f}" y1="2" x2="{xl:.1f}" y2="{H - 2}" '
                             f'stroke="var(--ink)" stroke-width="1" stroke-dasharray="2 3" '
                             f'opacity="0.22"/>')
-    # back to front: dividers, the daily bars, the colour-per-generation rollup band over
-    # them, then the era scores on top.
+    # back to front: dividers, then the SOLID colour-per-generation rollup band (100%,
+    # the backdrop), then the daily bars in FRONT (partly translucent, so the band shows
+    # through the gaps between bars and reads as continuous), then the era scores.
     svg = (f'<svg id="wave-svg" viewBox="0 0 {W} {H}" role="img" aria-label="the combined '
-           f'score over time: daily bars of efficiency, flow and simplicity riding over a '
-           f'bold colour-per-generation rollup band, each generation labelled with its '
-           f'score">{"".join(dividers)}{"".join(bars)}{"".join(ribbons)}{"".join(labels)}</svg>')
+           f'score over time: a bold colour-per-generation rollup band behind the daily '
+           f'bars of efficiency, flow and simplicity, each generation labelled with its '
+           f'score">{"".join(dividers)}{"".join(ribbons)}{"".join(bars)}{"".join(labels)}</svg>')
     note = ('<div class="wlegend"><span class="wl-key">'
             '<span><i style="background:var(--accent)"></i>efficiency</span>'
             '<span><i style="background:var(--teal)"></i>flow</span>'
