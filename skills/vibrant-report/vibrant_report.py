@@ -1991,6 +1991,7 @@ _CSS = """
 .vibrant .vb-rec{font-size:13px;color:var(--ink2);margin-top:12px;min-height:18px;}
 .vibrant .vb-rec b{color:var(--rust);}
 .vibrant .vb-rec .rec-arrow{color:var(--teal);font-weight:800;margin-right:5px;}
+.vibrant .vb-rec .rec-hold{color:var(--muted);}
 .vibrant .vb-detail{font-size:12px;color:var(--muted);margin-top:6px;min-height:16px;}
 .vibrant .vb-detail b{color:var(--ink2);}
 .vibrant .mk-were{color:var(--muted);font-weight:700;}
@@ -2593,8 +2594,12 @@ _WALK_JS = r"""<script>
   // full coverage: a cell scores only if it has every enabled dimension; a missing
   // dimension disqualifies it rather than being silently dropped (mirrors _recommend_cells).
   function good(c,en){var prod=1,cnt=0,miss=false;MK.forEach(function(m){if(!en[m])return;var x=nrm(c,m);if(x==null){miss=true;return;}prod*=Math.max(x,.001);cnt++;});return (miss||!cnt)?null:Math.pow(prod,1/cnt);}
-  // the recommendation is chosen server-side (support-weighted, full-coverage); look it up.
-  function best(en){var k=MK.filter(function(m){return en[m];}).join(',');var rc=BEST[k];return rc?cell(rc[0],rc[1]):null;}
+  // selection is chosen server-side (support-weighted, full-coverage, noise-gated);
+  // best() is the argmax cell (also the scrub's optimal reference); recOk() says whether
+  // a confident move to it exists (gain beats the noise from support).
+  function bkey(en){return MK.filter(function(m){return en[m];}).join(',');}
+  function best(en){var b=BEST[bkey(en)];return (b&&b.cell)?cell(b.cell[0],b.cell[1]):null;}
+  function recOk(en){var b=BEST[bkey(en)];return !!(b&&b.ok);}
   function objColor(en){var on=MK.filter(function(m){return en[m];});return on.length===1?OBJC[on[0]]:'var(--rust)';}
   function objName(en){var on=MK.filter(function(m){return en[m];});return on.length===3?'balance':(on.length===1?OBJN[on[0]]:on.map(function(m){return OBJN[m];}).join('+'));}
   function hexMk(r,c,color,sw){var p=pts(r,c);return p?('<polygon points="'+p+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'"/>'):'';}
@@ -2613,13 +2618,13 @@ _WALK_JS = r"""<script>
   function vals(){if(CURP!=null){var p=PERIODS[CURP];return {eff:p.eff,flow:p.flow,simp:p.simp};}return AGG;}
   function score(e,v){var s=1,any=false;MK.forEach(function(m){if(e[m]&&v[m]!=null){s*=v[m];any=true;}});return any?Math.round(s):0;}
   function dimWave(e){document.querySelectorAll('#wave-svg rect[data-m]').forEach(function(r){r.setAttribute('opacity', e[r.getAttribute('data-m')]?'1':'0.12');});}
-  function setRec(e){var bc=best(e);if(!vbRec)return;
-    if(!bc){vbRec.innerHTML='';return;}
-    if(bc.r===CUR[0]&&bc.c===CUR[1]){vbRec.innerHTML='You are at the best spot for '+objName(e)+'.';return;}
-    vbRec.innerHTML='<span class="rec-arrow">'+REC+'</span> shift toward <b>'+setup(bc)+'</b>';}
+  function setRec(e){if(!vbRec)return;var bc=best(e);
+    if(bc&&recOk(e)){vbRec.innerHTML='<span class="rec-arrow">'+REC+'</span> shift toward <b>'+setup(bc)+'</b>';return;}
+    // no move clears the noise (or no measurable baseline): say hold, do not point.
+    vbRec.innerHTML='<span class="rec-hold">You are in a stable spot for '+objName(e)+'; no confident move stands out.</span>';}
   function renderFx(e){if(!fx)return;var h='';
     if(CURP==null){var bc=best(e);
-      if(bc&&!(bc.r===CUR[0]&&bc.c===CUR[1])){h+=arrowSvg(ctr(CUR[0],CUR[1]),ctr(bc.r,bc.c),objColor(e));h+=hexMk(bc.r,bc.c,objColor(e),2.2);}
+      if(bc&&recOk(e)&&!(bc.r===CUR[0]&&bc.c===CUR[1])){h+=arrowSvg(ctr(CUR[0],CUR[1]),ctr(bc.r,bc.c),objColor(e));h+=hexMk(bc.r,bc.c,objColor(e),2.2);}
       h+=hexMk(CUR[0],CUR[1],'var(--rust)',3);
     } else { var p=PERIODS[CURP],a=p.cell,bc=best(e),c=(PERIODS[CURP+1]?PERIODS[CURP+1].cell:null);
       // dotted line to the optimal cell from here; solid arrow to what you actually did next.
@@ -2662,23 +2667,31 @@ _WALK_JS = r"""<script>
 </script>"""
 
 
-def _recommend_cells(cells, support_k=4.0):
-    """The cell to move toward for each non-empty objective subset of (eff, flow,
-    simp). Two honesty rules keep the recommendation from chasing noise:
+def _recommend_cells(cells, current_cell=None, support_k=4.0, noise_k=1.0):
+    """For each non-empty objective subset of (eff, flow, simp): the best cell to move
+    toward, and whether recommending that move is actually warranted. Three honesty
+    rules keep the recommendation from chasing noise:
 
     - Full coverage: a cell is eligible only if it has a value for EVERY enabled
-      dimension. A missing dimension (e.g. a cell never babysitting-scored, so
-      flow is None) is not a free pass; absence of data is not absence of a
-      weakness. This is what a lone metric-maxing outlier used to exploit.
-    - Confidence shrinkage: the normalized geometric-mean score is scaled by
-      n / (n + k), so a 2-session cell cannot outrank a well-supported one on a
+      dimension. A missing dimension (e.g. a cell never babysitting-scored, so flow
+      is None) is not a free pass; absence of data is not absence of a weakness. This
+      is what a lone metric-maxing outlier used to exploit.
+    - Confidence shrinkage: the selection score (normalized geometric mean) is scaled
+      by n / (n + k), so a 2-session cell cannot outrank a well-supported one on a
       lucky reading.
+    - Noise gate: the best cell's objective GAIN over the current cell must beat the
+      noise implied by how thinly both cells are sampled (sigma * sqrt(1/n_best +
+      1/n_cur), sigma = the spread of the objective across eligible cells). A move
+      lost in that band is not surfaced as a call to action.
 
-    Returns {subset_key: [r, c] or None}; subset_key is the enabled metric names,
-    in eff,flow,simp order, comma-joined (matching the client's MK.filter().join).
-    Note: per-cell eff/simp are still their dominant rig's git-attributed numbers,
-    not the cell's own sessions (sessions carry no per-session commit attribution);
-    grounding those per-session is a separate, deeper change."""
+    Returns {subset_key: {"cell": [r, c] or None, "ok": bool}}. 'cell' is always the
+    argmax (the scrub uses it as the optimal reference when replaying history); 'ok'
+    is True only when a confident move exists: an eligible best cell, different from
+    where you are, with a measurable current baseline and a gain that clears the
+    noise. The card shows 'shift toward X' only when ok. subset_key is the enabled
+    metric names in eff,flow,simp order, comma-joined (matching MK.filter().join).
+    Note: per-cell eff/simp are still their dominant rig's git-attributed numbers, not
+    the cell's own sessions; grounding those per-session is a separate, deeper change."""
     keys = ("eff", "flow", "simp")
     rng = {}
     for m in keys:
@@ -2692,29 +2705,59 @@ def _recommend_cells(cells, support_k=4.0):
         lo, hi = r
         return (c[m] - lo) / ((hi - lo) or 1)
 
-    def score(c, subset):
+    def raw(c, subset):
+        # the normalized geometric-mean quality, unshrunk; None if any enabled dim
+        # is missing (full coverage).
         prod = 1.0
         for m in subset:
             x = nrm(c, m)
             if x is None:
-                return None  # full coverage: a missing enabled dim disqualifies
+                return None
             prod *= max(x, 0.001)
-        g = prod ** (1.0 / len(subset))
-        n = c.get("sessions") or 0
-        return g * (n / (n + support_k))  # confidence shrinkage
+        return prod ** (1.0 / len(subset))
+
+    def pstdev(xs):
+        if len(xs) < 2:
+            return 0.0
+        mu = sum(xs) / len(xs)
+        return (sum((x - mu) ** 2 for x in xs) / len(xs)) ** 0.5
+
+    cur = None
+    if current_cell:
+        want = list(current_cell)
+        cur = next((c for c in cells if [c["r"], c["c"]] == want), None)
 
     subsets = [("eff",), ("flow",), ("simp",), ("eff", "flow"), ("eff", "simp"),
                ("flow", "simp"), ("eff", "flow", "simp")]
     out = {}
     for subset in subsets:
-        best_rc, best_g = None, -1.0
-        for c in cells:
-            if (c.get("sessions") or 0) < 2:
-                continue
-            g = score(c, subset)
-            if g is not None and g > best_g:
-                best_g, best_rc = g, [c["r"], c["c"]]
-        out[",".join(subset)] = best_rc
+        scored = [(c, raw(c, subset)) for c in cells if (c.get("sessions") or 0) >= 2]
+        scored = [(c, g) for c, g in scored if g is not None]
+        best_c, best_sel = None, -1.0
+        for c, g in scored:
+            n = c.get("sessions") or 0
+            sel = g * (n / (n + support_k))  # confidence-shrunk selection score
+            if sel > best_sel:
+                best_sel, best_c = sel, c
+        key = ",".join(subset)
+        if best_c is None:
+            out[key] = {"cell": None, "ok": False}
+            continue
+        cell_rc = [best_c["r"], best_c["c"]]
+        g_cur = raw(cur, subset) if cur is not None else None
+        ok = True
+        if cur is None or g_cur is None:
+            ok = False  # no measurable baseline: do not claim a confident move
+        elif [cur["r"], cur["c"]] == cell_rc:
+            ok = False  # already at the best cell
+        else:
+            sigma = pstdev([g for _, g in scored])
+            n_b = best_c.get("sessions") or 1
+            n_c = cur.get("sessions") or 1
+            se = sigma * ((1.0 / n_b + 1.0 / n_c) ** 0.5)
+            if (raw(best_c, subset) - g_cur) <= noise_k * se:
+                ok = False  # gain lost in the noise implied by support
+        out[key] = {"cell": cell_rc, "ok": ok}
     return out
 
 
@@ -2738,7 +2781,7 @@ def render_walk(report):
     def _safe(obj):
         return json.dumps(obj, separators=(",", ":")).replace("</", "<\\/")
     script = (_WALK_JS.replace("__CELLS__", _safe(cells))
-              .replace("__BEST__", _safe(_recommend_cells(cells)))
+              .replace("__BEST__", _safe(_recommend_cells(cells, som.get("current_cell"))))
               .replace("__PERIODS__", _safe(_timeline_periods(report)))
               .replace("__CUR__", _safe(som.get("current_cell")))
               .replace("__AGG__", _safe(agg)))

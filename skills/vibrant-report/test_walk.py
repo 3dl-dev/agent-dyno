@@ -105,8 +105,8 @@ def test_recommend_ignores_noise(fails):
         {"r": 1, "c": 1, "eff": 6.15, "flow": 64.0, "simp": 64.3, "sessions": 12},
         {"r": 2, "c": 2, "eff": 5.75, "flow": 48.0, "simp": 88.5, "sessions": 11},
     ]
-    rec = vr._recommend_cells(cells)
-    bal = rec["eff,flow,simp"]
+    rec = vr._recommend_cells(cells, current_cell=[2, 2])
+    bal = rec["eff,flow,simp"]["cell"]
     check(bal != [0, 0], "balanced objective still picks the flow-less 2-session outlier", fails)
     # whatever it picks for balance must actually have all three dimensions measured
     chosen = next((c for c in cells if [c["r"], c["c"]] == bal), None)
@@ -116,8 +116,40 @@ def test_recommend_ignores_noise(fails):
           "balanced recommendation is not a full-coverage cell", fails)
     # a <2-session cell is never eligible
     edge = vr._recommend_cells([{"r": 0, "c": 0, "eff": 9.0, "flow": 90.0,
-                                 "simp": 90.0, "sessions": 1}])
-    check(all(v is None for v in edge.values()), "1-session cell was recommended", fails)
+                                 "simp": 90.0, "sessions": 1}], current_cell=[0, 0])
+    check(all(v["cell"] is None and not v["ok"] for v in edge.values()),
+          "1-session cell was recommended", fails)
+
+
+def test_recommend_noise_gate(fails):
+    # The gate works on the NORMALIZED field: a move whose objective gain over the
+    # current cell is small relative to the spread of your cells (scaled up by thin
+    # support) must NOT be surfaced as a call to action (ok False). 'cell' (the argmax,
+    # used by the scrub) is still reported; only 'ok' differs.
+    # A field where current is already near the top and the best is only slightly above.
+    spread = [
+        {"r": 3, "c": 3, "eff": 2.0, "flow": 20.0, "simp": 20.0, "sessions": 20},
+        {"r": 4, "c": 4, "eff": 3.0, "flow": 30.0, "simp": 30.0, "sessions": 20},
+        {"r": 5, "c": 5, "eff": 5.0, "flow": 50.0, "simp": 50.0, "sessions": 20},
+    ]
+    marginal = spread + [
+        {"r": 0, "c": 0, "eff": 8.0, "flow": 80.0, "simp": 80.0, "sessions": 30},  # current, near top
+        {"r": 1, "c": 1, "eff": 8.5, "flow": 82.0, "simp": 82.0, "sessions": 25},  # barely above
+    ]
+    r = vr._recommend_cells(marginal, current_cell=[0, 0])["eff,flow,simp"]
+    check(r["cell"] is not None, "argmax cell should still be reported for the scrub", fails)
+    check(r["ok"] is False, "a gain small against the field's spread was surfaced as a move", fails)
+    # a decisive, well-supported gain (current poor, best far above) clears the gate.
+    decisive = spread + [
+        {"r": 0, "c": 0, "eff": 2.0, "flow": 20.0, "simp": 20.0, "sessions": 30},  # current, poor
+        {"r": 1, "c": 1, "eff": 9.0, "flow": 90.0, "simp": 90.0, "sessions": 30},  # clearly better
+    ]
+    r2 = vr._recommend_cells(decisive, current_cell=[0, 0])["eff,flow,simp"]
+    check(r2["cell"] == [1, 1] and r2["ok"] is True,
+          "a decisive, well-supported gain was gated out", fails)
+    # standing on the best cell is a hold, not a self-referential recommendation.
+    r3 = vr._recommend_cells(decisive, current_cell=[1, 1])["eff,flow,simp"]
+    check(r3["ok"] is False, "recommended a move to the cell you are already on", fails)
 
 
 def test_determinism(fails):
@@ -128,7 +160,7 @@ def main():
     fails = []
     for t in (test_empty, test_script, test_no_external_refs, test_no_em_dash,
               test_card_maps_interactive, test_hero_toggles, test_recommend_ignores_noise,
-              test_determinism):
+              test_recommend_noise_gate, test_determinism):
         t(fails)
     if fails:
         print("FAIL  walk:")
