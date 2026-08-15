@@ -193,7 +193,24 @@ a solid teal arrow to what you actually did next, a small key naming both (`dlin
 `.scrub-key`). Verified in headless chromium across periods where were/best/went coincide
 and diverge (drv_*.png in the somrun scratch dir).
 
-### Merge-sankey topline + colour-per-generation ribbon (updated 2026-08-15, LATEST)
+### Log-proportional merge + layering flip (updated 2026-08-15, LATEST)
+
+Operator refinements: proportional sankey widths, a cue that the score is a PRODUCT not a
+sum, and bars-in-front over a solid band.
+
+- `drawMerge` stream widths are now proportional to `log(value)`: the score is a product,
+  and a product is a sum of logs, so log-widths honestly sum to the whole at the confluence
+  (a plain additive sankey misrepresents a product). A small circled-x "multiply node" sits
+  at the confluence (only when >1 stream) as the machine that combines them.
+- Wave layering flipped: SVG order is now `ribbons` then `bars` (band behind, bars front).
+  Ribbon opacity 1 (backdrop), bars ~0.88 (`dimWave` enabled = 0.88), so the solid
+  generation colour shows through the inter-bar gaps and reads continuous while the daily
+  bars stay crisp. `emphasize()` wv-band opacities retuned (active 1, others 0.6, day 0.45).
+
+Verified headless (pr_top/pr_wave in somrun scratch): streams proportional, x node renders,
+band shows through the gaps. 13 suites green, deterministic, em-dash clean.
+
+### Merge-sankey topline + colour-per-generation ribbon (updated 2026-08-15, superseded above)
 
 Operator: exaggerate the ribbon, colour each generation, show daily+rollup together; and
 restructure the topline as a sankey (e/f/s stacked LEFT flowing into the score on the
