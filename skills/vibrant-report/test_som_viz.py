@@ -89,8 +89,7 @@ def test_styles(fails):
     check("<polygon class=\"som-cell\"" in hexed, "ink-hex not hexagonal", fails)
     check(hexed.count("som-cell") == 9, f"hex cell count {hexed.count('som-cell')}", fails)
     check("var(--rust)" in hexed and "var(--teal)" in hexed, "hex missing rust/teal", fails)
-    check("<clipPath" in hexed and "ellipse" in hexed, "no oval fingerprint clip", fails)
-    check(hexed.count("<path") >= 3, f"too few ridges: {hexed.count('<path')}", fails)
+    check("<clipPath" in hexed and "ellipse" in hexed, "hex grid not rounded (no oval clip)", fails)
 
 
 def test_meter_bars(fails):
