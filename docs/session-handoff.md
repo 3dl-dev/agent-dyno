@@ -202,28 +202,35 @@ then `/swarm-dispatch`. rd is NOT initialized in this repo. Awaiting the user's 
 - The user thinks at the architecture level (PAD analogy, embeddings, gradient descent,
   SOM, control theory). Engage there, do not dumb it down.
 
-## Immediate next action: wire the federated map end to end
+## Federated map: wired end to end (updated 2026-08-15)
 
-The five SOM primitives are built and graded. What remains is INTEGRATION to make the
-federated map usable by a real operator (each a normal follow-on, none reserved):
+The three integration wires are BUILT, tested, graded (hoist BUILT, transfer 5/5, adds
+`federated-map-wired`), commit `0b70c5e`:
 
-1. PRODUCER TOOL: an adapter that, from a snapshot + a published reference codebook,
-   emits an operator's `som-contribution@1` (assign each session to the reference
-   codebook via `som_train.bmu` on its `session_features` vec, aggregate cost=Sigma
-   dollars, surv=Sigma surviving-KB, support=Sigma sessions per cell, windowed). This
-   session did it ad hoc in the demo (`$JOBTMP/somrun/contrib-*.json`); make it a
-   committed tool, spec+test. This is the `vibrant-contribute` shared-map path.
-2. PUBLISH THE FRAME: bootstrap reference codebook v1 with `som_merge.reference_codebook`
-   from the current SOM and commit it (e.g. `frontier/reference-codebook.json`) so every
-   operator assigns to the same frame.
-3. RENDER THE SHARED MAP: reuse `render_som_map` on the merged field with the operator's
-   own point and the `merged_gradient` arrow (support/weight/contributors shown). The
-   viz already takes a field+trajectory+gradient block; adapt the merged shape to it.
+1. `frontier/reference-codebook.json` (v1, hash `b1c76597`): the committed shared frame.
+2. `adapters/claude-code/contribute_map.py`: the producer (`--dump-sessions` metrics +
+   reference codebook -> `som-contribution@1`, assigns on the SHARED frame via
+   `som_train.bmu`, windowed cost/surv/support, discloses no logs). spec + test.
+3. `render_shared_map` in the driver: reuses `render_som_map` (now with overridable
+   title/subtitle/legend; also fixed a title/cell-tooltip variable-shadowing bug) to
+   draw the pooled field, your cell, and the support-weighted frontier arrow.
 
-Real-data proof this session (keep as the acceptance bar): splitting the 232-session
-corpus into two pseudo-operators and merging their contributions reconstructs the whole
-field EXACTLY (0/32 cells differ), 22 cells corroborated by both, weighted gradient lands
-on a peer-corroborated cell. See memory `federation-by-model-merge`.
+Proven end to end on real data with the REAL tools: split the 232-session corpus into
+two operators, each runs `contribute_map` against the committed frame, `som_merge.merge`
+-> 32 valued cells, 22 corroborated by both, frontier arrow backed by 7 peer sessions
+across 2 operators. Shared map screenshot verified.
+
+## Immediate next action: consume the commons in the live report
+
+Everything to PRODUCE and MERGE and DRAW the shared map exists. The one remaining wire
+is CONSUMPTION in a live single-operator report: publish a merged shared-map artifact
+(run `som_merge.merge` over the collected `som-contribution@1`s and commit it, the way
+`frontier/reference-frontier.json` is a published commons), then have the driver load it
+(a `load_shared_map` next to `load_som`) and call `render_shared_map(merged,
+operator_cell, merged_gradient(...))` in `render_html`, where `operator_cell =
+som_train.bmu(reference_codebook, features(latest session))`. A no-artifact report stays
+byte-identical. Also worth: fold `contribute_map` into the `vibrant-contribute` skill so
+contributing is one agent action. See memory `federation-by-model-merge`.
 
 Do NOT skip the shipping loop: source-first, update `hoist/config.json`, re-emit and
 grade. The toolchain recipe that worked: fetch
