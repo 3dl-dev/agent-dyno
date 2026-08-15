@@ -878,6 +878,108 @@ def gradient_move(metrics, attribution, misery_block, min_sessions=8, misery_tol
     return best
 
 
+# ---------------------------------------------------------------------------
+# rig_space: the fingerprint as a position in a collapsed latent space, moving
+# over time. Full design + attribution (PAD / ALMA) in rig_space.spec.md. This is
+# the HAND-WRITTEN embedding (stdlib, deterministic, computed inline). The learned
+# SOM-on-the-commons version is future work and would land behind a coordinate
+# cache, the same out-of-band seam misery and the fingerprint labels use.
+
+# Each arm value's pre-placed position on the three latent axes, in [0, 1].
+# fan_out: how much you parallelize. firepower: model tier and its cost.
+# rigor: review intensity. Monotonic by construction (see the spec's acceptance).
+_FAN = {"solo": 0.0, "delegate": 0.5, "workflow": 1.0}
+_FIRE = {"haiku-4-5": 0.15, "haiku-4-5-20251001": 0.15, "fable-5": 0.25,
+         "sonnet-4-6": 0.55, "sonnet-5": 0.6, "opus-4-6": 0.85, "opus-4-8": 0.9,
+         "opus-5": 1.0}
+_RIGOR = {"none": 0.0, "manual": 0.2, "automated": 0.35, "agentic-review-pass": 0.6,
+          "sweeps": 0.7, "spec-and-acceptance": 0.8, "cross-model": 0.9}
+RIG_AXES = ("fan_out", "firepower", "rigor")
+
+# velocity-response scalars: session is the raw input (velocity 1); mood chases the
+# session point; personality chases the mood, slower. session > mood > personality.
+V_MOOD = 0.25
+V_PERS = 0.04
+
+
+def _embed(m):
+    """Collapse a session's arms to a point in the 3-axis latent space, each in
+    [0,1]. Hand-written and deterministic (no model, no cache): a pure function of
+    the session's fingerprint arms."""
+    fan = _FAN.get(m.get("engine"), 0.5)
+    orch = _FIRE.get(m.get("model"), 0.5)
+    wk = m.get("worker")
+    fire = orch * 0.6 + _FIRE.get(wk, 0.5) * 0.4 if (wk and wk != "solo") else orch
+    rr = (m.get("review_regime") or "").replace(" ", "-")
+    rigor = _RIGOR.get(rr, 0.35)  # unclassified -> automated baseline, so the axis
+    return (round(fan, 4), round(fire, 4), round(rigor, 4))  # still computes
+
+
+def _layered_trajectory(points):
+    """Run the layered update over the ordered session points: mood chases each
+    session point at V_MOOD, personality chases mood at V_PERS (the PAD/ALMA cascade,
+    pure vector math). Returns (mood, personality, path) where path is the mood
+    position after each session. Deterministic given the points and the constants."""
+    mood = list(points[0])
+    pers = list(points[0])
+    path = []
+    for p in points:
+        for k in range(len(mood)):
+            mood[k] += V_MOOD * (p[k] - mood[k])
+            pers[k] += V_PERS * (mood[k] - pers[k])
+        path.append(tuple(round(x, 4) for x in mood))
+    return (tuple(round(x, 4) for x in mood), tuple(round(x, 4) for x in pers), path)
+
+
+def _downsample(seq, cap):
+    """Even-stride downsample to at most `cap` items, always keeping the last."""
+    if len(seq) <= cap:
+        return list(seq)
+    step = len(seq) / cap
+    idx = sorted({int(i * step) for i in range(cap)} | {len(seq) - 1})
+    return [seq[i] for i in idx]
+
+
+def rig_space(metrics, attribution, misery_block, field_window_days=14):
+    """The operator's trajectory through the collapsed rig-space, plus the gradient
+    at their current position toward the better region. Additive: None when there is
+    not enough dated data; never touches the other meters."""
+    dated = sorted((m for m in metrics if m.get("day")),
+                   key=lambda m: (m["day"], m["sid"]))
+    if len(dated) < 5:
+        return None
+    points = [_embed(m) for m in dated]
+    mood, pers, path = _layered_trajectory(points)
+    # a compact trajectory: (day, mood-position) waypoints, downsampled for the viz.
+    waypoints = _downsample(
+        [{"day": m["day"], "pos": p} for m, p in zip(dated, path)], 24)
+
+    # the field + gradient: reuse the true-economy gradient ($/shipped-change over the
+    # arms). Time-windowing the field to the recent horizon is a documented seam (the
+    # git attribution is all-time; the SOM version windows the learned field).
+    _ = field_window_days
+    move = gradient_move(metrics, attribution, misery_block)
+    gradient = None
+    if move:
+        # target position: the operator's dominant rig with the recommended arm-change
+        # applied, embedded. The gradient is target - current (the PAD update vector).
+        dom = {ax: modal([m.get(fld) for m in dated])
+               for ax, fld in (("engine", "engine"), ("model", "model"),
+                               ("worker", "worker"), ("effort", "effort"),
+                               ("review_regime", "review_regime"))}
+        field_to_arm = {"orchestrator": "model", "worker": "worker", "effort": "effort"}
+        arm = field_to_arm.get(move["axis"])
+        if arm:
+            dom[arm] = move["to"]
+        target = _embed(dom)
+        cur = tuple(mood)
+        gradient = {"arm_change": move, "target": target,
+                    "vector": [round(target[k] - cur[k], 4) for k in range(len(cur))]}
+    return {"axes": list(RIG_AXES), "sessions": len(dated),
+            "personality": list(pers), "mood": list(mood),
+            "current": path[-1], "trajectory": waypoints, "gradient": gradient}
+
+
 def best_lever(by_ee_cells, frontier, total_survkb, total_dollars):
     """The single tweak with the largest predicted topline gain: the operator's
     worst same-shape cell vs the same-shape frontier entry that beats it. None if
@@ -1470,6 +1572,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
     # ($/surviving-work), from the operator's OWN runs. Never the frontier.
     rstats = rig_stats(metrics, numerator.get("attribution"), misery_block)
     navigation = gradient_move(metrics, numerator.get("attribution"), misery_block)
+    rspace = rig_space(metrics, numerator.get("attribution"), misery_block)
 
     # provenance
     repo_prov = []
@@ -1501,6 +1604,7 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
         "lever": lever,
         "navigation": navigation,
         "rig_stats": rstats,
+        "rig_space": rspace,
         "measure": measure,
         "timeline": tline,
         "fuel_and_work": {
