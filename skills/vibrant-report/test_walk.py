@@ -60,7 +60,7 @@ def test_script(fails):
           "placeholders not filled", fails)
     check('"simp":' in out or "simp" in out, "per-cell metrics not embedded", fails)
     # references the card elements it drives
-    for hook in ("map-you", "wv-bar", "vb-score", "mtog", "vb-rec"):
+    for hook in ("map-a", "map-b", "wv-bar", "vb-score", "mtog", "vb-rec"):
         check(hook in out, f"script does not reference {hook}", fails)
 
 
@@ -78,12 +78,13 @@ def test_no_em_dash(fails):
 def test_card_maps_interactive(fails):
     row = vr._card_maps(REPORT)
     check("som-maps-row" in row, "no maps row", fails)
-    check('id="map-you"' in row, "card map not interactive (no map-you id)", fails)
+    # two comparison panels (A and B), each an interactive fingerprint with an fx group.
+    check('id="map-a"' in row and 'id="map-b"' in row, "missing the two comparison panels", fails)
+    check('id="fp-a-label"' in row and 'id="fp-b-label"' in row, "missing the panel labels", fails)
     check('data-r="2" data-c="2"' in row, "card cells not queryable", fails)
-    check("som-fx" in row, "no JS-owned effects group (markers + arrow) in card map", fails)
+    check(row.count("som-fx") >= 2, "each panel needs a JS-owned effects group", fails)
     check('id="vb-rec"' in row, "no recommendation slot below the fingerprints", fails)
     check('id="vb-detail"' in row, "no separate description/detail slot", fails)
-    check("Where you work" in row, "personal fingerprint missing", fails)
 
 
 def test_hero_toggles(fails):

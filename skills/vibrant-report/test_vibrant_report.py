@@ -565,11 +565,11 @@ def main():
             # the standalone "steepest move" lever was removed: the recommendation now
             # lives in the card as the interactive fingerprint's arrow + the in-card
             # recommendation line (driven by the metric toggles), so no separate lever.
-            # the efficiency-over-time chart is one meter, self-evident: bold per-era
-            # levels + dated flags, no explanatory paragraphs and no second meter
-            # (velocity) conflated into the same visual channel.
-            if "Efficiency over time" not in hh:
-                fails.append("report.html is missing the efficiency-over-time chart")
+            # the standalone efficiency-over-time chart was retired: the card's waveform
+            # now carries the generations (per-era levels + daily bars), so a second chart
+            # was redundant. It must be gone, and the card's waveform present instead.
+            if "Efficiency over time" in hh:
+                fails.append("report.html still carries the retired efficiency-over-time chart")
             if "The bold line is" in hh or "efficiency, not quality" in hh:
                 fails.append("report.html still carries the cut explanatory paragraphs")
             # ---- (item 3) the slicer cuts by every fingerprint dimension, now

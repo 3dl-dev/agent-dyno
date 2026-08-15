@@ -2549,12 +2549,16 @@ def render_shared_map(merged, current_cell, gradient, style="classic"):
 
 _WALK_CSS = (
     '<style>'
-    '.som-maps-row{display:flex;flex-wrap:wrap;gap:20px;margin-top:14px}'
+    '.som-maps-row{display:flex;flex-wrap:wrap;gap:24px;margin-top:14px}'
     '.som-maps-row>div{flex:1 1 300px;min-width:0}'
+    '.fp-panel{flex:1 1 300px;min-width:0}'
+    '.fp-label{font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;'
+    'margin-bottom:5px;min-height:14px}'
     '.som-compact-t{font-size:11px;font-weight:700;letter-spacing:.04em;'
     'text-transform:uppercase;color:var(--muted);margin-bottom:2px}'
     '.som-compact-s{font-size:11px;color:var(--muted);margin-bottom:5px}'
     '.som-cell{transition:opacity .08s}'
+    '.vb-detail .mk-vs{color:var(--muted);margin:0 5px;font-style:italic}'
     '.walk{margin-top:12px}'
     '.walk-detail{font-size:13px;color:var(--ink2);min-height:38px;padding:9px 12px;'
     'border:1px solid var(--line);border-radius:8px;background:var(--paper)}'
@@ -2590,10 +2594,11 @@ def _arm_phrase(arm_change):
 _WALK_JS = r"""<script>
 (function(){
   var CELLS=__CELLS__, BEST=__BEST__, PERIODS=__PERIODS__, ERAS=__ERAS__, CUR=__CUR__, AGG=__AGG__;
-  var svg=document.getElementById('map-you'); if(!svg) return;
+  var svg=document.getElementById('map-a'), mapB=document.getElementById('map-b');
+  if(!svg||!mapB) return;  // svg (map-a) is also the shared geometry reference for pts/ctr
   var vbScore=document.getElementById('vb-score'), vbLabel=document.getElementById('vb-label'),
       vbRec=document.getElementById('vb-rec'), vbDetail=document.getElementById('vb-detail');
-  var fx=svg.querySelector('.som-fx');
+  var fxA=svg.querySelector('.som-fx'), fxB=mapB.querySelector('.som-fx');
   var OBJC={eff:'var(--accent)',flow:'var(--teal)',simp:'var(--good)'},
       OBJN={eff:'efficiency',flow:'flow',simp:'simplicity'};
   var MID=' · ', ARR=' › ', REC='→', MK=['eff','flow','simp'];
@@ -2627,30 +2632,31 @@ _WALK_JS = r"""<script>
   function fmt(n){return (+n).toLocaleString();}
   function fmtv(m,v){if(v==null)return 'n/a';if(m==='eff')return ''+v;if(m==='simp')return ''+Math.round(v);return ''+(Math.round(v*10)/10);}
   function tog(m){return document.querySelector('.mtog[data-m="'+m+'"]');}
-  // CURP set = hovering one bar => the NARROW day view. CURP null = the SMOOTHED view of
-  // the held generation ERAIDX (default the latest). Click a bar to hold its generation.
-  var EN={eff:true,flow:true,simp:true}, PV=null, CURP=null;
-  var ERAIDX=(ERAS.length?ERAS[ERAS.length-1].era:null);
-  function curEra(){for(var i=0;i<ERAS.length;i++){if(ERAS[i].era===ERAIDX)return ERAS[i];}return null;}
-  function isLatest(){return ERAS.length>0&&ERAIDX===ERAS[ERAS.length-1].era;}
+  // Two comparison selections drive the twin fingerprints: A (left, held by a click) and B
+  // (right, follows the hover). Default: A = previous generation, B = current generation.
+  // A selection is {era:id} (a generation cloud) or {day:i} (one sampled day).
+  var EN={eff:true,flow:true,simp:true}, PV=null;
+  function eraById(id){for(var i=0;i<ERAS.length;i++){if(ERAS[i].era===id)return ERAS[i];}return null;}
+  var curEraId=(ERAS.length?ERAS[ERAS.length-1].era:null);
+  var prevEraId=(ERAS.length>1?ERAS[ERAS.length-2].era:curEraId);
+  var selA={era:prevEraId}, selB={era:curEraId}, HELD=false;
+  var ACOL='#B0553A', BCOL='#3F6E66';  // panel identities: clay (A) and deep teal (B)
   function enSet(){var e={eff:EN.eff,flow:EN.flow,simp:EN.simp};if(PV)e[PV]=!e[PV];return e;}
-  function vals(){if(CURP!=null){var p=PERIODS[CURP];return {eff:p.eff,flow:p.flow,simp:p.simp};}
-    var g=curEra();return g?{eff:g.eff,flow:g.flow,simp:g.simp}:AGG;}
+  function selVals(s){if(s.day!=null){var p=PERIODS[s.day];return {eff:p.eff,flow:p.flow,simp:p.simp};}var g=eraById(s.era);return g?{eff:g.eff,flow:g.flow,simp:g.simp}:AGG;}
+  function vals(){return selVals(selB);}
   function score(e,v){var s=1,any=false;MK.forEach(function(m){if(e[m]&&v[m]!=null){s*=v[m];any=true;}});return any?Math.round(s):0;}
-  // daily bars sit in FRONT, a touch translucent so the solid generation band behind shows
-  // through the gaps; a disabled metric fades right back.
-  function dimWave(e){document.querySelectorAll('#wave-svg rect[data-m]').forEach(function(r){r.setAttribute('opacity', e[r.getAttribute('data-m')]?'0.88':'0.12');});}
-  // light the region feeding the score: in day view the single hovered bar; in generation
-  // view the whole era, its band segment, and its rainfall (number -> the days it sums).
-  function activeEra(){return (CURP!=null&&PERIODS[CURP])?PERIODS[CURP].era:ERAIDX;}
-  function emphasize(){var ws=document.getElementById('wave-svg');if(!ws)return;var ae=activeEra();
-    // the daily bars stay uniformly in front, at full strength, across the WHOLE timeline.
+  // daily bars fully opaque and uniform in front; a disabled metric fades right back.
+  function dimWave(e){document.querySelectorAll('#wave-svg rect[data-m]').forEach(function(r){r.setAttribute('opacity', e[r.getAttribute('data-m')]?'1':'0.14');});}
+  function selCells(s){if(s.day!=null){var dc=PERIODS[s.day].day_cell;return dc?[{r:dc[0],c:dc[1],w:1}]:[];}var g=eraById(s.era);return g?(g.cells||[]):[];}
+  function selLabel(s){if(s.day!=null)return PERIODS[s.day].label;var g=eraById(s.era);return g?g.label:'';}
+  function selKind(s){return s.day!=null?'sample':'generation';}
+  function selEra(s){return s.era!=null?s.era:(s.day!=null&&PERIODS[s.day]?PERIODS[s.day].era:-1);}
+  function selBars(s){var q=(s.day!=null)?('.wv-bar[data-i="'+s.day+'"]'):('.wv-bar[data-era="'+s.era+'"]');return [].slice.call(document.querySelectorAll('#wave-svg '+q));}
+  // bars stay uniform; the two selected generations' bands light, the rest quiet.
+  function emphasize(){var ws=document.getElementById('wave-svg');if(!ws)return;var ea=selEra(selA),eb=selEra(selB);
     ws.querySelectorAll('.wv-bar').forEach(function(gg){gg.setAttribute('opacity','1');});
-    // only the backdrop carries the selection: the active generation's band is solid, the
-    // rest fall right back so unselected sections read as quiet context.
-    ws.querySelectorAll('.wv-band').forEach(function(bd){var e=+bd.getAttribute('data-era');
-      bd.setAttribute('opacity', e===ae?'1':'0.16');});
-    ws.querySelectorAll('.wv-score').forEach(function(tx){var e=+tx.getAttribute('data-era');tx.setAttribute('opacity',(ae==null||e===ae)?'1':'0.4');});
+    ws.querySelectorAll('.wv-band').forEach(function(bd){var e=+bd.getAttribute('data-era');bd.setAttribute('opacity',(e===ea||e===eb)?'0.9':'0.22');});
+    ws.querySelectorAll('.wv-score').forEach(function(tx){var e=+tx.getAttribute('data-era');tx.setAttribute('opacity',(e===ea||e===eb)?'1':'0.4');});
     drawMerge();drawFlow();}
   // a smooth ribbon: cubic edges between (x0,ya..yb) at the source and (x1,ca..cb) at the
   // target. No square corners.
@@ -2683,77 +2689,62 @@ _WALK_JS = r"""<script>
         +' M'+(nx-3.2).toFixed(1)+','+(ny+3.2).toFixed(1)+' L'+(nx+3.2).toFixed(1)+','+(ny-3.2).toFixed(1)
         +'" stroke="var(--muted)" stroke-width="1.5" stroke-linecap="round"/>';}
     mf.innerHTML=h;}
-  // the timeline flow: a soft ribbon up into the centred group from the slice of the
-  // timeline feeding the score (the hovered day, or the held generation's bars).
+  // connect each selection to the fingerprint panel that shows it: a soft ribbon (the sankey
+  // idiom) from the selected slice of the timeline down into its panel below.
+  function panelRibbon(sel,mapEl,color,hr){var bars=selBars(sel);if(!bars.length||!mapEl)return '';
+    var L=1e9,R=-1e9,B=-1e9;bars.forEach(function(gg){var r=gg.getBoundingClientRect();L=Math.min(L,r.left-hr.left);R=Math.max(R,r.right-hr.left);B=Math.max(B,r.bottom-hr.top);});
+    if(R-L<6){var mm=(L+R)/2;L=mm-4;R=mm+4;}
+    var pr=mapEl.getBoundingClientRect();var pcx=(pr.left+pr.right)/2-hr.left,iw=pr.width*0.42,pL=pcx-iw/2,pR=pcx+iw/2,pT=pr.top-hr.top;
+    var my=(B+pT)/2;
+    return '<path d="M'+L.toFixed(1)+','+B.toFixed(1)+' C'+L.toFixed(1)+','+my.toFixed(1)+' '+pL.toFixed(1)+','+my.toFixed(1)+' '+pL.toFixed(1)+','+pT.toFixed(1)+' L'+pR.toFixed(1)+','+pT.toFixed(1)+' C'+pR.toFixed(1)+','+my.toFixed(1)+' '+R.toFixed(1)+','+my.toFixed(1)+' '+R.toFixed(1)+','+B.toFixed(1)+' Z" fill="'+color+'" opacity="0.15"/>';}
   function drawFlow(){var host=document.querySelector('.vibrant .card');if(!host)return;
-    var tg=document.getElementById('topgroup');if(!tg)return;
     var ov=host.querySelector('.flow-ov');
     if(!ov){ov=document.createElementNS('http://www.w3.org/2000/svg','svg');ov.setAttribute('class','flow-ov');host.insertBefore(ov,host.firstChild);}
     var hr=host.getBoundingClientRect();if(hr.width<1)return;
     ov.setAttribute('viewBox','0 0 '+hr.width.toFixed(1)+' '+hr.height.toFixed(1));
-    var day=(CURP!=null),ae=activeEra();
-    var bars=[].slice.call(document.querySelectorAll('#wave-svg .wv-bar')).filter(function(gg){
-      return day?(+gg.getAttribute('data-i')===CURP):(ae==null||+gg.getAttribute('data-era')===ae);});
-    if(!bars.length){ov.innerHTML='';return;}
-    var L=1e9,R=-1e9,T=1e9;
-    bars.forEach(function(gg){var r=gg.getBoundingClientRect();L=Math.min(L,r.left-hr.left);R=Math.max(R,r.right-hr.left);T=Math.min(T,r.top-hr.top);});
-    if(R-L<6){var mm=(L+R)/2;L=mm-3;R=mm+3;}
-    // destination: a centred slice of the group's bottom edge (flow into the group).
-    var gr=tg.getBoundingClientRect();var gcx=(gr.left+gr.right)/2-hr.left,gw=gr.width*0.34;
-    var tL=gcx-gw/2,tR=gcx+gw/2,tB=gr.bottom-hr.top;var my=(tB+T)/2;
-    var d='M'+tL.toFixed(1)+','+tB.toFixed(1)+' C'+tL.toFixed(1)+','+my.toFixed(1)+' '+L.toFixed(1)+','+my.toFixed(1)+' '+L.toFixed(1)+','+T.toFixed(1)
-      +' L'+R.toFixed(1)+','+T.toFixed(1)+' C'+R.toFixed(1)+','+my.toFixed(1)+' '+tR.toFixed(1)+','+my.toFixed(1)+' '+tR.toFixed(1)+','+tB.toFixed(1)+' Z';
-    ov.innerHTML='<path d="'+d+'" fill="var(--rust)" opacity="0.17"/>';}
+    ov.innerHTML=panelRibbon(selA,document.getElementById('map-a'),ACOL,hr)+panelRibbon(selB,document.getElementById('map-b'),BCOL,hr);}
   function setRec(e){if(!vbRec)return;var bc=best(e);
     if(bc&&recOk(e)){vbRec.innerHTML='<span class="rec-arrow">'+REC+'</span> shift toward <b>'+setup(bc)+'</b>';return;}
     // no move clears the noise (or no measurable baseline): say hold, do not point.
     vbRec.innerHTML='<span class="rec-hold">You are in a stable spot for '+objName(e)+'; no confident move stands out.</span>';}
-  // the SMOOTHED cloud: every cell the held generation occupied, its border weight and
-  // opacity scaled by how many sessions landed there (prevailing = boldest). More days =
-  // deeper, richer, bigger border; fewer = fainter, thinner.
-  function cloudFx(g,e){var h='';(g.cells||[]).forEach(function(cc){var p=pts(cc.r,cc.c);if(!p)return;
-      var sw=(1.4+cc.w*3.4).toFixed(1),op=(0.30+cc.w*0.70).toFixed(2);
-      h+='<polygon points="'+p+'" fill="none" stroke="var(--rust)" stroke-width="'+sw+'" opacity="'+op+'"/>';});
-    // the recommendation only points from the CURRENT generation (advice for now).
-    if(isLatest()){var bc=best(e);if(bc&&recOk(e)&&!(bc.r===CUR[0]&&bc.c===CUR[1])){h+=arrowSvg(ctr(CUR[0],CUR[1]),ctr(bc.r,bc.c),objColor(e));h+=hexMk(bc.r,bc.c,objColor(e),2.2);}}
-    return h;}
-  // the NARROW day: a single crisp ink ring on that bucket's own cell, visibly unlike
-  // the weighted rust cloud, so smoothed-vs-narrow is never ambiguous.
-  function dayFx(i){var dc=PERIODS[i].day_cell;if(!dc)return '';var p=pts(dc[0],dc[1]);
-    return p?('<polygon points="'+p+'" fill="none" stroke="var(--ink)" stroke-width="2.2" opacity="0.9"/>'):'';}
-  function renderFx(e){if(!fx)return;
-    fx.innerHTML=(CURP!=null?dayFx(CURP):(curEra()?cloudFx(curEra(),e):''));}
-  function detailHtml(e){
-    if(CURP!=null){var dc=PERIODS[CURP].day_cell,c=dc?cell(dc[0],dc[1]):null;
-      return '<span class="mk-day">'+PERIODS[CURP].label+'</span> '+(c?setup(c):'no session mapped');}
-    var g=curEra();if(!g)return '';
-    var prev=(g.cells&&g.cells.length)?cell(g.cells[0].r,g.cells[0].c):null;
-    var others=(g.cells?g.cells.length-1:0);
-    var extra=others>0?(' <span class="mk-mix">(+'+others+' other setup'+(others==1?'':'s')+')</span>'):'';
-    var s='<span class="mk-gen">'+g.label+'</span> '+g.days+' session'+(g.days==1?'':'s')+', mostly '+(prev?setup(prev):'n/a')+extra;
-    if(isLatest()){var bc=best(e);if(bc&&recOk(e))s+=' <span class="mk-best">best for '+objName(e)+': '+setup(bc)+'</span>';}
-    return s;}
+  // draw a selection's occupancy into a panel: weighted rings for a generation cloud, a
+  // single ring for a day sample, coloured by the panel's identity.
+  function renderInto(fxEl,sel,color){if(!fxEl)return;var h='';selCells(sel).forEach(function(cc){var p=pts(cc.r,cc.c);if(!p)return;var w=cc.w||1;
+    var sw=(1.5+w*3.4).toFixed(1),op=(0.4+w*0.6).toFixed(2);h+='<polygon points="'+p+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'" opacity="'+op+'"/>';});fxEl.innerHTML=h;}
+  function panelLabel(sel,role){var k=selKind(sel);
+    var pre=(role==='A'?(HELD?'held ':(k==='generation'?'previous ':'')):(k==='generation'?'current ':''));
+    return pre+k+MID+selLabel(sel);}
+  function renderPanels(){renderInto(fxA,selA,ACOL);renderInto(fxB,selB,BCOL);
+    var la=document.getElementById('fp-a-label'),lb=document.getElementById('fp-b-label');
+    if(la){la.textContent=panelLabel(selA,'A');la.style.color=ACOL;}
+    if(lb){lb.textContent=panelLabel(selB,'B');lb.style.color=BCOL;}}
+  function detailHtml(e){var pa=selCells(selA)[0],pb=selCells(selB)[0];
+    var sa=pa?setup(cell(pa.r,pa.c)):'unused',sb=pb?setup(cell(pb.r,pb.c)):'unused';
+    return '<span class="mk-a" style="color:'+ACOL+'">'+selLabel(selA)+'</span> mostly '+sa
+      +' <span class="mk-vs">vs</span> <span class="mk-b" style="color:'+BCOL+'">'+selLabel(selB)+'</span> mostly '+sb;}
   function refresh(){var e=enSet(),v=vals();
     if(vbScore)vbScore.textContent=fmt(score(e,v));
     MK.forEach(function(m){var b=tog(m);if(!b)return;b.setAttribute('aria-pressed',e[m]?'true':'false');var bb=b.querySelector('b');if(bb)bb.textContent=fmtv(m,v[m]);});
-    if(vbLabel)vbLabel.textContent=(CURP!=null?PERIODS[CURP].label+' ':(isLatest()?'':'that generation '))+'score';
-    dimWave(e);emphasize();renderFx(e);setRec(e);
+    if(vbLabel)vbLabel.textContent=(selB.day!=null?selLabel(selB)+' ':(selB.era===curEraId?'':'that generation '))+'score';
+    dimWave(e);emphasize();renderPanels();setRec(e);
     if(vbDetail)vbDetail.innerHTML=detailHtml(e);}
-  svg.querySelectorAll('.som-cell').forEach(function(cl){cl.style.cursor='pointer';
-    cl.addEventListener('mouseenter',function(){var c=cell(cl.getAttribute('data-r'),cl.getAttribute('data-c'));
-      if(!vbDetail)return;
-      vbDetail.innerHTML=c?('<b>'+setup(c)+'</b>'+MID+c.sessions+' session'+(c.sessions==1?'':'s')+', '+money(c.cost)+' per KB, efficiency '+(c.eff==null?'n/a':c.eff)+', flow '+(c.flow==null?'n/a':c.flow)+', simplicity '+(c.simp==null?'n/a':c.simp)):'an unused setup, no sessions here';});});
-  svg.addEventListener('mouseleave',function(){refresh();});
+  // hovering a cell in either fingerprint decodes it.
+  [svg,mapB].forEach(function(mp){mp.querySelectorAll('.som-cell').forEach(function(cl){
+    cl.addEventListener('mouseenter',function(){var c=cell(cl.getAttribute('data-r'),cl.getAttribute('data-c'));if(!vbDetail)return;
+      vbDetail.innerHTML=c?('<b>'+setup(c)+'</b>'+MID+c.sessions+' session'+(c.sessions==1?'':'s')+', '+money(c.cost)+' per KB, efficiency '+(c.eff==null?'n/a':c.eff)+', flow '+(c.flow==null?'n/a':c.flow)+', simplicity '+(c.simp==null?'n/a':c.simp)):'an unused setup, no sessions here';});
+    cl.addEventListener('mouseleave',function(){refresh();});});});
   MK.forEach(function(m){var b=tog(m);if(!b)return;
     b.addEventListener('mouseenter',function(){PV=m;refresh();});
     b.addEventListener('mouseleave',function(){PV=null;refresh();});
     b.addEventListener('click',function(){var on=MK.filter(function(k){return EN[k];});if(EN[m]&&on.length<=1)return;EN[m]=!EN[m];PV=null;refresh();});});
-  // hover a bar => preview that day (narrow); click a bar => hold its generation (cloud).
-  document.querySelectorAll('.wv-bar').forEach(function(g){
-    g.addEventListener('mouseenter',function(){CURP=+g.getAttribute('data-i');refresh();});
-    g.addEventListener('click',function(){var p=PERIODS[+g.getAttribute('data-i')];if(p&&p.era!=null)ERAIDX=p.era;CURP=null;refresh();});});
+  // hover a bar => B previews that day; click a bar => HOLD its generation as A (click the
+  // held generation again to release back to the previous one).
+  document.querySelectorAll('#wave-svg .wv-bar').forEach(function(g){g.style.cursor='pointer';
+    g.addEventListener('mouseenter',function(){selB={day:+g.getAttribute('data-i')};refresh();});
+    g.addEventListener('click',function(ev){ev.stopPropagation();var p=PERIODS[+g.getAttribute('data-i')];if(!p)return;
+      if(HELD&&selA.era===p.era){selA={era:prevEraId};HELD=false;}else{selA={era:p.era};HELD=true;}refresh();});});
   var wsvg=document.getElementById('wave-svg');
-  if(wsvg)wsvg.addEventListener('mouseleave',function(){CURP=null;refresh();});
+  if(wsvg)wsvg.addEventListener('mouseleave',function(){selB={era:curEraId};refresh();});
   window.addEventListener('resize',function(){drawMerge();drawFlow();});
   refresh();
 })();
@@ -2887,33 +2878,23 @@ def render_walk(report):
 
 
 def _card_maps(report):
-    """The fingerprints as the card marquee. When a shared frontier is present the two
-    tiles are the SAME lattice read two ways (your recent sessions vs everyone pooled),
-    so a lead-in and a shared key frame them as a comparison, not two unrelated shapes.
-    Empty when the maps are absent."""
+    """Two comparison fingerprints on the SAME lattice: panel A (left) and panel B (right).
+    Which selection each shows is driven by JS: by default A is the previous generation and
+    B the current one; hover a wave bar to sample a day into B, click a bar to hold a
+    generation into A. Each panel is linked to its slice of the timeline by a sankey ribbon.
+    Empty when the map is absent."""
     som = (report.get("rig_space") or {}).get("som")
-    shared = report.get("shared_map")
-    cur = _prevailing_current(report)
-    tiles = []
-    paired = bool(shared and som and cur)
-    if som:
-        # the interactive fingerprint lives in the card now: hover a hexagon to decode it,
-        # toggle a metric to re-aim the arrow, hover the wave to scrub eras. No explanatory
-        # prose: it did not make the abstraction legible; hover and the shade carry it.
-        tiles.append(render_som_map(
-            som, style="ink-hex", compact=True, svg_id="map-you", js_arrow=True,
-            title="Where you work",
-            subtitle="your sessions" if paired else ""))
-    if paired:
-        tiles.append(render_shared_map_compact(
-            shared, cur, subtitle="everyone's, pooled"))
-    if not tiles:
+    if not som:
         return ""
-    # the recommendation, right below the fingerprints, in the breakdown's style; the
-    # objective is implied by the setup, so no "optimizing for" prefix. Filled by JS.
+    a = render_som_map(som, style="ink-hex", compact=True, svg_id="map-a", js_arrow=True,
+                       title="", subtitle="")
+    b = render_som_map(som, style="ink-hex", compact=True, svg_id="map-b", js_arrow=True,
+                       title="", subtitle="")
+    panels = (f'<div class="fp-panel"><div class="fp-label" id="fp-a-label"></div>{a}</div>'
+              f'<div class="fp-panel"><div class="fp-label" id="fp-b-label"></div>{b}</div>')
     rec = ('<div class="vb-rec" id="vb-rec"></div>'
-           '<div class="vb-detail" id="vb-detail"></div>') if som else ""
-    return f'<div class="som-maps-row">{"".join(tiles)}</div>{rec}'
+           '<div class="vb-detail" id="vb-detail"></div>')
+    return f'<div class="som-maps-row">{panels}</div>{rec}'
 
 
 def render_shared_map_compact(merged, current_cell, subtitle=""):
@@ -3130,7 +3111,8 @@ def render_waveform(report):
 
     def cx(i):
         return i * bw + bw / 2
-    RT = 0.52  # ribbon half-thickness as a fraction of the smoothed amplitude: exaggerated
+    RT = 0.62  # ribbon half-thickness as a fraction of the smoothed amplitude: exaggerated,
+    # so the band pokes past the average bar and reads as a legible coloured back trend
     # a muted, warm-leaning categorical palette for the generations, in the paper/ink/rust
     # family so it sits with the brand and stays clear of the daily blue/teal/green.
     GEN = ["#B0553A", "#C79A46", "#7C6A86", "#5E7E77", "#A56E5B", "#8A7A4E"]
@@ -3389,104 +3371,10 @@ def render_html(report):
                 f'{render_small_multiples(report)}{render_attribution(report)}</div>')
         return _page(head + body)
 
-    W, H = 760, 300
-    ml, mr, mt, mb = 46, 18, 26, 40
-    pw, ph = W - ml - mr, H - mt - mb
-    eqs = [r["eq"] for r in tl]
-    n = len(tl)
-    # the readable signal is the per-era LEVEL (aggregate efficiency between setup
-    # changes), not the daily noise. Compute eras first, then scale the y-axis to the
-    # era levels so the step line fills the frame; daily spikes clip to the top edge.
-    change_idx = [i for i, r in enumerate(tl) if r["changes"]]
-    bounds = [0] + change_idx + [n]
-    eras = []
-    for a, b in zip(bounds, bounds[1:]):
-        if b > a:
-            era_ch = sum(r.get("shipped") or 0 for r in tl[a:b])
-            era_out = sum(r.get("out_mtok") or 0 for r in tl[a:b])
-            eras.append((a, b, era_ch / era_out if era_out else 0.0))
-    ylo = 0.0
-    yhi = max([lvl for _, _, lvl in eras] + [1.0]) * 1.5
-
-    def X(i):
-        return ml + (pw * i / (n - 1) if n > 1 else pw / 2)
-
-    def Y(v):
-        v = min(max(v, ylo), yhi)  # clamp: spikes ride the top edge, never off-canvas
-        return mt + ph * (1 - (v - ylo) / (yhi - ylo))
-
-    parts = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="efficiency over time">']
-    for t in range(3):
-        v = ylo + (yhi - ylo) * t / 2
-        y = Y(v)
-        parts.append(f'<line x1="{ml}" y1="{y:.1f}" x2="{ml+pw}" y2="{y:.1f}" '
-                     f'stroke="var(--grid)" stroke-width="1"/>')
-        parts.append(f'<text x="{ml-8:.0f}" y="{y+4:.1f}" text-anchor="end" '
-                     f'font-size="11" fill="var(--muted)">{v:.0f}</text>')
-    parts.append(f'<line x1="{ml}" y1="{mt+ph}" x2="{ml+pw}" y2="{mt+ph}" '
-                 f'stroke="var(--axis)" stroke-width="1"/>')
-    # flags: dashed verticals + numbered pins at each change
-    flags, k = [], 0
-    for i, r in enumerate(tl):
-        if not r["changes"]:
-            continue
-        k += 1
-        x = X(i)
-        parts.append(f'<line x1="{x:.1f}" y1="{mt-4}" x2="{x:.1f}" y2="{mt+ph}" '
-                     f'stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" '
-                     f'opacity="0.6"/>')
-        parts.append(f'<circle cx="{x:.1f}" cy="{mt-4}" r="8" fill="var(--card)" '
-                     f'stroke="var(--accent)" stroke-width="1.5"/>')
-        parts.append(f'<text x="{x:.1f}" y="{mt-0.5}" text-anchor="middle" '
-                     f'font-size="10" font-weight="700" fill="var(--accent)">{k}</text>')
-        flags.append((k, r))
-
-    # daily actuals: barely-there context (thin, no fill), so the era levels read.
-    dline = " ".join(f"{X(i):.1f},{Y(r['eq']):.1f}" for i, r in enumerate(tl))
-    parts.append(f'<polyline points="{dline}" fill="none" stroke="var(--accent)" '
-                 f'stroke-width="1" stroke-linejoin="round" opacity="0.16"/>')
-
-    # the per-era LEVEL: a bold step line with the level number, the readable signal.
-    step = []
-    for (a, b, mean) in eras:
-        x0, x1 = X(a), (X(b) if b < n else X(n - 1))
-        step += [f"{x0:.1f},{Y(mean):.1f}", f"{x1:.1f},{Y(mean):.1f}"]
-    if step:
-        parts.append(f'<polyline points="{" ".join(step)}" fill="none" '
-                     f'stroke="var(--accent)" stroke-width="3.5" stroke-linejoin="round" '
-                     f'stroke-linecap="round"/>')
-        for (a, b, mean) in eras:
-            xm = (X(a) + (X(b) if b < n else X(n - 1))) / 2
-            parts.append(f'<text x="{xm:.1f}" y="{Y(mean)-9:.1f}" text-anchor="middle" '
-                         f'font-size="13" font-weight="700" fill="var(--accent)">'
-                         f'{mean:.0f}</text>')
-            # per-era flow, under the level, so a high-efficiency era that was
-            # miserable to work in cannot read as a win (low flow shows).
-            emis = [r["misery"] for r in tl[a:b] if r.get("misery") is not None]
-            if emis:
-                flow = 100 - sum(emis) / len(emis)
-                parts.append(f'<text x="{xm:.1f}" y="{Y(mean)+15:.1f}" '
-                             f'text-anchor="middle" font-size="10.5" font-weight="600" '
-                             f'fill="var(--teal)">{flow:.0f} flow</text>')
-
-    # thin x-labels to ~8 so a daily axis does not collide
-    lstep = max(1, round(n / 8))
-    for i, r in enumerate(tl):
-        if i % lstep == 0 or i == n - 1:
-            parts.append(f'<text x="{X(i):.1f}" y="{mt+ph+16:.0f}" text-anchor="middle" '
-                         f'font-size="10" fill="var(--muted)">{esc(r["week"])}</text>')
-    parts.append("</svg>")
-
-    legend = ""
-    if flags:
-        items = "".join(f'<li><span class="flag">{k}</span> {esc(r["week"])}: '
-                        f'{esc("; ".join(r["changes"]))}</li>' for k, r in flags)
-        legend = f'<ol>{items}</ol>'
-    detail = (f'<h2>Efficiency over time <span class="sub">shipped changes per Mtok, '
-              f'per era</span></h2>'
-              f'{"".join(parts)}{legend}'
-              f'<details class="breakdown"><summary>full breakdown: fuel streams and '
-              f'per-rig work</summary>'
+    # the efficiency-over-time chart was retired: the waveform in the card carries the
+    # generations now, so the separate chart was redundant. Only the breakdown remains.
+    detail = ('<details class="breakdown"><summary>full breakdown: fuel streams and '
+              'per-rig work</summary>'
               f'{render_small_multiples(report)}{render_attribution(report)}</details>')
     body = f'<div class="vibrant">{hero}{walk_js}{_coverage_banner(report)}{detail}</div>'
     return _page(head + body)
