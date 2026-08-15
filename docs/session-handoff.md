@@ -110,6 +110,70 @@ output. Toolchain: fetch + verify sha256 + unpack (pin lives in the hoistable sk
 - Artifact (the shareable scorecard, update with `url=`):
   `https://claude.ai/code/artifact/1f5533a5-1b84-4ab9-aa69-f127e9a090fb`.
 
+## SCORECARD UI (updated 2026-08-15, LATEST, read this first)
+
+The report (`skills/vibrant-report/vibrant_report.py`) is now a single interactive
+card. Branch `dyno-report-driver`, PUSHED, PR open: github.com/3dl-dev/vibrant/pull/1.
+Private artifact (same URL across redeploys): claude.ai/code/artifact/
+55d887a2-6b31-41ee-b645-d1e454092924 . Rebuild it from `report.html`'s `<body>` inner
+into `$CLAUDE_JOB_DIR/tmp/vibrant-scorecard.html` then publish that path (same session)
+or pass `url=` from a new one. The user is very happy with it ("WOW, this is great").
+
+The card, top to bottom (all in `_hero_card` + `_card_maps`, JS by `render_walk`):
+- HERO: combined SCORE = product of the ENABLED metrics (`#vb-score`). Magnitude is
+  arbitrary; the tooltip says watch its movement.
+- BREAKDOWN = the metric TOGGLES (`#vb-parts`, class `mtog`, data-m eff/flow/simp).
+  Hover = preview (flip), click = hold (commit), min 1 enabled. Affordance: enabled =
+  outlined, disabled = dimmed + strikethrough. Toggling drives BOTH the score (product
+  of enabled) AND the descent objective (geometric mean of enabled normalized, the
+  user's pick). No separate chip row (the breakdown IS the toggles).
+- WAVEFORM (`render_waveform`, `#wave-svg`): one stacked-band sound wave, per period a
+  mirrored bar split into eff(blue)/flow(teal)/simp(green) bands (`rect[data-m]`, dimmed
+  when a metric is off). Each period a `.wv-bar` group; hover = scrub time.
+- TWO fingerprint maps side by side IN the card (`som-maps-row`): "Where you work"
+  (interactive, `id="map-you"`, `js_arrow`) + "The shared frontier" (compact). Portrait
+  11x7 lattice, tapered oval (fewer cols top/bottom, whole hexes), 3dl ink-hex style.
+- RECOMMENDATION `#vb-rec` below the maps: "-> shift toward <setup>" (no "optimizing
+  for" prefix; the objective is implied). DESCRIPTION/PERFORMANCE `#vb-detail` is a
+  SEPARATE line (hover a hex -> its setup+metrics; scrub -> the three-indicator perf).
+
+Interactivity (all client-side JS, `_WALK_JS` raw string, emitted by `render_walk` which
+now returns only CSS+script; embeds CELLS, PERIODS via `_timeline_periods`, CUR, AGG):
+- Markers are HEX OUTLINES on the cells (not circles), all in one `.som-fx` group the JS
+  owns (`marker()` helper server-side; JS reads each cell's polygon `points`).
+- Scrub a period => three hex indicators: WERE (muted, that period's cell), BEST from
+  there for the enabled objective (rust + arrow), WENT (teal, next period's cell);
+  `#vb-detail` = "were X -> went Y (best Z). On <objective>, captured N% of the gain".
+- Default (no scrub): "you" rust hex on the current cell + rust/objective arrow to best.
+- Key JS fns: `enSet` (enabled+preview), `good`/`best` (geomean over cells, sessions>=2),
+  `renderFx`, `scrubDetail`, `refresh`. `_rig_objective_metrics` builds per-rig
+  eff/flow/simp; `som_map` attaches them per cell (flow direct per cell; eff/simp from
+  the cell's dominant `model_roles` via the git attribution, an APPROXIMATION, flagged).
+
+Metrics RE-SIGNED (all higher-is-better): misery->flow (100-misery), bloat->simplicity
+(100-bloat, floored 0; the 100 anchor is PROVISIONAL, flagged). VIBRANT mark is now a
+tiny hex-SOM (`_som_mark`, ink hexes + one rust peak). REMOVED: the standalone "your
+steepest move" lever (`_lever_html` no longer in `render_html` body) AND its copy-paste
+"apply it" prompt (flagged to the user; could return in a `<details>` under `#vb-rec`).
+The separate big map + big shared map below the card were removed (maps live in the card).
+
+VERIFY visually with headless chromium (python playwright NOT installed; use the binary
+`~/.cache/ms-playwright/chromium-1234/chrome-linux64/chrome`). Drive interactions by
+injecting a `<script>` that dispatches events (`.wv-bar` mouseenter, `.mtog` click) then
+`--screenshot`; catch JS errors with a `window.onerror -> document.title="JSERR:"` hack
+(a ternary typo hid behind exactly this). PIL is available for cropping. Demo data lives
+in `$JOBTMP=/home/baron/.claude/jobs/60257a5e/tmp`; snapshot at `$JOBTMP/realsnap/
+2026-08-14-workshop` (som-cache.json = 11x7, shared-map.json = 2-op split demo). Pipeline:
+driver `--dump-sessions` -> `session_features` -> `som_train --rows 11 --cols 7` ->
+copy cache to snapshot -> reference codebook (`frontier/reference-codebook.json`, 11x7,
+committed) -> `contribute_map` x2 halves -> `som_merge.merge` -> `shared-map.json`.
+
+Open follow-ups (none blocking; user hadn't asked): restore the copy-paste agent prompt
+under `#vb-rec` (offered); the shared-frontier map could get hover; per-cell eff/simp are
+dominant-rig approximations (could be per-session if git complexity is joined to cells);
+"were"/"went" often coincide (real data, operator stayed put). All 13 suites green,
+deterministic, em-dash clean.
+
 ## SOM build status (updated 2026-08-15)
 
 ALL FIVE items of the SOM plan are BUILT, tested, committed, and transfer-graded (hoist
