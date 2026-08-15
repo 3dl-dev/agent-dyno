@@ -2292,6 +2292,12 @@ def render_som_map(som_block, title="Where you work",
             tip_x, tip_y = tx - ux * tgap, ty - uy * tgap
             base_x, base_y = tip_x - ux * head, tip_y - uy * head
             start_x, start_y = sx + ux * sgap, sy + uy * sgap
+            if not compact:
+                # a wide transparent line over the arrow so it is easy to hover.
+                parts.append(f'<line class="som-arrow" x1="{start_x:.1f}" '
+                             f'y1="{start_y:.1f}" x2="{tx:.1f}" y2="{ty:.1f}" '
+                             f'stroke="transparent" stroke-width="18" '
+                             f'pointer-events="stroke"/>')
             parts.append(f'<line class="som-arrow" x1="{start_x:.1f}" '
                          f'y1="{start_y:.1f}" x2="{base_x:.1f}" y2="{base_y:.1f}" '
                          f'stroke="{pal["arrow"]}" stroke-width="{sw}" '
@@ -2456,9 +2462,31 @@ _WALK_CSS = (
     'font-variant-numeric:tabular-nums;white-space:nowrap}'
     '</style>')
 
+_EFFORT_ORDER = {"low": 0, "medium": 1, "high": 2, "xhigh": 3, "max": 4}
+
+
+def _arm_phrase(arm_change):
+    """A plain, directional reading of the recommended move, e.g. 'Lower orchestrator
+    firepower from opus-4-8 to sonnet-5'. '' when it cannot be phrased."""
+    if not isinstance(arm_change, dict):
+        return ""
+    axis, frm, to = arm_change.get("axis"), arm_change.get("from"), arm_change.get("to")
+    if not (axis and frm and to):
+        return ""
+    if axis in ("orchestrator", "worker"):
+        name = f"{axis} firepower"
+        lower = _FIRE.get(to, 0.5) < _FIRE.get(frm, 0.5)
+    elif axis == "effort":
+        name = "reasoning effort"
+        lower = _EFFORT_ORDER.get(to, 0) < _EFFORT_ORDER.get(frm, 0)
+    else:
+        name, lower = axis, True
+    return f"{'Lower' if lower else 'Raise'} {name} from {frm} to {to}"
+
+
 _WALK_JS = """<script>
 (function(){
-  var W=__WALK__, CM=__CM__;
+  var W=__WALK__, CM=__CM__, ARM=__ARM__;
   var svg=document.getElementById('map-you'); if(!svg) return;
   var detail=document.getElementById('walk-detail');
   var scrub=document.getElementById('walk-scrub');
@@ -2477,6 +2505,10 @@ _WALK_JS = """<script>
     el.addEventListener('mouseenter',function(){
       detail.innerHTML='<span class="wd-h">this hex</span> '
         +meaning(el.getAttribute('data-r'),el.getAttribute('data-c'));});});
+  svg.querySelectorAll('.som-arrow').forEach(function(el){el.style.cursor='pointer';
+    el.addEventListener('mouseenter',function(){ if(ARM)
+      detail.innerHTML='<span class="wd-h">the move</span> '+ARM+
+        '. The arrow points from where you are to a cheaper setup you already use.';});});
   function show(i){var w=W[i];var p=ctr(w.cell[0],w.cell[1]);
     if(p){here.setAttribute('cx',p.x);here.setAttribute('cy',p.y);
       here.setAttribute('r',p.r);here.setAttribute('opacity','1');}
@@ -2519,10 +2551,13 @@ def render_walk(report):
         '<span id="walk-scrub-label" class="walk-scrub-label"></span>'
         '</div></div>')
 
+    arm = _arm_phrase(((som.get("gradient") or {}).get("arm_change")))
+
     def _safe(obj):
         return json.dumps(obj, separators=(",", ":")).replace("</", "<\\/")
     script = (_WALK_JS.replace("__WALK__", _safe(walk))
-              .replace("__CM__", _safe(cm)))
+              .replace("__CM__", _safe(cm))
+              .replace("__ARM__", _safe(arm)))
     return _WALK_CSS + themap + controls + script
 
 
@@ -2635,6 +2670,30 @@ def render_waveform(report):
     return (f'<div class="wave">{svg}{legend}</div>')
 
 
+def _som_mark():
+    """The VIBRANT mark: a tiny hex SOM, like the 3dl logo, ink hexagons with one rust
+    peak unit. Small, in place of the old three bars. Deterministic."""
+    rr, ox, oy = 2.35, 3.0, 2.9
+    hstep, vstep = rr * 1.732, rr * 1.5
+    op = {(0, 0): 0.5, (0, 1): 0.28, (0, 2): 0.68, (1, 0): 0.34, (1, 1): 0.85,
+          (1, 2): 0.44, (2, 0): 0.6, (2, 1): 0.38, (2, 2): 0.72}
+    peak = (1, 2)
+    hexes = []
+    for (r, c), o in op.items():
+        cx = ox + c * hstep + (hstep / 2 if r % 2 else 0)
+        cy = oy + r * vstep
+        pts = " ".join(f"{cx + rr * math.cos(math.radians(a)):.1f},"
+                       f"{cy - rr * math.sin(math.radians(a)):.1f}"
+                       for a in (90, 150, 210, 270, 330, 30))
+        color = "var(--rust)" if (r, c) == peak else "var(--ink)"
+        opacity = 1.0 if (r, c) == peak else o
+        hexes.append(f'<polygon points="{pts}" fill="{color}" opacity="{opacity}"/>')
+    w = ox + 2 * hstep + hstep / 2 + rr
+    h = oy + 2 * vstep + rr
+    return (f'<svg class="mark" viewBox="0 0 {w:.1f} {h:.1f}" aria-hidden="true">'
+            f'{"".join(hexes)}</svg>')
+
+
 def _hero_card(report):
     """The shareable scorecard, sparse by design: the VIBRANT wordmark, the hero
     number, the rig as a bar, a trend. Every element is a fact about the operator's
@@ -2645,10 +2704,7 @@ def _hero_card(report):
     tl = report["topline"]
     fp = report.get("fingerprint") or {}
     mb = report.get("misery")
-    mark = ('<svg class="mark" viewBox="0 0 18 16" aria-hidden="true">'
-            '<rect x="0" y="9" width="4" height="7" rx="1.3"/>'
-            '<rect x="7" y="5" width="4" height="11" rx="1.3"/>'
-            '<rect x="14" y="1" width="4" height="15" rx="1.3"/></svg>')
+    mark = _som_mark()
     # one headline number: the three meters were meaningless alone, so combine them
     # (efficiency x flow x simplicity). Absolute magnitude is arbitrary; the point is
     # its movement, which the waveform below shows. The three components ride along as
