@@ -56,7 +56,8 @@ def test_script(fails):
     check("<script>" in out, "no driving script", fails)
     # data embedded (placeholders substituted)
     check("__CELLS__" not in out and "__BEST__" not in out and "__PERIODS__" not in out
-          and "__CUR__" not in out and "__AGG__" not in out, "placeholders not filled", fails)
+          and "__ERAS__" not in out and "__CUR__" not in out and "__AGG__" not in out,
+          "placeholders not filled", fails)
     check('"simp":' in out or "simp" in out, "per-cell metrics not embedded", fails)
     # references the card elements it drives
     for hook in ("map-you", "wv-bar", "vb-score", "mtog", "vb-rec"):
@@ -207,6 +208,29 @@ def test_timeline_periods_era_smoothed(fails):
     check(vr._prevailing_current(rep) == [2, 2], "prevailing-current not the latest era's cell", fails)
 
 
+def test_era_occupancy_cloud(fails):
+    # Each era exposes the weighted CLOUD of cells occupied: heaviest first, w normalized
+    # to the busiest cell, plus mean components and a combined score. This is what the map
+    # shows when you click to hold a generation.
+    rep = _era_report()  # era 0 mostly [0,0] (+1 flicker [1,1]); era 1 mostly [2,2] (+1 [0,0])
+    eras = vr._era_occupancy(rep)
+    check(len(eras) == 2, "expected two generations, got %d" % len(eras), fails)
+    e0 = eras[0]
+    check(e0["cells"][0]["r"] == 0 and e0["cells"][0]["c"] == 0, "era 0 prevailing not [0,0]", fails)
+    check(e0["cells"][0]["w"] == 1.0, "prevailing cell weight not normalized to 1", fails)
+    check(len(e0["cells"]) == 2 and e0["cells"][1]["w"] < 1.0,
+          "flicker cell not present as a lighter-weight cloud member", fails)
+    check(e0["prevailing"] == [0, 0], "era 0 prevailing field wrong", fails)
+    check(e0["score"] == round(e0["eff"] * e0["flow"] * e0["simp"])
+          or abs(e0["score"] - e0["eff"] * e0["flow"] * e0["simp"]) < 1.0,
+          "era score is not the product of its component means", fails)
+    check(eras[1]["cells"][0]["r"] == 2 and eras[1]["cells"][0]["c"] == 2,
+          "era 1 prevailing not [2,2]", fails)
+    # a period carries its narrow day cell too (what a single-bar hover shows).
+    p = vr._timeline_periods(rep)
+    check(all("day_cell" in x for x in p), "periods missing day_cell (the narrow view)", fails)
+
+
 def test_determinism(fails):
     check(vr.render_walk(REPORT) == vr.render_walk(REPORT), "render_walk not deterministic", fails)
 
@@ -216,7 +240,8 @@ def main():
     for t in (test_empty, test_script, test_no_external_refs, test_no_em_dash,
               test_card_maps_interactive, test_hero_toggles, test_recommend_ignores_noise,
               test_recommend_noise_gate, test_rank_opacity_spreads,
-              test_timeline_periods_era_smoothed, test_determinism):
+              test_timeline_periods_era_smoothed, test_era_occupancy_cloud,
+              test_determinism):
         t(fails)
     if fails:
         print("FAIL  walk:")

@@ -1994,9 +1994,10 @@ _CSS = """
 .vibrant .vb-rec .rec-hold{color:var(--muted);}
 .vibrant .vb-detail{font-size:12px;color:var(--muted);margin-top:6px;min-height:16px;}
 .vibrant .vb-detail b{color:var(--ink2);}
-.vibrant .mk-were{color:var(--muted);font-weight:700;}
 .vibrant .mk-best{color:var(--rust);font-weight:700;}
-.vibrant .mk-went{color:var(--teal);font-weight:700;}
+.vibrant .mk-gen{color:var(--rust);font-weight:700;}
+.vibrant .mk-day{color:var(--ink);font-weight:700;}
+.vibrant .mk-mix{color:var(--muted);}
 .vibrant .wave{margin:0 0 24px;}
 .vibrant .wave svg{width:100%;height:auto;}
 .vibrant .wlegend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:12px;
@@ -2544,12 +2545,6 @@ _WALK_CSS = (
     'text-transform:uppercase;color:var(--muted);margin-bottom:2px}'
     '.som-compact-s{font-size:11px;color:var(--muted);margin-bottom:5px}'
     '.som-cell{transition:opacity .08s}'
-    # the scrub key: dotted swatch = the best move from here, solid = what you did next.
-    '.scrub-key{display:inline-flex;gap:14px;margin-left:2px;font-size:11px}'
-    '.scrub-key span{display:inline-flex;align-items:center;gap:5px;color:var(--muted)}'
-    '.scrub-key i{width:20px;height:0;display:inline-block;vertical-align:middle}'
-    '.scrub-key .s-opt i{border-top:2px dotted var(--rust)}'
-    '.scrub-key .s-act i{border-top:2px solid var(--teal)}'
     '.walk{margin-top:12px}'
     '.walk-detail{font-size:13px;color:var(--ink2);min-height:38px;padding:9px 12px;'
     'border:1px solid var(--line);border-radius:8px;background:var(--paper)}'
@@ -2584,7 +2579,7 @@ def _arm_phrase(arm_change):
 
 _WALK_JS = r"""<script>
 (function(){
-  var CELLS=__CELLS__, BEST=__BEST__, PERIODS=__PERIODS__, CUR=__CUR__, AGG=__AGG__;
+  var CELLS=__CELLS__, BEST=__BEST__, PERIODS=__PERIODS__, ERAS=__ERAS__, CUR=__CUR__, AGG=__AGG__;
   var svg=document.getElementById('map-you'); if(!svg) return;
   var vbScore=document.getElementById('vb-score'), vbLabel=document.getElementById('vb-label'),
       vbRec=document.getElementById('vb-rec'), vbDetail=document.getElementById('vb-detail');
@@ -2619,57 +2614,55 @@ _WALK_JS = r"""<script>
   function arrowSvg(a,b,color){if(!a||!b)return '';var dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);if(d<1)return '';
     var ux=dx/d,uy=dy/d,px=-uy,py=ux,h=7;var tx=b.x-ux*(b.r+2),ty=b.y-uy*(b.r+2),bx=tx-ux*h,by=ty-uy*h,sx=a.x+ux*(a.r+2),sy=a.y+uy*(a.r+2);
     return '<line x1="'+sx+'" y1="'+sy+'" x2="'+bx+'" y2="'+by+'" stroke="'+color+'" stroke-width="2.4" stroke-linecap="round"/><polygon points="'+tx+','+ty+' '+(bx+px*3.6)+','+(by+py*3.6)+' '+(bx-px*3.6)+','+(by-py*3.6)+'" fill="'+color+'"/>';}
-  // a dotted line (no head) for the aspirational move: where the best cell was from here.
-  function dlineSvg(a,b,color){if(!a||!b)return '';var dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);if(d<1)return '';
-    var ux=dx/d,uy=dy/d,sx=a.x+ux*(a.r+2),sy=a.y+uy*(a.r+2),ex=b.x-ux*(b.r+2),ey=b.y-uy*(b.r+2);
-    return '<line x1="'+sx+'" y1="'+sy+'" x2="'+ex+'" y2="'+ey+'" stroke="'+color+'" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 3"/>';}
   function fmt(n){return (+n).toLocaleString();}
   function fmtv(m,v){if(v==null)return 'n/a';if(m==='eff')return ''+v;if(m==='simp')return ''+Math.round(v);return ''+(Math.round(v*10)/10);}
   function tog(m){return document.querySelector('.mtog[data-m="'+m+'"]');}
+  // CURP set = hovering one bar => the NARROW day view. CURP null = the SMOOTHED view of
+  // the held generation ERAIDX (default the latest). Click a bar to hold its generation.
   var EN={eff:true,flow:true,simp:true}, PV=null, CURP=null;
+  var ERAIDX=(ERAS.length?ERAS[ERAS.length-1].era:null);
+  function curEra(){for(var i=0;i<ERAS.length;i++){if(ERAS[i].era===ERAIDX)return ERAS[i];}return null;}
+  function isLatest(){return ERAS.length>0&&ERAIDX===ERAS[ERAS.length-1].era;}
   function enSet(){var e={eff:EN.eff,flow:EN.flow,simp:EN.simp};if(PV)e[PV]=!e[PV];return e;}
-  function vals(){if(CURP!=null){var p=PERIODS[CURP];return {eff:p.eff,flow:p.flow,simp:p.simp};}return AGG;}
+  function vals(){if(CURP!=null){var p=PERIODS[CURP];return {eff:p.eff,flow:p.flow,simp:p.simp};}
+    var g=curEra();return g?{eff:g.eff,flow:g.flow,simp:g.simp}:AGG;}
   function score(e,v){var s=1,any=false;MK.forEach(function(m){if(e[m]&&v[m]!=null){s*=v[m];any=true;}});return any?Math.round(s):0;}
   function dimWave(e){document.querySelectorAll('#wave-svg rect[data-m]').forEach(function(r){r.setAttribute('opacity', e[r.getAttribute('data-m')]?'1':'0.12');});}
   function setRec(e){if(!vbRec)return;var bc=best(e);
     if(bc&&recOk(e)){vbRec.innerHTML='<span class="rec-arrow">'+REC+'</span> shift toward <b>'+setup(bc)+'</b>';return;}
     // no move clears the noise (or no measurable baseline): say hold, do not point.
     vbRec.innerHTML='<span class="rec-hold">You are in a stable spot for '+objName(e)+'; no confident move stands out.</span>';}
-  function renderFx(e){if(!fx)return;var h='';
-    if(CURP==null){var bc=best(e);
-      if(bc&&recOk(e)&&!(bc.r===CUR[0]&&bc.c===CUR[1])){h+=arrowSvg(ctr(CUR[0],CUR[1]),ctr(bc.r,bc.c),objColor(e));h+=hexMk(bc.r,bc.c,objColor(e),2.2);}
-      h+=hexMk(CUR[0],CUR[1],'var(--rust)',3);
-    } else { var p=PERIODS[CURP],a=p.cell,bc=best(e),c=eraNext(CURP);
-      var moved=(a&&c&&!(a[0]===c[0]&&a[1]===c[1]));
-      // dotted line to the optimal cell from here (always); solid arrow only when the
-      // era actually changed, so within a stable era the map shows a held position.
-      if(a&&bc&&!(bc.r===a[0]&&bc.c===a[1])){h+=dlineSvg(ctr(a[0],a[1]),ctr(bc.r,bc.c),'var(--rust)');h+=hexMk(bc.r,bc.c,'var(--rust)',2);}
-      if(moved){h+=arrowSvg(ctr(a[0],a[1]),ctr(c[0],c[1]),'var(--teal)');h+=hexMk(c[0],c[1],'var(--teal)',3);h+=hexMk(a[0],a[1],'var(--muted)',2.4);}
-      else if(a){h+=hexMk(a[0],a[1],'var(--rust)',3);}
-    } fx.innerHTML=h;}
-  // a move is shown ONLY at an era boundary: null unless the very next period is a new
-  // era, so within a stable era every bucket reads "held", not a fresh move.
-  function eraNext(i){var p=PERIODS[i],q=PERIODS[i+1];return (q&&q.era!==p.era)?q.cell:null;}
-  function scrubDetail(e){var p=PERIODS[CURP],a=p.cell,bc=best(e),c=eraNext(CURP);
-    var ac=a?cell(a[0],a[1]):null,cc=c?cell(c[0],c[1]):null;
-    var moved=(a&&c&&!(a[0]===c[0]&&a[1]===c[1]));
-    if(!moved){var held='<span class="mk-were">held</span> '+setup(ac);
-      if(bc&&!(bc.r===a[0]&&bc.c===a[1]))held+=' <span class="mk-best">(best for '+objName(e)+': '+setup(bc)+')</span>';
-      return held;}
-    var line='<span class="mk-were">were</span> '+setup(ac)+' <span class="mk-went">'+REC+' moved to</span> '+setup(cc);
-    if(bc)line+=' <span class="mk-best">(best '+setup(bc)+')</span>';
-    var ga=ac?good(ac,e):null,gc=cc?good(cc,e):null,gb=bc?good(bc,e):null;
-    if(ga!=null&&gc!=null&&gb!=null&&gb>ga){var f=Math.round(((gc-ga)/(gb-ga))*100);
-      line+='. On '+objName(e)+', your move '+(f>=0?('captured '+f+'% of the gain'):'lost ground')+'.';}
-    line+='<span class="scrub-key"><span class="s-opt"><i></i>best from here</span>'
-        +'<span class="s-act"><i></i>you moved</span></span>';
-    return line;}
+  // the SMOOTHED cloud: every cell the held generation occupied, its border weight and
+  // opacity scaled by how many sessions landed there (prevailing = boldest). More days =
+  // deeper, richer, bigger border; fewer = fainter, thinner.
+  function cloudFx(g,e){var h='';(g.cells||[]).forEach(function(cc){var p=pts(cc.r,cc.c);if(!p)return;
+      var sw=(1.4+cc.w*3.4).toFixed(1),op=(0.30+cc.w*0.70).toFixed(2);
+      h+='<polygon points="'+p+'" fill="none" stroke="var(--rust)" stroke-width="'+sw+'" opacity="'+op+'"/>';});
+    // the recommendation only points from the CURRENT generation (advice for now).
+    if(isLatest()){var bc=best(e);if(bc&&recOk(e)&&!(bc.r===CUR[0]&&bc.c===CUR[1])){h+=arrowSvg(ctr(CUR[0],CUR[1]),ctr(bc.r,bc.c),objColor(e));h+=hexMk(bc.r,bc.c,objColor(e),2.2);}}
+    return h;}
+  // the NARROW day: a single crisp ink ring on that bucket's own cell, visibly unlike
+  // the weighted rust cloud, so smoothed-vs-narrow is never ambiguous.
+  function dayFx(i){var dc=PERIODS[i].day_cell;if(!dc)return '';var p=pts(dc[0],dc[1]);
+    return p?('<polygon points="'+p+'" fill="none" stroke="var(--ink)" stroke-width="2.2" opacity="0.9"/>'):'';}
+  function renderFx(e){if(!fx)return;
+    fx.innerHTML=(CURP!=null?dayFx(CURP):(curEra()?cloudFx(curEra(),e):''));}
+  function detailHtml(e){
+    if(CURP!=null){var dc=PERIODS[CURP].day_cell,c=dc?cell(dc[0],dc[1]):null;
+      return '<span class="mk-day">'+PERIODS[CURP].label+'</span> '+(c?setup(c):'no session mapped');}
+    var g=curEra();if(!g)return '';
+    var prev=(g.cells&&g.cells.length)?cell(g.cells[0].r,g.cells[0].c):null;
+    var others=(g.cells?g.cells.length-1:0);
+    var extra=others>0?(' <span class="mk-mix">(+'+others+' other setup'+(others==1?'':'s')+')</span>'):'';
+    var s='<span class="mk-gen">'+g.label+'</span> '+g.days+' session'+(g.days==1?'':'s')+', mostly '+(prev?setup(prev):'n/a')+extra;
+    if(isLatest()){var bc=best(e);if(bc&&recOk(e))s+=' <span class="mk-best">best for '+objName(e)+': '+setup(bc)+'</span>';}
+    return s;}
   function refresh(){var e=enSet(),v=vals();
     if(vbScore)vbScore.textContent=fmt(score(e,v));
     MK.forEach(function(m){var b=tog(m);if(!b)return;b.setAttribute('aria-pressed',e[m]?'true':'false');var bb=b.querySelector('b');if(bb)bb.textContent=fmtv(m,v[m]);});
-    if(vbLabel)vbLabel.textContent=(CURP!=null?PERIODS[CURP].label+' ':'')+'score';
+    if(vbLabel)vbLabel.textContent=(CURP!=null?PERIODS[CURP].label+' ':(isLatest()?'':'that generation '))+'score';
     dimWave(e);renderFx(e);setRec(e);
-    if(vbDetail)vbDetail.innerHTML=(CURP!=null?scrubDetail(e):'');}
+    if(vbDetail)vbDetail.innerHTML=detailHtml(e);}
   svg.querySelectorAll('.som-cell').forEach(function(cl){cl.style.cursor='pointer';
     cl.addEventListener('mouseenter',function(){var c=cell(cl.getAttribute('data-r'),cl.getAttribute('data-c'));
       if(!vbDetail)return;
@@ -2679,7 +2672,10 @@ _WALK_JS = r"""<script>
     b.addEventListener('mouseenter',function(){PV=m;refresh();});
     b.addEventListener('mouseleave',function(){PV=null;refresh();});
     b.addEventListener('click',function(){var on=MK.filter(function(k){return EN[k];});if(EN[m]&&on.length<=1)return;EN[m]=!EN[m];PV=null;refresh();});});
-  document.querySelectorAll('.wv-bar').forEach(function(g){g.addEventListener('mouseenter',function(){CURP=+g.getAttribute('data-i');refresh();});});
+  // hover a bar => preview that day (narrow); click a bar => hold its generation (cloud).
+  document.querySelectorAll('.wv-bar').forEach(function(g){
+    g.addEventListener('mouseenter',function(){CURP=+g.getAttribute('data-i');refresh();});
+    g.addEventListener('click',function(){var p=PERIODS[+g.getAttribute('data-i')];if(p&&p.era!=null)ERAIDX=p.era;CURP=null;refresh();});});
   var wsvg=document.getElementById('wave-svg');
   if(wsvg)wsvg.addEventListener('mouseleave',function(){CURP=null;refresh();});
   refresh();
@@ -2807,6 +2803,7 @@ def render_walk(report):
     script = (_WALK_JS.replace("__CELLS__", _safe(cells))
               .replace("__BEST__", _safe(_recommend_cells(cells, cur)))
               .replace("__PERIODS__", _safe(_timeline_periods(report)))
+              .replace("__ERAS__", _safe(_era_occupancy(report)))
               .replace("__CUR__", _safe(cur))
               .replace("__AGG__", _safe(agg)))
     return _WALK_CSS + script
@@ -2895,13 +2892,7 @@ def _timeline_periods(report):
     s = _combined_series(report)
     if len(s) < 3:
         return []
-    som = (report.get("rig_space") or {}).get("som") or {}
-    walk = som.get("walk") or []
-    gran = ((report.get("fuel_and_work") or {}).get("granularity")) or "week"
-    by_label = defaultdict(list)
-    for w in walk:
-        if w.get("day"):
-            by_label[_bucket(w["day"], gran)[1]].append(tuple(w["cell"]))
+    by_label = _walk_by_label(report)
     # era bounds: the same change-marked indices the efficiency chart segments on.
     n = len(s)
     change_idx = [i for i, b in enumerate(s) if b.get("changes") and 0 < i < n]
@@ -2923,9 +2914,63 @@ def _timeline_periods(report):
     for i, b in enumerate(s):
         cell = prevailing_of.get(i) or last
         last = cell if cell is not None else last
+        # the narrow, day-level position: this bucket's OWN modal BMU (what the map shows
+        # when you hover a single bar), distinct from the era's prevailing cell above.
+        dc = by_label.get(b["label"])
+        day_cell = list(Counter(dc).most_common(1)[0][0]) if dc else None
         out.append({"label": b["label"], "comb": round(b["comb"]),
                     "eff": b["eq"], "flow": b["flow"], "simp": b["simp"],
-                    "cell": cell, "era": era_of.get(i)})
+                    "cell": cell, "day_cell": day_cell, "era": era_of.get(i)})
+    return out
+
+
+def _walk_by_label(report):
+    """The walk's per-session BMU cells bucketed by the timeline's granularity label,
+    shared by the period and era-occupancy builders."""
+    som = (report.get("rig_space") or {}).get("som") or {}
+    gran = ((report.get("fuel_and_work") or {}).get("granularity")) or "week"
+    by_label = defaultdict(list)
+    for w in (som.get("walk") or []):
+        if w.get("day"):
+            by_label[_bucket(w["day"], gran)[1]].append(tuple(w["cell"]))
+    return by_label
+
+
+def _era_occupancy(report):
+    """Per era (generation), the CLOUD of cells the operator occupied, weighted by how
+    many sessions landed in each: this is what the map shows when you click to hold a
+    generation. cells is sorted heaviest first; w is the count normalized to the era's
+    busiest cell (drives border weight/opacity in the client), n the raw count. Also the
+    era's mean components and combined score, its date span, and how many sessions it
+    holds. Eras align with the same change-marked segmentation the wave and line use."""
+    s = _combined_series(report)
+    if len(s) < 3:
+        return []
+    by_label = _walk_by_label(report)
+    n = len(s)
+    change_idx = [i for i, b in enumerate(s) if b.get("changes") and 0 < i < n]
+    bounds = [0] + change_idx + [n]
+    out = []
+    for eid, (a, b) in enumerate(zip(bounds, bounds[1:])):
+        if b <= a:
+            continue
+        cnt = Counter()
+        for j in range(a, b):
+            for c in by_label.get(s[j]["label"], []):
+                cnt[c] += 1
+        span = b - a
+        mE = sum(s[j]["eq"] for j in range(a, b)) / span
+        mF = sum(s[j]["flow"] for j in range(a, b)) / span
+        mS = sum(s[j]["simp"] for j in range(a, b)) / span
+        mx = max(cnt.values()) if cnt else 1
+        cells = [{"r": r, "c": c, "w": round(w / mx, 3), "n": w}
+                 for (r, c), w in sorted(cnt.items(), key=lambda kv: (-kv[1], kv[0]))]
+        out.append({"era": eid, "cells": cells,
+                    "eff": round(mE, 2), "flow": round(mF, 1), "simp": round(mS, 1),
+                    "score": round(mE * mF * mS), "days": sum(cnt.values()),
+                    "label": (s[a]["label"] + " to " + s[b - 1]["label"]
+                              if b - 1 > a else s[a]["label"]),
+                    "prevailing": [cells[0]["r"], cells[0]["c"]] if cells else None})
     return out
 
 
@@ -2972,10 +3017,11 @@ def render_waveform(report):
     unit = (H * 0.9) / 3.0  # each component contributes up to `unit` of height
     comps = [(nE, "var(--accent)", "eff"), (nF, "var(--teal)", "flow"),
              (nS, "var(--good)", "simp")]
+    totals = [sum(nrm[i] * unit for nrm, _, _ in comps) for i in range(n)]
     bars = []
     for i in range(n):
         segs = [(nrm[i] * unit, color, m) for nrm, color, m in comps]
-        total = sum(hgt for hgt, _, _ in segs)
+        total = totals[i]
         y = cy - total / 2
         x = i * bw
         wd = max(bw - 1.4, 0.8)
@@ -2989,11 +3035,46 @@ def render_waveform(report):
             y += hgt
         g.append('</g>')
         bars.append("".join(g))
+
+    # the smoothed generations, drawn ON THE SAME wave: one faint block per era (the same
+    # eras the map moves in and the line below numbers 1/2/3), its height the era's mean
+    # amplitude, labelled with the era's combined score. The daily bars vibrate inside it,
+    # so you read generation-vs-generation and day-to-day at once, without the chart below.
+    change_idx = [i for i, b in enumerate(s) if b.get("changes") and 0 < i < n]
+    bounds = [0] + change_idx + [n]
+    blocks, dividers, labels = [], [], []
+    for a, b in zip(bounds, bounds[1:]):
+        if b <= a:
+            continue
+        span = b - a
+        mean_tot = sum(totals[a:b]) / span
+        mE = sum(s[j]["eq"] for j in range(a, b)) / span
+        mF = sum(s[j]["flow"] for j in range(a, b)) / span
+        mS = sum(s[j]["simp"] for j in range(a, b)) / span
+        score = round(mE * mF * mS)
+        x0, x1 = a * bw, b * bw
+        yt, yb = cy - mean_tot / 2, cy + mean_tot / 2
+        blocks.append(f'<rect x="{x0:.1f}" y="{yt:.1f}" width="{(x1 - x0):.1f}" '
+                      f'height="{mean_tot:.1f}" fill="var(--ink)" opacity="0.055"/>'
+                      f'<line x1="{x0:.1f}" y1="{yt:.1f}" x2="{x1:.1f}" y2="{yt:.1f}" '
+                      f'stroke="var(--ink)" stroke-width="1.4" opacity="0.45"/>'
+                      f'<line x1="{x0:.1f}" y1="{yb:.1f}" x2="{x1:.1f}" y2="{yb:.1f}" '
+                      f'stroke="var(--ink)" stroke-width="1.4" opacity="0.45"/>')
+        labels.append(f'<text x="{((x0 + x1) / 2):.1f}" y="{max(9.0, yt - 3):.1f}" '
+                      f'text-anchor="middle" font-size="10.5" font-weight="700" '
+                      f'fill="var(--ink2)">{_fmt_tok(score)}</text>')
+        if a > 0:
+            dividers.append(f'<line x1="{x0:.1f}" y1="2" x2="{x0:.1f}" y2="{H - 2}" '
+                            f'stroke="var(--ink)" stroke-width="1" stroke-dasharray="2 3" '
+                            f'opacity="0.35"/>')
+    # order: faint blocks + dividers behind, daily bars on top, era scores on top of all.
     svg = (f'<svg id="wave-svg" viewBox="0 0 {W} {H}" role="img" aria-label="the combined '
-           f'score over time as a stacked waveform: efficiency, flow and simplicity in '
-           f'one bar per period">{"".join(bars)}</svg>')
-    note = ('<div class="wlegend"><span class="wl-note">hover the wave to scrub time; '
-            'toggle a metric above to change the goal and the score</span></div>')
+           f'score over time as a stacked waveform: daily bars of efficiency, flow and '
+           f'simplicity inside one faint block per generation, labelled with its score">'
+           f'{"".join(blocks)}{"".join(dividers)}{"".join(bars)}{"".join(labels)}</svg>')
+    note = ('<div class="wlegend"><span class="wl-note">each block is a generation '
+            '(its score labelled); hover a bar for that day, click to hold a generation</span>'
+            '</div>')
     return (f'<div class="wave">{svg}{note}</div>')
 
 
