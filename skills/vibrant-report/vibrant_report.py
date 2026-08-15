@@ -2396,8 +2396,10 @@ def render_som_map(som_block, title="Where you work",
         parts.append('<g class="som-fx"></g>')
     parts.append("</svg>")
     if compact:
+        sub = (f'<div class="som-compact-s">{esc(subtitle)}</div>'
+               if subtitle else '')
         return (f'<div class="som-compact">'
-                f'<div class="som-compact-t">{esc(title)}</div>'
+                f'<div class="som-compact-t">{esc(title)}</div>{sub}'
                 f'<div class="som-wrap">{"".join(parts)}</div></div>')
 
     caption = ""
@@ -2515,11 +2517,25 @@ def render_shared_map(merged, current_cell, gradient, style="classic"):
 
 _WALK_CSS = (
     '<style>'
-    '.som-maps-row{display:flex;flex-wrap:wrap;gap:20px;margin-top:14px}'
+    '.som-maps-lead{font-size:12px;color:var(--ink2);margin-top:14px;line-height:1.4}'
+    '.som-maps-row{display:flex;flex-wrap:wrap;gap:20px;margin-top:8px}'
     '.som-maps-row>div{flex:1 1 300px;min-width:0}'
     '.som-compact-t{font-size:11px;font-weight:700;letter-spacing:.04em;'
-    'text-transform:uppercase;color:var(--muted);margin-bottom:4px}'
+    'text-transform:uppercase;color:var(--muted);margin-bottom:2px}'
+    '.som-compact-s{font-size:11px;color:var(--muted);margin-bottom:5px}'
+    '.som-maps-key{display:flex;gap:16px;align-items:center;margin-top:8px;'
+    'font-size:11px;color:var(--muted)}'
+    '.som-maps-key .k-you{color:var(--rust);font-weight:700}'
+    '.som-maps-key .k-shade{display:inline-flex;align-items:center;gap:5px}'
+    '.som-maps-key .k-shade i{width:34px;height:8px;border-radius:2px;display:inline-block;'
+    'background:linear-gradient(90deg,rgba(28,25,23,.12),rgba(28,25,23,.85))}'
     '.som-cell{transition:opacity .08s}'
+    # the scrub key: dotted swatch = the best move from here, solid = what you did next.
+    '.scrub-key{display:inline-flex;gap:14px;margin-left:2px;font-size:11px}'
+    '.scrub-key span{display:inline-flex;align-items:center;gap:5px;color:var(--muted)}'
+    '.scrub-key i{width:20px;height:0;display:inline-block;vertical-align:middle}'
+    '.scrub-key .s-opt i{border-top:2px dotted var(--rust)}'
+    '.scrub-key .s-act i{border-top:2px solid var(--teal)}'
     '.walk{margin-top:12px}'
     '.walk-detail{font-size:13px;color:var(--ink2);min-height:38px;padding:9px 12px;'
     'border:1px solid var(--line);border-radius:8px;background:var(--paper)}'
@@ -2585,6 +2601,10 @@ _WALK_JS = r"""<script>
   function arrowSvg(a,b,color){if(!a||!b)return '';var dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);if(d<1)return '';
     var ux=dx/d,uy=dy/d,px=-uy,py=ux,h=7;var tx=b.x-ux*(b.r+2),ty=b.y-uy*(b.r+2),bx=tx-ux*h,by=ty-uy*h,sx=a.x+ux*(a.r+2),sy=a.y+uy*(a.r+2);
     return '<line x1="'+sx+'" y1="'+sy+'" x2="'+bx+'" y2="'+by+'" stroke="'+color+'" stroke-width="2.4" stroke-linecap="round"/><polygon points="'+tx+','+ty+' '+(bx+px*3.6)+','+(by+py*3.6)+' '+(bx-px*3.6)+','+(by-py*3.6)+'" fill="'+color+'"/>';}
+  // a dotted line (no head) for the aspirational move: where the best cell was from here.
+  function dlineSvg(a,b,color){if(!a||!b)return '';var dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);if(d<1)return '';
+    var ux=dx/d,uy=dy/d,sx=a.x+ux*(a.r+2),sy=a.y+uy*(a.r+2),ex=b.x-ux*(b.r+2),ey=b.y-uy*(b.r+2);
+    return '<line x1="'+sx+'" y1="'+sy+'" x2="'+ex+'" y2="'+ey+'" stroke="'+color+'" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 3"/>';}
   function fmt(n){return (+n).toLocaleString();}
   function fmtv(m,v){if(v==null)return 'n/a';if(m==='eff')return ''+v;if(m==='simp')return ''+Math.round(v);return ''+(Math.round(v*10)/10);}
   function tog(m){return document.querySelector('.mtog[data-m="'+m+'"]');}
@@ -2602,9 +2622,11 @@ _WALK_JS = r"""<script>
       if(bc&&!(bc.r===CUR[0]&&bc.c===CUR[1])){h+=arrowSvg(ctr(CUR[0],CUR[1]),ctr(bc.r,bc.c),objColor(e));h+=hexMk(bc.r,bc.c,objColor(e),2.2);}
       h+=hexMk(CUR[0],CUR[1],'var(--rust)',3);
     } else { var p=PERIODS[CURP],a=p.cell,bc=best(e),c=(PERIODS[CURP+1]?PERIODS[CURP+1].cell:null);
-      if(a&&bc){h+=arrowSvg(ctr(a[0],a[1]),ctr(bc.r,bc.c),objColor(e));h+=hexMk(bc.r,bc.c,objColor(e),2.2);}
-      if(a)h+=hexMk(a[0],a[1],'var(--muted)',2.6);
+      // dotted line to the optimal cell from here; solid arrow to what you actually did next.
+      if(a&&bc&&!(bc.r===a[0]&&bc.c===a[1])){h+=dlineSvg(ctr(a[0],a[1]),ctr(bc.r,bc.c),'var(--rust)');h+=hexMk(bc.r,bc.c,'var(--rust)',2);}
+      if(a&&c){h+=arrowSvg(ctr(a[0],a[1]),ctr(c[0],c[1]),'var(--teal)');}
       if(c)h+=hexMk(c[0],c[1],'var(--teal)',3);
+      if(a)h+=hexMk(a[0],a[1],'var(--muted)',2.4);
     } fx.innerHTML=h;}
   function scrubDetail(e){var p=PERIODS[CURP],a=p.cell,bc=best(e),c=(PERIODS[CURP+1]?PERIODS[CURP+1].cell:null);
     var ac=a?cell(a[0],a[1]):null,cc=c?cell(c[0],c[1]):null;
@@ -2614,6 +2636,8 @@ _WALK_JS = r"""<script>
     var ga=ac?good(ac,e):null,gc=cc?good(cc,e):null,gb=bc?good(bc,e):null;
     if(ga!=null&&gc!=null&&gb!=null&&gb>ga){var f=Math.round(((gc-ga)/(gb-ga))*100);
       line+='. On '+objName(e)+', your move '+(f>=0?('captured '+f+'% of the gain'):'lost ground')+'.';}
+    line+='<span class="scrub-key"><span class="s-opt"><i></i>best from here</span>'
+        +'<span class="s-act"><i></i>you went</span></span>';
     return line;}
   function refresh(){var e=enSet(),v=vals();
     if(vbScore)vbScore.textContent=fmt(score(e,v));
@@ -2722,42 +2746,55 @@ def render_walk(report):
 
 
 def _card_maps(report):
-    """The two fingerprints, side by side, as the card marquee: compact, discernible,
-    no labels or key (those live on the interactive maps below). Empty when the maps
-    are absent."""
+    """The fingerprints as the card marquee. When a shared frontier is present the two
+    tiles are the SAME lattice read two ways (your recent sessions vs everyone pooled),
+    so a lead-in and a shared key frame them as a comparison, not two unrelated shapes.
+    Empty when the maps are absent."""
     som = (report.get("rig_space") or {}).get("som")
     shared = report.get("shared_map")
     tiles = []
+    paired = bool(shared and som and som.get("current_cell"))
     if som:
         # the interactive fingerprint lives in the card now: hover a hexagon, toggle a
         # metric to re-aim the arrow, hover the wave to scrub position.
-        tiles.append(render_som_map(som, style="ink-hex", compact=True, svg_id="map-you",
-                                    js_arrow=True, title="Where you work"))
-    if shared and som and som.get("current_cell"):
-        tiles.append(render_shared_map_compact(shared, som["current_cell"]))
+        tiles.append(render_som_map(
+            som, style="ink-hex", compact=True, svg_id="map-you", js_arrow=True,
+            title="Where you work",
+            subtitle="your last 14 days" if paired else ""))
+    if paired:
+        tiles.append(render_shared_map_compact(
+            shared, som["current_cell"], subtitle="everyone pooled, the same map"))
     if not tiles:
         return ""
+    # when both maps show, say what the pairing is for and give one shared key, so
+    # "why two grids, why different" answers itself: same terrain, two data sources.
+    lead = ('<div class="som-maps-lead">The same map, two readings. '
+            'Darker means cheaper per surviving KB (relative within each map).</div>'
+            if paired else "")
+    key = ('<div class="som-maps-key"><span class="k-you">⬢ where you work</span>'
+           '<span class="k-shade"><i></i> cheaper</span></div>' if paired else "")
     # the recommendation, right below the fingerprints, in the breakdown's style; the
     # objective is implied by the setup, so no "optimizing for" prefix. Filled by JS.
     rec = ('<div class="vb-rec" id="vb-rec"></div>'
            '<div class="vb-detail" id="vb-detail"></div>') if som else ""
-    return f'<div class="som-maps-row">{"".join(tiles)}</div>{rec}'
+    return f'{lead}<div class="som-maps-row">{"".join(tiles)}</div>{key}{rec}'
 
 
-def render_shared_map_compact(merged, current_cell):
-    """The shared frontier as a compact marquee tile (no arrow/key)."""
+def render_shared_map_compact(merged, current_cell, subtitle=""):
+    """The shared frontier as a compact marquee tile: the same lattice as your own
+    map, shaded by the pooled field, with only your position marked. No arrow: the
+    single recommendation lives under your map, so this tile stays a pure comparison
+    backdrop (where you sit in everyone's terrain), not a second suggestion."""
     if not merged or not (merged.get("lattice") or {}).get("rows"):
         return ""
-    g = som_merge.merged_gradient(merged, current_cell) or {}
     block = {"lattice": merged["lattice"], "field": merged.get("field"),
              "support": merged.get("support"),
              "field_metric": merged.get("field_metric", "d_per_survkb"),
              "field_lower_is_better": merged.get("field_lower_is_better", True),
              "current_cell": current_cell,
-             "gradient": {"target_cell": g.get("target_cell"),
-                          "vector": g.get("vector"), "arm_change": None}}
+             "gradient": {}}
     return render_som_map(block, style="ink-hex", compact=True,
-                          title="The shared frontier")
+                          title="The shared frontier", subtitle=subtitle)
 
 
 def _combined_series(report):
