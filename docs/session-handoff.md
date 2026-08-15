@@ -193,7 +193,33 @@ a solid teal arrow to what you actually did next, a small key naming both (`dlin
 `.scrub-key`). Verified in headless chromium across periods where were/best/went coincide
 and diverge (drv_*.png in the somrun scratch dir).
 
-### Generations on the wave + dual-mode maps (updated 2026-08-15, LATEST)
+### Waveform trend+residual redesign (updated 2026-08-15, LATEST)
+
+Operator ask: make the generational level the CONTINUOUS smoothed centre line of the wave,
+daily data riding over it like a stacked bar, below-average days shown with a dashed
+artifact, and a cue for which region feeds the score ("rainfall from the number to its
+segment"). This is a trend+residual / horizon-chart decomposition. Done in
+`render_waveform` + `emphasize()`:
+
+- `era_mean_seq` (per-period era mean amplitude) is `_smooth`ed (window 5) into a flowing
+  envelope `g[i]`. Drawn as a faint filled band + a center spine + two contour polylines
+  (top/bottom of the envelope) stroked ON TOP of the bars, so the smoothed generational
+  line reads as the reference the daily bars ride over.
+- Daily bars (unchanged 3-band mirrored) ride over: taller than `g[i]` pokes past the
+  contour; where `g[i]-total>1.2` a dashed muted notch fills the gap (the deficit artifact
+  for a day below its generation).
+- Emphasis (JS `emphasize()`, called in refresh): the active region is lit, the rest dim.
+  Active = the hovered bar (day view) or the held generation `ERAIDX` (generation view).
+  For a generation it also lights that era's band segment (`.wv-band`) and the "rainfall"
+  (`.wv-rain`, dotted lines from the score label down onto its days). Bars carry `data-era`;
+  `.wv-score`/`.wv-band`/`.wv-rain` carry it too.
+- Kept a compact color key (efficiency/flow/simplicity swatches) in the wave legend
+  (test_som_viz.test_waveform requires the component names; it is a legend, not prose).
+  Regressions extended there (generational hooks + contour). Verified headless
+  (wv_default/wv_click1 in somrun scratch): contour flows, deficits dash, click moves the
+  lit region.
+
+### Generations on the wave + dual-mode maps (updated 2026-08-15)
 
 Operator wanted generation-level reading folded INTO the card so the "awful chart below"
 is optional, plus the maps to show smoothed vs narrow. Done:
