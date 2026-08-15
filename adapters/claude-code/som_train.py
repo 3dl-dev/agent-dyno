@@ -92,10 +92,14 @@ def _deflate(mat, pc, eig, D):
     return [[mat[i][j] - eig * pc[i] * pc[j] for j in range(D)] for i in range(D)]
 
 
-def _lattice_side(n):
+def _lattice_dims(n, aspect=1.5):
+    """Default lattice, portrait (rows > cols, aspect ~1.5), so the rendered map reads
+    as a taller oval, like a fingerprint (the 3dl marks are tall SOMs). Vesanto node
+    count 5*sqrt(n), split across the aspect; each side clamped to [MIN_SIDE, MAX_SIDE]."""
     units = 5.0 * math.sqrt(n)
-    side = round(math.sqrt(units))
-    return max(MIN_SIDE, min(MAX_SIDE, side))
+    rows = max(MIN_SIDE, min(MAX_SIDE, round(math.sqrt(units * aspect))))
+    cols = max(MIN_SIDE, min(MAX_SIDE, round(math.sqrt(units / aspect))))
+    return rows, cols
 
 
 def _init_codebook(R, C, D, mean, pc1, scale1, pc2, scale2):
@@ -174,8 +178,7 @@ def train(matrix, rows=None, cols=None, seed=0):
     if rows is not None and cols is not None:
         R, C = rows, cols
     else:
-        side = _lattice_side(N)
-        R = C = side
+        R, C = _lattice_dims(N)
 
     mean = [sum(x[d] for x in X) / N for d in range(D)]
     cov = _covariance(X, mean, D, N)

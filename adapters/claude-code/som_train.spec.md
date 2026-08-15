@@ -48,10 +48,12 @@ with a clear error (the driver keeps the hand-written fallback in that case).
 Let `N` = number of rows, `D` = number of features, and the lattice be `R x C` nodes.
 
 1. **Lattice size.** If `--rows`/`--cols` are given, use them (the federated trainer
-   pins these so every operator shares one map). Otherwise derive a square-ish grid
-   from the Vesanto heuristic: `units = 5 * sqrt(N)`, `side = round(sqrt(units))`,
-   clamped to `[MIN_SIDE=4, MAX_SIDE=12]`, and `R = C = side`. Record the resolved
-   `rows`, `cols` in the cache.
+   pins these so every operator shares one map). Otherwise derive a PORTRAIT grid
+   (rows > cols) from the Vesanto node count `units = 5 * sqrt(N)`, split across an
+   aspect of ~1.5: `rows = round(sqrt(units * 1.5))`, `cols = round(sqrt(units / 1.5))`,
+   each clamped to `[MIN_SIDE=4, MAX_SIDE=12]`. Portrait so the rendered map reads as a
+   taller oval, like a fingerprint (the 3dl marks are tall SOMs). For N=232 this is
+   11x7. Record the resolved `rows`, `cols` in the cache.
 
 2. **Deterministic PCA init.** Compute the data mean and the top two principal
    directions by **power iteration with deflation** on the `D x D` covariance matrix

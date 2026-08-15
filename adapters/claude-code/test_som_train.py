@@ -73,6 +73,7 @@ def test_schema_and_shape(fails):
     check(len(cache["names"]) == D, "names not echoed", fails)
     R, Cc = cache["lattice"]["rows"], cache["lattice"]["cols"]
     check(R >= st.MIN_SIDE and Cc >= st.MIN_SIDE, f"lattice too small {R}x{Cc}", fails)
+    check(R > Cc, f"default lattice not portrait (rows>cols): {R}x{Cc}", fails)
     cb = cache["codebook"]
     check(len(cb) == R and all(len(row) == Cc for row in cb), "codebook rows/cols", fails)
     check(all(len(node) == D for row in cb for node in row), "codebook node width", fails)
