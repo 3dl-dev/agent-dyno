@@ -2183,6 +2183,25 @@ def _som_field_opacity(v, lo, hi, lower_better):
     return 0.10 + 0.80 * t
 
 
+def _rank_opacity(v, sorted_vals, lower_better=True):
+    """A dynamic, range-sensitive shade: opacity by the value's RANK among the cells
+    actually present, not by its position on a fixed lo..hi ramp. Histogram
+    equalization, in effect. A fixed (even log) ramp smooths a clumped distribution
+    into near-uniform grey, the exact washout that made the maps unreadable; ranking
+    spreads whatever cells exist across the full ink range, so differences always
+    show and more data yields more distinguishable shades. Ties share a shade (mid
+    rank). lower_better keeps the cost convention (dark = costlier)."""
+    n = len(sorted_vals)
+    if n <= 1:
+        return 0.5
+    less = sum(1 for x in sorted_vals if x < v)
+    eq = sum(1 for x in sorted_vals if x == v)
+    t = (less + eq / 2.0) / n  # mid-rank percentile in (0, 1)
+    if not lower_better:
+        t = 1.0 - t
+    return 0.10 + 0.80 * min(max(t, 0.0), 1.0)
+
+
 # SOM map skins. The 3dl brand mark IS a Self-Organizing Map (3dl.dev/brand): ink
 # cells, one rust peak unit, teal for links, on paper. So the maps ARE the logo, drawn
 # from the operator's data. "classic" keeps the earlier red cost hue; "ink" and
@@ -2243,6 +2262,7 @@ def render_som_map(som_block, title="Where you work",
     have = [v for v in (fval(r, c) for r in range(rows) for c in range(cols))
             if v is not None]
     lo, hi = (min(have), max(have)) if have else (0.0, 0.0)
+    ranked = sorted(have)  # for the dynamic, range-sensitive cost shade (see _rank_opacity)
     smax = max([sval(r, c) for r in range(rows) for c in range(cols)] + [0]) or 1
 
     pal = _SOM_STYLES.get(style, _SOM_STYLES["classic"])
@@ -2322,7 +2342,7 @@ def render_som_map(som_block, title="Where you work",
                     cx, cy, f'{dpos} fill="none" stroke="var(--line)" '
                     f'stroke-width="1" opacity="{eop}"{dash}'))
                 continue
-            op = _som_field_opacity(v, lo, hi, lower_better)
+            op = _rank_opacity(v, ranked, lower_better)
             cell_title = esc(f"row {r}, col {c}: {v:.2f} {metric}")
             parts.append(cell_shape(
                 cx, cy, f'{dpos} fill="rgba({pal["cell"]},{op:.2f})" '
@@ -2518,18 +2538,11 @@ def render_shared_map(merged, current_cell, gradient, style="classic"):
 
 _WALK_CSS = (
     '<style>'
-    '.som-maps-lead{font-size:12px;color:var(--ink2);margin-top:14px;line-height:1.4}'
-    '.som-maps-row{display:flex;flex-wrap:wrap;gap:20px;margin-top:8px}'
+    '.som-maps-row{display:flex;flex-wrap:wrap;gap:20px;margin-top:14px}'
     '.som-maps-row>div{flex:1 1 300px;min-width:0}'
     '.som-compact-t{font-size:11px;font-weight:700;letter-spacing:.04em;'
     'text-transform:uppercase;color:var(--muted);margin-bottom:2px}'
     '.som-compact-s{font-size:11px;color:var(--muted);margin-bottom:5px}'
-    '.som-maps-key{display:flex;gap:16px;align-items:center;margin-top:8px;'
-    'font-size:11px;color:var(--muted)}'
-    '.som-maps-key .k-you{color:var(--rust);font-weight:700}'
-    '.som-maps-key .k-shade{display:inline-flex;align-items:center;gap:5px}'
-    '.som-maps-key .k-shade i{width:34px;height:8px;border-radius:2px;display:inline-block;'
-    'background:linear-gradient(90deg,rgba(28,25,23,.12),rgba(28,25,23,.85))}'
     '.som-cell{transition:opacity .08s}'
     # the scrub key: dotted swatch = the best move from here, solid = what you did next.
     '.scrub-key{display:inline-flex;gap:14px;margin-left:2px;font-size:11px}'
@@ -2626,23 +2639,30 @@ _WALK_JS = r"""<script>
     if(CURP==null){var bc=best(e);
       if(bc&&recOk(e)&&!(bc.r===CUR[0]&&bc.c===CUR[1])){h+=arrowSvg(ctr(CUR[0],CUR[1]),ctr(bc.r,bc.c),objColor(e));h+=hexMk(bc.r,bc.c,objColor(e),2.2);}
       h+=hexMk(CUR[0],CUR[1],'var(--rust)',3);
-    } else { var p=PERIODS[CURP],a=p.cell,bc=best(e),c=(PERIODS[CURP+1]?PERIODS[CURP+1].cell:null);
-      // dotted line to the optimal cell from here; solid arrow to what you actually did next.
+    } else { var p=PERIODS[CURP],a=p.cell,bc=best(e),c=eraNext(CURP);
+      var moved=(a&&c&&!(a[0]===c[0]&&a[1]===c[1]));
+      // dotted line to the optimal cell from here (always); solid arrow only when the
+      // era actually changed, so within a stable era the map shows a held position.
       if(a&&bc&&!(bc.r===a[0]&&bc.c===a[1])){h+=dlineSvg(ctr(a[0],a[1]),ctr(bc.r,bc.c),'var(--rust)');h+=hexMk(bc.r,bc.c,'var(--rust)',2);}
-      if(a&&c){h+=arrowSvg(ctr(a[0],a[1]),ctr(c[0],c[1]),'var(--teal)');}
-      if(c)h+=hexMk(c[0],c[1],'var(--teal)',3);
-      if(a)h+=hexMk(a[0],a[1],'var(--muted)',2.4);
+      if(moved){h+=arrowSvg(ctr(a[0],a[1]),ctr(c[0],c[1]),'var(--teal)');h+=hexMk(c[0],c[1],'var(--teal)',3);h+=hexMk(a[0],a[1],'var(--muted)',2.4);}
+      else if(a){h+=hexMk(a[0],a[1],'var(--rust)',3);}
     } fx.innerHTML=h;}
-  function scrubDetail(e){var p=PERIODS[CURP],a=p.cell,bc=best(e),c=(PERIODS[CURP+1]?PERIODS[CURP+1].cell:null);
+  // a move is shown ONLY at an era boundary: null unless the very next period is a new
+  // era, so within a stable era every bucket reads "held", not a fresh move.
+  function eraNext(i){var p=PERIODS[i],q=PERIODS[i+1];return (q&&q.era!==p.era)?q.cell:null;}
+  function scrubDetail(e){var p=PERIODS[CURP],a=p.cell,bc=best(e),c=eraNext(CURP);
     var ac=a?cell(a[0],a[1]):null,cc=c?cell(c[0],c[1]):null;
-    if(!c) return '<span class="mk-were">you are here</span> '+setup(ac)+' (latest period).';
-    var line='<span class="mk-were">were</span> '+setup(ac)+' <span class="mk-went">'+REC+' went</span> '+setup(cc);
+    var moved=(a&&c&&!(a[0]===c[0]&&a[1]===c[1]));
+    if(!moved){var held='<span class="mk-were">held</span> '+setup(ac);
+      if(bc&&!(bc.r===a[0]&&bc.c===a[1]))held+=' <span class="mk-best">(best for '+objName(e)+': '+setup(bc)+')</span>';
+      return held;}
+    var line='<span class="mk-were">were</span> '+setup(ac)+' <span class="mk-went">'+REC+' moved to</span> '+setup(cc);
     if(bc)line+=' <span class="mk-best">(best '+setup(bc)+')</span>';
     var ga=ac?good(ac,e):null,gc=cc?good(cc,e):null,gb=bc?good(bc,e):null;
     if(ga!=null&&gc!=null&&gb!=null&&gb>ga){var f=Math.round(((gc-ga)/(gb-ga))*100);
       line+='. On '+objName(e)+', your move '+(f>=0?('captured '+f+'% of the gain'):'lost ground')+'.';}
     line+='<span class="scrub-key"><span class="s-opt"><i></i>best from here</span>'
-        +'<span class="s-act"><i></i>you went</span></span>';
+        +'<span class="s-act"><i></i>you moved</span></span>';
     return line;}
   function refresh(){var e=enSet(),v=vals();
     if(vbScore)vbScore.textContent=fmt(score(e,v));
@@ -2778,12 +2798,16 @@ def render_walk(report):
     tl, mb = report.get("topline") or {}, report.get("misery") or {}
     agg = {"eff": tl.get("eq"), "flow": mb.get("flow"), "simp": tl.get("simplicity")}
 
+    # the card sits on the prevailing style of the latest era, not the last session's
+    # noisy BMU, so "you" and the recommendation baseline match the map's motion.
+    cur = _prevailing_current(report)
+
     def _safe(obj):
         return json.dumps(obj, separators=(",", ":")).replace("</", "<\\/")
     script = (_WALK_JS.replace("__CELLS__", _safe(cells))
-              .replace("__BEST__", _safe(_recommend_cells(cells, som.get("current_cell"))))
+              .replace("__BEST__", _safe(_recommend_cells(cells, cur)))
               .replace("__PERIODS__", _safe(_timeline_periods(report)))
-              .replace("__CUR__", _safe(som.get("current_cell")))
+              .replace("__CUR__", _safe(cur))
               .replace("__AGG__", _safe(agg)))
     return _WALK_CSS + script
 
@@ -2795,32 +2819,27 @@ def _card_maps(report):
     Empty when the maps are absent."""
     som = (report.get("rig_space") or {}).get("som")
     shared = report.get("shared_map")
+    cur = _prevailing_current(report)
     tiles = []
-    paired = bool(shared and som and som.get("current_cell"))
+    paired = bool(shared and som and cur)
     if som:
-        # the interactive fingerprint lives in the card now: hover a hexagon, toggle a
-        # metric to re-aim the arrow, hover the wave to scrub position.
+        # the interactive fingerprint lives in the card now: hover a hexagon to decode it,
+        # toggle a metric to re-aim the arrow, hover the wave to scrub eras. No explanatory
+        # prose: it did not make the abstraction legible; hover and the shade carry it.
         tiles.append(render_som_map(
             som, style="ink-hex", compact=True, svg_id="map-you", js_arrow=True,
             title="Where you work",
-            subtitle="your last 14 days" if paired else ""))
+            subtitle="your sessions" if paired else ""))
     if paired:
         tiles.append(render_shared_map_compact(
-            shared, som["current_cell"], subtitle="everyone pooled, the same map"))
+            shared, cur, subtitle="everyone's, pooled"))
     if not tiles:
         return ""
-    # when both maps show, say what the pairing is for and give one shared key, so
-    # "why two grids, why different" answers itself: same terrain, two data sources.
-    lead = ('<div class="som-maps-lead">The same map, two readings. '
-            'Darker means cheaper per surviving KB (relative within each map).</div>'
-            if paired else "")
-    key = ('<div class="som-maps-key"><span class="k-you">⬢ where you work</span>'
-           '<span class="k-shade"><i></i> cheaper</span></div>' if paired else "")
     # the recommendation, right below the fingerprints, in the breakdown's style; the
     # objective is implied by the setup, so no "optimizing for" prefix. Filled by JS.
     rec = ('<div class="vb-rec" id="vb-rec"></div>'
            '<div class="vb-detail" id="vb-detail"></div>') if som else ""
-    return f'{lead}<div class="som-maps-row">{"".join(tiles)}</div>{key}{rec}'
+    return f'<div class="som-maps-row">{"".join(tiles)}</div>{rec}'
 
 
 def render_shared_map_compact(merged, current_cell, subtitle=""):
@@ -2859,15 +2878,20 @@ def _combined_series(report):
         if flow is None or simp is None:
             continue
         out.append({"eq": eq, "flow": flow, "simp": simp,
-                    "comb": eq * flow * simp, "label": r.get("week")})
+                    "comb": eq * flow * simp, "label": r.get("week"),
+                    "changes": r.get("changes")})
     return out
 
 
 def _timeline_periods(report):
     """Per timeline period: the combined score and its three components, plus the cell
-    you mostly worked in that period (the modal BMU of that period's sessions, carried
-    forward when a period has none). This is what the waveform hover drives everything
-    from. [] when too little."""
+    to show on the map for that period. The cell is the PREVAILING style of the ERA the
+    period sits in, NOT the period's own modal BMU. Eras are the same segments the
+    efficiency line draws its 1/2/3 levels from (bounded by detected setup changes), so
+    the map moves only when the operator actually changed how they work (a few times),
+    not once per noisy bucket (the operator runs a stable mix of sessions every day, so
+    per-bucket modes flicker even when nothing changed). Each period carries its era id.
+    [] when too little."""
     s = _combined_series(report)
     if len(s) < 3:
         return []
@@ -2878,14 +2902,43 @@ def _timeline_periods(report):
     for w in walk:
         if w.get("day"):
             by_label[_bucket(w["day"], gran)[1]].append(tuple(w["cell"]))
+    # era bounds: the same change-marked indices the efficiency chart segments on.
+    n = len(s)
+    change_idx = [i for i, b in enumerate(s) if b.get("changes") and 0 < i < n]
+    bounds = [0] + change_idx + [n]
+    era_of, prevailing_of = {}, {}
+    for eid, (a, b) in enumerate(zip(bounds, bounds[1:])):
+        if b <= a:
+            continue
+        # the prevailing style of the era: the modal BMU across ALL its sessions, so a
+        # day-to-day wobble in the mix does not move the map inside a stable era.
+        cells = []
+        for j in range(a, b):
+            cells += by_label.get(s[j]["label"], [])
+        prevailing = list(Counter(cells).most_common(1)[0][0]) if cells else None
+        for j in range(a, b):
+            era_of[j] = eid
+            prevailing_of[j] = prevailing
     out, last = [], None
-    for b in s:
-        cells = by_label.get(b["label"])
-        cell = list(Counter(cells).most_common(1)[0][0]) if cells else last
+    for i, b in enumerate(s):
+        cell = prevailing_of.get(i) or last
         last = cell if cell is not None else last
         out.append({"label": b["label"], "comb": round(b["comb"]),
-                    "eff": b["eq"], "flow": b["flow"], "simp": b["simp"], "cell": cell})
+                    "eff": b["eq"], "flow": b["flow"], "simp": b["simp"],
+                    "cell": cell, "era": era_of.get(i)})
     return out
+
+
+def _prevailing_current(report):
+    """Where the operator prevailingly works NOW: the prevailing cell of the latest era,
+    so the card's 'you' marker and the recommendation baseline sit on the stable current
+    style rather than the last single session's noisy BMU. Falls back to the raw
+    current_cell when there is too little timeline."""
+    p = _timeline_periods(report)
+    if p and p[-1].get("cell"):
+        return p[-1]["cell"]
+    som = (report.get("rig_space") or {}).get("som") or {}
+    return som.get("current_cell")
 
 
 def _wave_norm(values):

@@ -152,6 +152,61 @@ def test_recommend_noise_gate(fails):
     check(r3["ok"] is False, "recommended a move to the cell you are already on", fails)
 
 
+def test_rank_opacity_spreads(fails):
+    # The dynamic shade ranks values, so a clumped-cheap distribution with one costly
+    # outlier does NOT collapse the cheap cluster onto the floor (the washout a fixed
+    # log ramp produced). Cheap cells share a mid-low shade; mids and the outlier spread.
+    vals = [1.0, 1.0, 1.0, 1.0, 2.0, 3.0, 50.0]
+    sv = sorted(vals)
+    ops = [vr._rank_opacity(v, sv, True) for v in vals]
+    check(len(set(round(o, 3) for o in ops)) >= 4, "rank opacity does not spread distinct values", fails)
+    check(vr._rank_opacity(1.0, sv, True) > 0.20, "cheap cluster slammed to the floor (washout)", fails)
+    check(vr._rank_opacity(1.0, sv, True) < vr._rank_opacity(50.0, sv, True),
+          "rank opacity not monotone in cost when lower_better", fails)
+    check(vr._rank_opacity(1.0, sv, False) > vr._rank_opacity(50.0, sv, False),
+          "lower_better=False did not invert the shade", fails)
+    check(vr._rank_opacity(5.0, [5.0], True) == 0.5, "single-value cell not neutral", fails)
+
+
+def _era_report():
+    days = ["2026-08-0%d" % d for d in range(1, 7)]  # six consecutive days
+    labels = [vr._bucket(d, "day")[1] for d in days]
+    timeline = [{"week": labels[i], "eq": 5.0, "misery": 40.0, "shipped": 10.0,
+                 "complexity": 100.0,
+                 "changes": (["engine solo -> workflow"] if i == 3 else None)}
+                for i in range(6)]
+    walk = []
+    for i, d in enumerate(days):
+        if i < 3:  # era 0: prevailingly cell [0,0], with a one-off flicker to [1,1]
+            walk += [{"day": d, "cell": [0, 0]}, {"day": d, "cell": [0, 0]}]
+            if i == 1:
+                walk.append({"day": d, "cell": [1, 1]})
+        else:      # era 1: prevailingly cell [2,2], with a one-off flicker back to [0,0]
+            walk += [{"day": d, "cell": [2, 2]}, {"day": d, "cell": [2, 2]}]
+            if i == 4:
+                walk.append({"day": d, "cell": [0, 0]})
+    return {"fuel_and_work": {"granularity": "day"}, "timeline": timeline,
+            "rig_space": {"som": {"walk": walk, "current_cell": [2, 2]}}}
+
+
+def test_timeline_periods_era_smoothed(fails):
+    # The map moves per ERA, not per noisy bucket: within a stable era the prevailing
+    # cell is held despite day-to-day flicker; it changes only at the detected boundary.
+    rep = _era_report()
+    p = vr._timeline_periods(rep)
+    check(len(p) == 6, "expected six periods", fails)
+    distinct = {tuple(x["cell"]) for x in p}
+    check(distinct == {(0, 0), (2, 2)}, "flicker not smoothed to prevailing cells: %s" % distinct, fails)
+    check([x["cell"] for x in p[:3]] == [[0, 0]] * 3, "era 0 not held at its prevailing cell", fails)
+    check([x["cell"] for x in p[3:]] == [[2, 2]] * 3, "era 1 not held at its prevailing cell", fails)
+    check([x["era"] for x in p] == [0, 0, 0, 1, 1, 1], "era ids not segmented at the change", fails)
+    # exactly one real move (at the boundary), not five noisy hops.
+    moves = sum(1 for a, b in zip(p, p[1:]) if a["cell"] != b["cell"])
+    check(moves == 1, "expected one era transition, got %d" % moves, fails)
+    # the card's baseline sits on the latest era's prevailing style.
+    check(vr._prevailing_current(rep) == [2, 2], "prevailing-current not the latest era's cell", fails)
+
+
 def test_determinism(fails):
     check(vr.render_walk(REPORT) == vr.render_walk(REPORT), "render_walk not deterministic", fails)
 
@@ -160,7 +215,8 @@ def main():
     fails = []
     for t in (test_empty, test_script, test_no_external_refs, test_no_em_dash,
               test_card_maps_interactive, test_hero_toggles, test_recommend_ignores_noise,
-              test_recommend_noise_gate, test_determinism):
+              test_recommend_noise_gate, test_rank_opacity_spreads,
+              test_timeline_periods_era_smoothed, test_determinism):
         t(fails)
     if fails:
         print("FAIL  walk:")
