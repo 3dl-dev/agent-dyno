@@ -101,8 +101,11 @@ def test_waveform(fails):
                {"eq": 9.0, "misery": 20, "shipped": 15, "complexity": 250, "week": "w4"}]}
     out = vr.render_waveform(rep)
     check("<svg" in out, "no waveform svg", fails)
-    for lab in ("combined", "efficiency", "flow", "simplicity"):
-        check(lab in out, f"missing {lab} wave", fails)
+    for lab in ("efficiency", "flow", "simplicity"):
+        check(lab in out, f"missing {lab} in legend", fails)
+    # one line: all three component colors appear as stacked bands in the single wave
+    for color in ("var(--accent)", "var(--teal)", "var(--good)"):
+        check(color in out, f"missing {color} band", fails)
     check(out.count("<rect") >= 4, f"too few wave bars: {out.count('<rect')}", fails)
     # gap-filled: the bucket with no misery/no shipped still contributes (overall fill)
     check(len(vr._combined_series(rep)) == 4, "combined series should gap-fill to 4", fails)

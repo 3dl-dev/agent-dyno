@@ -1949,6 +1949,9 @@ _CSS = """
 .vibrant .cparts b{font-variant-numeric:tabular-nums;}
 .vibrant .wave{margin:0 0 24px;}
 .vibrant .wave svg{width:100%;height:auto;}
+.vibrant .wlegend{display:flex;flex-wrap:wrap;gap:16px;margin-top:8px;font-size:12px;
+ font-weight:700;}
+.vibrant .wlegend .wl-note{color:var(--muted);font-weight:400;margin-left:auto;}
 @media (max-width:560px){.vibrant .cv{font-size:56px;}}
 .vibrant .row-h{font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
  color:var(--muted);margin:0 0 10px;}
@@ -2579,53 +2582,57 @@ def _combined_series(report):
     return out
 
 
-def _wave(values, x0, y0, w, h, color, opacity=1.0):
-    """A symmetric waveform: one mirrored bar per period, height by value, like an
-    audio track. Normalized to its own range so the shape reads."""
-    n = len(values)
+def _wave_norm(values):
+    """Normalize to [0,1] against a robust range (min .. 85th percentile), so one spiky
+    period does not flatten the wave; outliers saturate at 1."""
     srt = sorted(values)
-    # robust range: cap the top at the ~85th percentile so one spiky day does not
-    # squash the whole wave flat; outliers saturate at full height.
     lo = srt[0]
-    hi = srt[min(n - 1, int(0.85 * n))]
+    hi = srt[min(len(srt) - 1, int(0.85 * len(srt)))]
     rng = (hi - lo) or 1.0
-    bw = w / n
-    cy = y0 + h / 2
-    out = []
-    for i, v in enumerate(values):
-        t = min(max((v - lo) / rng, 0.0), 1.0)
-        bh = h * 0.12 + h * 0.86 * t
-        out.append(f'<rect x="{x0 + i * bw:.1f}" y="{cy - bh / 2:.1f}" '
-                   f'width="{max(bw - 1.4, 0.8):.1f}" height="{bh:.1f}" rx="1" '
-                   f'fill="{color}" opacity="{opacity}"/>')
-    return "".join(out)
+    return [min(max((v - lo) / rng, 0.0), 1.0) for v in values]
 
 
 def render_waveform(report):
-    """The score over time as a sound wave: the combined score (efficiency x flow x
-    simplicity) as a bold mirrored waveform, and the three components as thin colored
-    waves beneath, so one dense graph shows the whole trajectory. Empty when there is
-    too little history."""
+    """The score over time on ONE line: a single audio-style waveform where each period
+    is a mirrored bar whose height is the combined signal, split into three stacked
+    color bands (efficiency, flow, simplicity). So the wave shape reads the combined
+    trajectory and the colours inside read which component carried it. Empty when there
+    is too little history."""
     s = _combined_series(report)
     if len(s) < 3:
         return ""
     esc = _html.escape
-    W, pad = 700, 84
-    ww = W - pad
-    rows = [("comb", "var(--ink)", "combined", 62),
-            ("eq", "var(--accent)", "efficiency", 26),
-            ("flow", "var(--teal)", "flow", 26),
-            ("simp", "var(--good)", "simplicity", 26)]
-    parts, y = [], 0
-    for key, color, lab, h in rows:
-        parts.append(f'<text x="0" y="{y + h / 2 + 3:.1f}" font-size="10.5" '
-                     f'font-weight="700" fill="{color}">{esc(lab)}</text>')
-        parts.append(_wave([b[key] for b in s], pad, y, ww, h, color))
-        y += h + 10
-    svg = (f'<svg viewBox="0 0 {W} {y - 10}" role="img" aria-label="the combined score '
-           f'and its three components over time, as waveforms">{"".join(parts)}</svg>')
-    return (f'<div class="wave" title="each bar is a period; taller is better; oldest '
-            f'left, newest right">{svg}</div>')
+    nE = _wave_norm([b["eq"] for b in s])
+    nF = _wave_norm([b["flow"] for b in s])
+    nS = _wave_norm([b["simp"] for b in s])
+    comps = [(nE, "var(--accent)"), (nF, "var(--teal)"), (nS, "var(--good)")]
+    W, H = 700, 96
+    cy = H / 2
+    n = len(s)
+    bw = W / n
+    unit = (H * 0.9) / 3.0  # each component contributes up to `unit` of height
+    bars = []
+    for i in range(n):
+        segs = [(nrm[i] * unit, color) for nrm, color in comps]
+        total = sum(hgt for hgt, _ in segs)
+        y = cy - total / 2
+        x = i * bw
+        wd = max(bw - 1.4, 0.8)
+        for hgt, color in segs:
+            if hgt < 0.4:
+                continue
+            bars.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{wd:.1f}" '
+                        f'height="{hgt:.1f}" fill="{color}"/>')
+            y += hgt
+    svg = (f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="the combined score over '
+           f'time as a stacked waveform: efficiency, flow and simplicity in one bar per '
+           f'period">{"".join(bars)}</svg>')
+    legend = ('<div class="wlegend"><span style="color:var(--accent)">efficiency</span>'
+              '<span style="color:var(--teal)">flow</span>'
+              '<span style="color:var(--good)">simplicity</span>'
+              '<span class="wl-note">oldest left, newest right; taller is better</span>'
+              '</div>')
+    return (f'<div class="wave">{svg}{legend}</div>')
 
 
 def _hero_card(report):
