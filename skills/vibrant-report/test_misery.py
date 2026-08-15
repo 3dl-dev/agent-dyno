@@ -97,12 +97,13 @@ def main():
         "numerator": {"attribution": {"matched": 1, "by_model_roles": {
             "opus-4-8 -> solo": {"surviving": 10, "net_complexity": 5, "commits": 2}}}},
     }
+    flow = round(100 - overall, 1)
     card = vr._hero_card(report)
-    if f">{overall}<" not in card or "misery" not in card:
-        fails.append("card is missing the misery meter")
+    if f">{flow}<" not in card or "flow" not in card:
+        fails.append("card is missing the flow meter")
     md = vr.render_md(report)
-    if f"Misery {overall}/100" not in md or "never folded into efficiency" not in md:
-        fails.append("report.md is missing the misery meter / its 'not folded' caveat")
+    if f"Flow {flow}/100" not in md or "never folded into efficiency" not in md:
+        fails.append("report.md is missing the flow meter / its 'not folded' caveat")
     tbl = vr.render_attribution(report)
     if "<th>misery</th>" not in tbl or ">22.0<" not in tbl:
         fails.append("the by-rig table is missing the misery column")

@@ -551,11 +551,17 @@ def topline(metrics, numerator, denom_metrics=None):
     eq = round(functionality / out_mtok, 2) if out_mtok else None
     dcx = numerator.get("durable_complexity", numerator.get("net_complexity", 0))
     bloat = round(dcx / functionality, 1) if functionality else None
+    # simplicity: the positively-signed leanness meter (higher is better), the
+    # complement of bloat. bloat is decision-points per shipped change; simplicity is
+    # 100 minus that, floored at 0, so a lean change (few decision points) scores high
+    # and an over-engineered one scores low. The 100 anchor is a provisional scale.
+    simplicity = round(max(0.0, 100 - bloat), 1) if bloat is not None else None
     return {"eq": eq,
             "unit": "durable shipped changes per Mtok output",
             "larger_is_better": True,
             "functionality": functionality,
             "bloat": bloat,  # decision points per shipped change; lower is leaner
+            "simplicity": simplicity,  # 100 - bloat, higher is leaner (the signed meter)
             "output_mtok": round(out_mtok, 3),
             "total_mtok": round(total_mtok, 3),
             "denominator_sessions": len(denom),
@@ -1699,8 +1705,10 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
     scored = [m for m in metrics if m.get("misery") is not None]
     misery_block = None
     if scored:
+        _overall = round(sum(m["misery"] for m in scored) / len(scored), 1)
         misery_block = {
-            "overall": round(sum(m["misery"] for m in scored) / len(scored), 1),
+            "overall": _overall,
+            "flow": round(100 - _overall, 1),  # signed meter: how much you were in flow
             "n_scored": len(scored),
             "by_model": _misery_by(metrics, "model"),
             "by_worker": _misery_by(metrics, "worker"),
@@ -1802,8 +1810,9 @@ def render_md(report):
         # the whole fingerprint (topology usually matters more than the model), and
         # it is operator-relative: this is YOUR friction, comparable only across your
         # own rigs, never a verdict about a model.
-        L.append(f"**Misery {mb['overall']}/100.** How much you fought your rig, from "
-                 f"your own replies. A second meter, never folded into efficiency.")
+        L.append(f"**Flow {mb.get('flow', round(100 - mb['overall'], 1))}/100.** How "
+                 f"much you were in flow (100 minus friction from your own replies), "
+                 f"larger is better. A second meter, never folded into efficiency.")
         L.append("")
     cov = report.get("coverage")
     if cov and cov.get("measured_pct") is not None and cov["measured_pct"] < 90:
@@ -1894,8 +1903,8 @@ _CSS = """
 .vibrant .meter{min-width:0;}
 .vibrant .mv{font-size:72px;font-weight:730;letter-spacing:-.035em;line-height:.82;
  color:var(--accent);}
-.vibrant .meter.mis .mv{color:var(--s2);}
-.vibrant .meter.bloat .mv{color:var(--s4);}
+.vibrant .meter.mis .mv{color:var(--teal);}
+.vibrant .meter.bloat .mv{color:var(--good);}
 .vibrant .mn{font-size:15px;font-weight:700;color:var(--ink);margin-top:14px;
  letter-spacing:.01em;}
 .vibrant .mu{font-size:11.5px;color:var(--muted);margin-top:2px;}
@@ -2372,14 +2381,17 @@ def _hero_card(report):
               f'<div class="mn">efficiency</div><div class="mu">shipped changes / Mtok'
               f'</div></div>']
     if mb:
-        meters.append(f'<div class="meter mis"><div class="mv">{mb["overall"]}</div>'
-                      f'<div class="mn">misery</div><div class="mu">/100, how much you '
-                      f'fought it</div></div>')
-    if tl.get("bloat") is not None:
-        meters.append(f'<div class="meter bloat" title="decision points per shipped '
-                      f'change; high means over-engineering, lower is leaner">'
-                      f'<div class="mv">{tl["bloat"]:.0f}</div><div class="mn">bloat</div>'
-                      f'<div class="mu">complexity / change</div></div>')
+        meters.append(f'<div class="meter mis" title="how much you were in flow (100 '
+                      f'minus friction from your own replies), larger is better">'
+                      f'<div class="mv">{mb.get("flow", round(100 - mb["overall"], 1))}'
+                      f'</div><div class="mn">flow</div><div class="mu">/100, in flow vs '
+                      f'fighting it</div></div>')
+    if tl.get("simplicity") is not None:
+        meters.append(f'<div class="meter bloat" title="leanness: 100 minus decision '
+                      f'points per shipped change; larger is simpler, less '
+                      f'over-engineered"><div class="mv">{tl["simplicity"]:.0f}</div>'
+                      f'<div class="mn">simplicity</div><div class="mu">/100, lean vs '
+                      f'over-built</div></div>')
     # the fingerprint used to render here as blend bars; it now lives as the learned
     # SOM maps below ("Where you work" and "The shared frontier"), which carry the same
     # position more legibly. The fingerprint data stays in report["fingerprint"]. `fp`
@@ -2577,13 +2589,14 @@ def render_html(report):
             parts.append(f'<text x="{xm:.1f}" y="{Y(mean)-9:.1f}" text-anchor="middle" '
                          f'font-size="13" font-weight="700" fill="var(--accent)">'
                          f'{mean:.0f}</text>')
-            # per-era misery, under the level, so a high-efficiency era that was
-            # miserable to work in cannot read as a win.
+            # per-era flow, under the level, so a high-efficiency era that was
+            # miserable to work in cannot read as a win (low flow shows).
             emis = [r["misery"] for r in tl[a:b] if r.get("misery") is not None]
             if emis:
+                flow = 100 - sum(emis) / len(emis)
                 parts.append(f'<text x="{xm:.1f}" y="{Y(mean)+15:.1f}" '
                              f'text-anchor="middle" font-size="10.5" font-weight="600" '
-                             f'fill="var(--s2)">{sum(emis)/len(emis):.0f} misery</text>')
+                             f'fill="var(--teal)">{flow:.0f} flow</text>')
 
     # thin x-labels to ~8 so a daily axis does not collide
     lstep = max(1, round(n / 8))
