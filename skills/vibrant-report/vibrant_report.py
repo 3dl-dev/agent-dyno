@@ -1863,6 +1863,7 @@ _CSS = """
  --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;
  --c-cacheread:#2a78d6;--c-read:#eb6834;--c-output:#1baf7a;--c-work:#008300;
  --good:#008300;--up:#008300;--down:#e34948;--down-rgb:227,73,72;--shadow:20,19,16;
+ --ink-rgb:28,25,23;--rust:#c2410c;--teal:#0f766e;--paper:#fdf8f4;
  font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
  color:var(--ink);background:var(--surface);max-width:760px;margin:0 auto;
  padding:28px 20px 40px;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
@@ -1871,13 +1872,15 @@ _CSS = """
  --muted:#918e85;--line:#2e2d29;--grid:#2c2c2a;--axis:#3a3a36;--accent:#3987e5;
  --series:#3987e5;--s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;
  --c-cacheread:#3987e5;--c-read:#d95926;--c-output:#199e70;--c-work:#159015;
- --good:#199e70;--up:#199e70;--down:#e66767;--down-rgb:230,103,103;--shadow:0,0,0;}}
+ --good:#199e70;--up:#199e70;--down:#e66767;--down-rgb:230,103,103;--shadow:0,0,0;
+ --ink-rgb:237,234,230;--rust:#e2683a;--teal:#2dd4bf;--paper:#1c1b19;}}
 :root[data-theme=dark] .vibrant{color-scheme:dark;--surface:#141412;--card:#1c1b19;
  --ink:#f6f5f0;--ink2:#c7c5bb;--muted:#918e85;--line:#2e2d29;--grid:#2c2c2a;
  --axis:#3a3a36;--accent:#3987e5;--series:#3987e5;--s1:#3987e5;--s2:#d95926;
  --s3:#199e70;--s4:#c98500;--s5:#d55181;--c-cacheread:#3987e5;--c-read:#d95926;
  --c-output:#199e70;--c-work:#159015;--good:#199e70;--up:#199e70;--down:#e66767;
- --down-rgb:230,103,103;--shadow:0,0,0;}
+ --down-rgb:230,103,103;--shadow:0,0,0;
+ --ink-rgb:237,234,230;--rust:#e2683a;--teal:#2dd4bf;--paper:#1c1b19;}
 .vibrant *{box-sizing:border-box;}
 .vibrant .card{background:var(--card);border:1px solid var(--line);border-radius:18px;
  padding:30px 32px;box-shadow:0 1px 2px rgba(var(--shadow),.05),0 10px 34px rgba(var(--shadow),.07);}
@@ -2066,9 +2069,28 @@ def _som_field_opacity(v, lo, hi, lower_better):
     return 0.10 + 0.80 * t
 
 
+# SOM map skins. The 3dl brand mark IS a Self-Organizing Map (3dl.dev/brand): ink
+# cells, one rust peak unit, teal for links, on paper. So the maps ARE the logo, drawn
+# from the operator's data. "classic" keeps the earlier red cost hue; "ink" and
+# "ink-hex" render the 3dl mark (ink-shaded cells, the current cell as the rust peak,
+# a teal move-arrow), rectangular or hexagonal.
+_SOM_STYLES = {
+    "classic": {"cell": "var(--down-rgb)", "trail": "var(--accent)",
+                "arrow": "var(--good)", "cur_stroke": "var(--ink)",
+                "cur_fill": "var(--card)", "cur_dot": "var(--ink)",
+                "hex": False, "empty_dash": True},
+    "ink": {"cell": "var(--ink-rgb)", "trail": "var(--ink)", "arrow": "var(--teal)",
+            "cur_stroke": "var(--rust)", "cur_fill": "var(--paper)",
+            "cur_dot": "var(--rust)", "hex": False, "empty_dash": False},
+    "ink-hex": {"cell": "var(--ink-rgb)", "trail": "var(--ink)", "arrow": "var(--teal)",
+                "cur_stroke": "var(--rust)", "cur_fill": "var(--paper)",
+                "cur_dot": "var(--rust)", "hex": True, "empty_dash": False},
+}
+
+
 def render_som_map(som_block, title="Where you work",
                    subtitle="a learned map of your setups, cost-shaded",
-                   legend_bits=None):
+                   legend_bits=None, style="classic"):
     """The learned SOM lattice (item 4): a rows x cols grid shaded by cost per
     cell, the trajectory that walked it, the current cell, and the arrow to a
     cheaper cell already sometimes used. Pure function of rig_space['som'];
@@ -2107,46 +2129,62 @@ def render_som_map(som_block, title="Where you work",
     lo, hi = (min(have), max(have)) if have else (0.0, 0.0)
     smax = max([sval(r, c) for r in range(rows) for c in range(cols)] + [0]) or 1
 
+    pal = _SOM_STYLES.get(style, _SOM_STYLES["classic"])
+    hexed = pal["hex"]
     cell, gap = 42, 3
     pad_l, pad_t, pad_r, pad_b = 40, 14, 14, 32
-    gw, gh = cols * cell + (cols - 1) * gap, rows * cell + (rows - 1) * gap
+    if hexed:
+        hstep, vstep = cell + gap, (cell + gap) * 0.87
+        gw = cols * hstep + hstep / 2
+        gh = (rows - 1) * vstep + cell
+    else:
+        hstep = vstep = cell + gap
+        gw = cols * cell + (cols - 1) * gap
+        gh = rows * cell + (rows - 1) * gap
     W, H = pad_l + gw + pad_r, pad_t + gh + pad_b
 
-    def x0(c):
-        return pad_l + c * (cell + gap)
+    def center(r, c):
+        if hexed:
+            return (pad_l + cell / 2 + c * hstep + (hstep / 2 if r % 2 else 0),
+                    pad_t + cell / 2 + r * vstep)
+        return (pad_l + c * hstep + cell / 2, pad_t + r * vstep + cell / 2)
 
-    def y0(r):
-        return pad_t + r * (cell + gap)
+    def cell_shape(cx, cy, attrs, title=""):
+        inner = f'<title>{title}</title>' if title else ''
+        if hexed:
+            rr = cell * 0.56
+            pdata = " ".join(
+                f"{cx + rr * math.cos(math.radians(a)):.1f},"
+                f"{cy - rr * math.sin(math.radians(a)):.1f}"
+                for a in (90, 150, 210, 270, 330, 30))
+            return f'<polygon class="som-cell" points="{pdata}" {attrs}>{inner}</polygon>'
+        return (f'<rect class="som-cell" x="{cx - cell / 2:.1f}" y="{cy - cell / 2:.1f}" '
+                f'width="{cell}" height="{cell}" rx="4" {attrs}>{inner}</rect>')
 
-    def ccx(c):
-        return x0(c) + cell / 2
-
-    def ccy(r):
-        return y0(r) + cell / 2
-
-    parts = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="learned working-style '
-             f'map: cost-shaded cells, your trajectory, current position and the '
-             f'cheaper cell nearby">']
+    parts = [f'<svg viewBox="0 0 {W:.0f} {H:.0f}" role="img" aria-label="learned '
+             f'working-style map: cost-shaded cells, your trajectory, current position '
+             f'and the cheaper cell nearby">']
     for r in range(rows):
         for c in range(cols):
             v = fval(r, c)
-            x, y = x0(c), y0(r)
+            cx, cy = center(r, c)
             if v is None:
-                parts.append(f'<rect class="som-cell" x="{x}" y="{y}" width="{cell}" '
-                             f'height="{cell}" rx="4" fill="none" stroke="var(--line)" '
-                             f'stroke-width="1" stroke-dasharray="2 2" opacity="0.7"/>')
+                dash = ' stroke-dasharray="2 2"' if pal["empty_dash"] else ''
+                eop = 0.7 if pal["empty_dash"] else 0.28
+                parts.append(cell_shape(
+                    cx, cy, f'fill="none" stroke="var(--line)" stroke-width="1" '
+                    f'opacity="{eop}"{dash}'))
                 continue
             op = _som_field_opacity(v, lo, hi, lower_better)
             cell_title = esc(f"row {r}, col {c}: {v:.2f} {metric}")
-            parts.append(f'<rect class="som-cell" x="{x}" y="{y}" width="{cell}" '
-                         f'height="{cell}" rx="4" fill="rgba(var(--down-rgb),{op:.2f})" '
-                         f'stroke="var(--line)" stroke-width="1">'
-                         f'<title>{cell_title}</title></rect>')
+            parts.append(cell_shape(
+                cx, cy, f'fill="rgba({pal["cell"]},{op:.2f})" stroke="var(--line)" '
+                f'stroke-width="1"', title=cell_title))
             s = sval(r, c)
             if s > 0:
                 frac = min(s / smax, 1.0)
                 rad = 2 + 4 * frac
-                parts.append(f'<circle cx="{ccx(c):.1f}" cy="{ccy(r):.1f}" '
+                parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" '
                              f'r="{rad:.1f}" fill="var(--ink)" opacity="0.14"/>')
 
     # trajectory: the map draws the smoothed drift (mood) so the direction of travel
@@ -2158,16 +2196,15 @@ def render_som_map(som_block, title="Where you work",
     for p in drift:
         pos = p.get("pos") if isinstance(p, dict) else None
         if pos and len(pos) == 2:
-            pts.append((ccx(pos[1]), ccy(pos[0])))
+            pts.append(center(pos[0], pos[1]))
     if not pts:
         for i, p in enumerate(som_block.get("trajectory") or []):
             rc = p.get("cell") if isinstance(p, dict) else None
             if not rc or len(rc) != 2:
                 continue
             r, c = rc
-            jx = ((i * 7) % 5 - 2) * 1.3
-            jy = ((i * 11) % 5 - 2) * 1.3
-            pts.append((ccx(c) + jx, ccy(r) + jy))
+            cx, cy = center(r, c)
+            pts.append((cx + ((i * 7) % 5 - 2) * 1.3, cy + ((i * 11) % 5 - 2) * 1.3))
     n = len(pts)
     # a comet trail, not a connected path: graduated dots (old = small and faint,
     # recent = large and bold) read as movement and concentration without the
@@ -2178,24 +2215,23 @@ def render_som_map(som_block, title="Where you work",
         rad = 1.8 + 3.2 * t
         op = 0.22 + 0.55 * t
         parts.append(f'<circle class="som-path" cx="{x:.1f}" cy="{y:.1f}" '
-                     f'r="{rad:.1f}" fill="var(--accent)" opacity="{op:.2f}"/>')
+                     f'r="{rad:.1f}" fill="{pal["trail"]}" opacity="{op:.2f}"/>')
 
     current = som_block.get("current_cell")
     if current and len(current) == 2:
-        cr, cc = current
-        cx, cy = ccx(cc), ccy(cr)
+        cx, cy = center(current[0], current[1])
         parts.append(f'<circle class="som-current" cx="{cx:.1f}" cy="{cy:.1f}" r="9" '
-                     f'fill="var(--card)" stroke="var(--ink)" stroke-width="2.2"/>')
-        parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="2.6" fill="var(--ink)"/>')
+                     f'fill="{pal["cur_fill"]}" stroke="{pal["cur_stroke"]}" '
+                     f'stroke-width="2.6"/>')
+        parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="2.8" '
+                     f'fill="{pal["cur_dot"]}"/>')
 
     gradient = som_block.get("gradient") or {}
     target = gradient.get("target_cell")
     arm_change = gradient.get("arm_change")
     if target and len(target) == 2 and current and len(current) == 2:
-        sr, sc = current
-        tr, tc = target
-        sx, sy = ccx(sc), ccy(sr)
-        tx, ty = ccx(tc), ccy(tr)
+        sx, sy = center(current[0], current[1])
+        tx, ty = center(target[0], target[1])
         dx, dy = tx - sx, ty - sy
         dist = (dx * dx + dy * dy) ** 0.5
         if dist > 1e-6:
@@ -2207,12 +2243,12 @@ def render_som_map(som_block, title="Where you work",
             start_x, start_y = sx + ux * 12, sy + uy * 12
             parts.append(f'<line class="som-arrow" x1="{start_x:.1f}" '
                          f'y1="{start_y:.1f}" x2="{base_x:.1f}" y2="{base_y:.1f}" '
-                         f'stroke="var(--good)" stroke-width="2.4" '
+                         f'stroke="{pal["arrow"]}" stroke-width="2.6" '
                          f'stroke-linecap="round"/>')
             l_x, l_y = base_x + px * 4.5, base_y + py * 4.5
             r_x, r_y = base_x - px * 4.5, base_y - py * 4.5
             parts.append(f'<polygon class="som-arrow" points="{tip_x:.1f},{tip_y:.1f} '
-                         f'{l_x:.1f},{l_y:.1f} {r_x:.1f},{r_y:.1f}" fill="var(--good)"/>')
+                         f'{l_x:.1f},{l_y:.1f} {r_x:.1f},{r_y:.1f}" fill="{pal["arrow"]}"/>')
 
     # axis hint: small and muted, a hint not a claim (the SOM's PCA-oriented
     # init roughly tracks these axes; the exact mapping is emergent).
@@ -2273,7 +2309,7 @@ def render_som_map(som_block, title="Where you work",
            f'<div class="som-wrap">{"".join(parts)}</div>{caption}{legend}')
 
 
-def render_shared_map(merged, current_cell, gradient):
+def render_shared_map(merged, current_cell, gradient, style="classic"):
     """The federated shared frontier (item C): the peer-validated cost field merged
     across operators, with YOUR cell on it and the support-weighted arrow to the
     cheaper, corroborated region. Reuses render_som_map: no personal trajectory (the
@@ -2323,7 +2359,7 @@ def render_shared_map(merged, current_cell, gradient):
                            "federation confirms, weighted by the work behind it.")
     return render_som_map(block, title="The shared frontier",
                           subtitle="cost pooled across operators, no logs shared",
-                          legend_bits=legend_bits)
+                          legend_bits=legend_bits, style=style)
 
 
 def _hero_card(report):
@@ -2355,21 +2391,16 @@ def _hero_card(report):
                       f'change; high means over-engineering, lower is leaner">'
                       f'<div class="mv">{tl["bloat"]:.0f}</div><div class="mn">bloat</div>'
                       f'<div class="mu">complexity / change</div></div>')
-    # the fingerprint: the operator's N-dim position, not one collapsed categorical.
-    # Countable axes render as blend bars; the classified process axes (review,
-    # knowledge) as their label.
-    arms = [("driver", "orchestrator_model"), ("worker", "worker_model"),
-            ("shape", "orchestration_topology"), ("effort", "reasoning_effort"),
-            ("review", "review_regime"), ("memory", "knowledge_practice")]
-    rows = "".join(r for r in (_arm_row(lbl, fp.get(k)) for lbl, k in arms) if r)
-    fingerprint = (f'<div class="fp"><div class="row-h">Fingerprint</div>{rows}</div>'
-                   if rows else "")
+    # the fingerprint used to render here as blend bars; it now lives as the learned
+    # SOM maps below ("Where you work" and "The shared frontier"), which carry the same
+    # position more legibly. The fingerprint data stays in report["fingerprint"]. `fp`
+    # is retained for callers/tests that still read it.
+    _ = fp
     return "".join([
         '<div class="card">',
         f'<div class="top"><div class="brand">{mark}VIBRANT</div>',
         f'<div class="meta">{tl.get("sessions")} sessions</div></div>',
         f'<div class="meters">{"".join(meters)}</div>',
-        fingerprint,
         '<div class="foot"><span>vibe-coding rig efficiency</span>'
         '<span>3dl-dev/vibrant</span></div>',
         '</div>'])
@@ -2469,7 +2500,7 @@ def render_html(report):
     head = "<style>\n" + _CSS + "</style>\n"
     hero = _hero_card(report)
     som_block = (report.get("rig_space") or {}).get("som")
-    som = render_som_map(som_block)
+    som = render_som_map(som_block, style="ink-hex")
     # the federated shared frontier, when a merged commons map is present. Your cell on
     # the shared frame is your cell on the learned map (v1 pins one reference codebook,
     # so they coincide). Absent commons -> empty, report unchanged.
@@ -2478,7 +2509,8 @@ def render_html(report):
     if shared_data and som_block and som_block.get("current_cell"):
         cur = som_block["current_cell"]
         shared = render_shared_map(shared_data, cur,
-                                   som_merge.merged_gradient(shared_data, cur))
+                                   som_merge.merged_gradient(shared_data, cur),
+                                   style="ink-hex")
     tl = [r for r in report.get("timeline", []) if r["eq"] is not None]
     if len(tl) < 2:
         body = (f'<div class="vibrant">{hero}{_coverage_banner(report)}{_lever_html(report)}'

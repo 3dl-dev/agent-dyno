@@ -71,6 +71,28 @@ def test_no_arrow_when_null_target(fails):
     check(out.count("som-cell") == 9, "cells missing without arrow", fails)
 
 
+def test_styles(fails):
+    # classic keeps the red cost hue and rect cells
+    classic = vr.render_som_map(BLOCK, style="classic")
+    check("var(--down-rgb)" in classic and "<rect class=\"som-cell\"" in classic,
+          "classic style not rect/red", fails)
+    # ink: 3dl palette (ink cells, rust peak, teal arrow), still rect
+    ink = vr.render_som_map(BLOCK, style="ink")
+    check("var(--ink-rgb)" in ink, "ink cells not ink", fails)
+    check("var(--rust)" in ink, "no rust peak (current cell)", fails)
+    check("var(--teal)" in ink, "arrow not teal", fails)
+    check("<rect class=\"som-cell\"" in ink, "ink not rect", fails)
+    # ink-hex: hexagonal cells
+    hexed = vr.render_som_map(BLOCK, style="ink-hex")
+    check("<polygon class=\"som-cell\"" in hexed, "ink-hex not hexagonal", fails)
+    check(hexed.count("som-cell") == 9, f"hex cell count {hexed.count('som-cell')}", fails)
+    check("var(--rust)" in hexed and "var(--teal)" in hexed, "hex missing rust/teal", fails)
+    # every style is deterministic
+    for st in ("classic", "ink", "ink-hex"):
+        check(vr.render_som_map(BLOCK, style=st) == vr.render_som_map(BLOCK, style=st),
+              f"style {st} not deterministic", fails)
+
+
 def test_determinism(fails):
     check(vr.render_som_map(BLOCK) == vr.render_som_map(BLOCK),
           "render not deterministic", fails)
@@ -79,7 +101,7 @@ def test_determinism(fails):
 def main():
     fails = []
     for t in (test_empty, test_structure, test_no_external_refs,
-              test_no_arrow_when_null_target, test_determinism):
+              test_no_arrow_when_null_target, test_styles, test_determinism):
         t(fails)
     if fails:
         print("FAIL  som_viz:")
