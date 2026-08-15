@@ -84,11 +84,22 @@ def test_styles(fails):
     check("var(--rust)" in ink, "no rust peak (current cell)", fails)
     check("var(--teal)" in ink, "arrow not teal", fails)
     check("<rect class=\"som-cell\"" in ink, "ink not rect", fails)
-    # ink-hex: hexagonal cells
+    # ink-hex: hexagonal cells + the fingerprint ridge layer (oval clip + contour paths)
     hexed = vr.render_som_map(BLOCK, style="ink-hex")
     check("<polygon class=\"som-cell\"" in hexed, "ink-hex not hexagonal", fails)
     check(hexed.count("som-cell") == 9, f"hex cell count {hexed.count('som-cell')}", fails)
     check("var(--rust)" in hexed and "var(--teal)" in hexed, "hex missing rust/teal", fails)
+    check("<clipPath" in hexed and "ellipse" in hexed, "no oval fingerprint clip", fails)
+    check(hexed.count("<path") >= 3, f"too few ridges: {hexed.count('<path')}", fails)
+
+
+def test_meter_bars(fails):
+    check(vr._meter_bars([1, 2], "var(--accent)") == "", "spark drawn with <3 points", fails)
+    out = vr._meter_bars([3.0, 5.0, 4.0, 9.0], "var(--teal)")
+    check("<svg" in out and out.count("<rect") == 4, f"bar count {out.count('<rect')}", fails)
+    check("var(--teal)" in out, "now bar not in meter color", fails)
+    check(vr._meter_bars([3.0, 5.0, 9.0], "x") == vr._meter_bars([3.0, 5.0, 9.0], "x"),
+          "meter bars not deterministic", fails)
     # every style is deterministic
     for st in ("classic", "ink", "ink-hex"):
         check(vr.render_som_map(BLOCK, style=st) == vr.render_som_map(BLOCK, style=st),
@@ -103,7 +114,8 @@ def test_determinism(fails):
 def main():
     fails = []
     for t in (test_empty, test_structure, test_no_external_refs,
-              test_no_arrow_when_null_target, test_styles, test_determinism):
+              test_no_arrow_when_null_target, test_styles, test_meter_bars,
+              test_determinism):
         t(fails)
     if fails:
         print("FAIL  som_viz:")

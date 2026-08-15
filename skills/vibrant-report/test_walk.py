@@ -63,7 +63,8 @@ def test_structure(fails):
 
 def test_no_external_refs(fails):
     out = vr.render_walk(REPORT)
-    for bad in ("http://", "https://", "url(", "src="):
+    # internal url(#clip) fragment refs are fine; only external references are banned.
+    for bad in ("http://", "https://", "url(http", "url(//", "src="):
         check(bad not in out, f"external ref {bad!r}", fails)
 
 

@@ -2114,17 +2114,160 @@ def _som_field_opacity(v, lo, hi, lower_better):
 # from the operator's data. "classic" keeps the earlier red cost hue; "ink" and
 # "ink-hex" render the 3dl mark (ink-shaded cells, the current cell as the rust peak,
 # a teal move-arrow), rectangular or hexagonal.
+def _fill_field(field, rows, cols):
+    """Fill null cells with the nearest occupied value (multi-source BFS, fixed
+    neighbor order so it is deterministic), giving a continuous field to contour. All
+    None -> None."""
+    grid = [[(field[r][c] if r < len(field) and c < len(field[r]) else None)
+             for c in range(cols)] for r in range(rows)]
+    from collections import deque
+    q, seen = deque(), [[False] * cols for _ in range(rows)]
+    for r in range(rows):
+        for c in range(cols):
+            if grid[r][c] is not None:
+                seen[r][c] = True
+                q.append((r, c))
+    if not q:
+        return None
+    while q:
+        r, c = q.popleft()
+        for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < rows and 0 <= nc < cols and not seen[nr][nc]:
+                seen[nr][nc] = True
+                grid[nr][nc] = grid[r][c]
+                q.append((nr, nc))
+    return grid
+
+
+def _upsample_bilin(grid, rows, cols, factor):
+    """Bilinear upsample so the ridge contours read smooth, not blocky."""
+    R, C = (rows - 1) * factor + 1, (cols - 1) * factor + 1
+    out = [[0.0] * C for _ in range(R)]
+    for i in range(R):
+        gr = i / factor
+        r0 = min(int(gr), rows - 1)
+        r1 = min(r0 + 1, rows - 1)
+        fr = gr - r0
+        for j in range(C):
+            gc = j / factor
+            c0 = min(int(gc), cols - 1)
+            c1 = min(c0 + 1, cols - 1)
+            fc = gc - c0
+            out[i][j] = (grid[r0][c0] * (1 - fr) * (1 - fc)
+                         + grid[r1][c0] * fr * (1 - fc)
+                         + grid[r0][c1] * (1 - fr) * fc
+                         + grid[r1][c1] * fr * fc)
+    return out, R, C
+
+
+# marching-squares edge pairs per corner-mask (bit3 tl, bit2 tr, bit1 br, bit0 bl);
+# edges 0 top, 1 right, 2 bottom, 3 left.
+_MS = {0: [], 1: [(3, 2)], 2: [(1, 2)], 3: [(3, 1)], 4: [(0, 1)],
+       5: [(0, 3), (1, 2)], 6: [(0, 2)], 7: [(0, 3)], 8: [(0, 3)], 9: [(0, 2)],
+       10: [(0, 1), (3, 2)], 11: [(0, 1)], 12: [(3, 1)], 13: [(1, 2)],
+       14: [(3, 2)], 15: []}
+
+
+def _contour_segments(grid, R, C, level):
+    """Marching squares: line segments where the field crosses `level`. Points are in
+    grid coordinates (i in [0,R-1], j in [0,C-1])."""
+    segs = []
+
+    def ip(a, b):
+        return 0.5 if a == b else (level - a) / (b - a)
+
+    for i in range(R - 1):
+        for j in range(C - 1):
+            tl, tr = grid[i][j], grid[i][j + 1]
+            br, bl = grid[i + 1][j + 1], grid[i + 1][j]
+            mask = ((tl > level) << 3) | ((tr > level) << 2) \
+                | ((br > level) << 1) | (bl > level)
+            pairs = _MS[mask]
+            if not pairs:
+                continue
+
+            def pt(edge):
+                if edge == 0:
+                    return (i, j + ip(tl, tr))
+                if edge == 1:
+                    return (i + ip(tr, br), j + 1)
+                if edge == 2:
+                    return (i + 1, j + ip(bl, br))
+                return (i + ip(tl, bl), j)
+            for e1, e2 in pairs:
+                segs.append((pt(e1), pt(e2)))
+    return segs
+
+
+def _ridge_layer(field, rows, cols, box, lo, hi, color, key, levels=14, factor=4):
+    """The fingerprint texture. Contouring raw cost just bunches lines at the one
+    expensive spike; a fingerprint has even, flowing, concentric ridges. So we contour
+    a WHORL field: radial distance from the cheapest 'core' cell, warped by cost, so the
+    ridges are concentric loops (the print) that bulge where a setup is costly, and
+    'toward the core' reads as 'cheaper'. Oval clipped. Returns (defs, svg)."""
+    import math as _m
+    filled = _fill_field(field, rows, cols)
+    if filled is None or hi <= lo:
+        return "", ""
+
+    def cn(v):
+        if v is None or v <= 0 or lo <= 0:
+            return 0.5
+        return min(max((_m.log(v) - _m.log(lo)) / (_m.log(hi) - _m.log(lo)), 0.0), 1.0)
+
+    costg = [[cn(filled[r][c]) for c in range(cols)] for r in range(rows)]
+    cost_fine, R, C = _upsample_bilin(costg, rows, cols, factor)
+    # whorl centered on the map, so the ridges are balanced concentric loops (a print);
+    # cost warps them, so expensive regions bulge. Aspect-corrected so a wide grid still
+    # makes round-ish loops.
+    ci, cj = (R - 1) / 2.0, (C - 1) / 2.0
+    asp = R / C
+    maxd = _m.hypot(R, C)
+    whorl = [[_m.hypot(i - ci, (j - cj) * asp) / maxd + 0.5 * cost_fine[i][j]
+              for j in range(C)] for i in range(R)]
+    wlo = min(min(row) for row in whorl)
+    whi = max(max(row) for row in whorl)
+    if whi <= wlo:
+        return "", ""
+
+    x0, y0, w, h = box
+    cx, cy = x0 + w / 2, y0 + h / 2
+    rx, ry = w / 2 * 0.99, h / 2 * 0.99
+    clip = (f'<clipPath id="fp-{key}"><ellipse cx="{cx:.1f}" cy="{cy:.1f}" '
+            f'rx="{rx:.1f}" ry="{ry:.1f}"/></clipPath>')
+
+    def px(i, j):
+        return (x0 + (j / (C - 1)) * w, y0 + (i / (R - 1)) * h)
+
+    ridges = [f'<g clip-path="url(#fp-{key})">']
+    for k in range(1, levels + 1):
+        level = wlo + (k / (levels + 1)) * (whi - wlo)
+        d = []
+        for (ai, aj), (bi, bj) in _contour_segments(whorl, R, C, level):
+            xa, ya = px(ai, aj)
+            xb, yb = px(bi, bj)
+            d.append(f'M{xa:.1f} {ya:.1f}L{xb:.1f} {yb:.1f}')
+        if d:
+            ridges.append(f'<path d="{"".join(d)}" fill="none" stroke="{color}" '
+                          f'stroke-width="1.3" stroke-linecap="round" opacity="0.5"/>')
+    ridges.append('</g>')
+    return clip, "".join(ridges)
+
+
 _SOM_STYLES = {
     "classic": {"cell": "var(--down-rgb)", "trail": "var(--accent)",
                 "arrow": "var(--good)", "cur_stroke": "var(--ink)",
                 "cur_fill": "var(--card)", "cur_dot": "var(--ink)",
-                "hex": False, "empty_dash": True},
+                "hex": False, "empty_dash": True, "ridges": False},
     "ink": {"cell": "var(--ink-rgb)", "trail": "var(--ink)", "arrow": "var(--teal)",
             "cur_stroke": "var(--rust)", "cur_fill": "var(--paper)",
-            "cur_dot": "var(--rust)", "hex": False, "empty_dash": False},
+            "cur_dot": "var(--rust)", "hex": False, "empty_dash": False,
+            "ridges": True},
     "ink-hex": {"cell": "var(--ink-rgb)", "trail": "var(--ink)", "arrow": "var(--teal)",
                 "cur_stroke": "var(--rust)", "cur_fill": "var(--paper)",
-                "cur_dot": "var(--rust)", "hex": True, "empty_dash": False},
+                "cur_dot": "var(--rust)", "hex": True, "empty_dash": False,
+                "ridges": True},
 }
 
 
@@ -2202,26 +2345,49 @@ def render_som_map(som_block, title="Where you work",
                 f'width="{cell}" height="{cell}" rx="4" {attrs}>{inner}</rect>')
 
     idattr = f' id="{svg_id}"' if svg_id else ''
+    key, ridge_defs, ridge_svg = "", "", ""
+    if pal.get("ridges") and have:
+        key = svg_id or ("fp" + hashlib.md5(
+            (str(title) + str(rows) + str(cols) + str(field)).encode()).hexdigest()[:8])
+        lvl = 11 if compact else 22
+        ridge_defs, ridge_svg = _ridge_layer(
+            field, rows, cols, (pad_l, pad_t, gw, gh), lo, hi, "var(--ink)", key,
+            levels=lvl, factor=(3 if compact else 4))
     parts = [f'<svg{idattr} viewBox="0 0 {W:.0f} {H:.0f}" role="img" aria-label="learned '
-             f'working-style map: cost-shaded cells, your current position and the '
-             f'cheaper cell nearby">']
+             f'working-style map, a fingerprint of your setups ridged and shaded by cost, '
+             f'with your position and the cheaper region">']
+    if ridge_defs:
+        parts.append(f'<defs>{ridge_defs}</defs>')
+    parts.append(f'<g clip-path="url(#fp-{key})">' if ridge_svg else '<g>')
     for r in range(rows):
         for c in range(cols):
             v = fval(r, c)
             cx, cy = center(r, c)
             dpos = f'data-r="{r}" data-c="{c}"'
             if v is None:
-                dash = ' stroke-dasharray="2 2"' if pal["empty_dash"] else ''
-                eop = 0.7 if pal["empty_dash"] else 0.28
-                parts.append(cell_shape(
-                    cx, cy, f'{dpos} fill="none" stroke="var(--line)" stroke-width="1" '
-                    f'opacity="{eop}"{dash}'))
+                if ridge_svg:
+                    parts.append(cell_shape(cx, cy, f'{dpos} fill="rgba(0,0,0,0)"'))
+                else:
+                    dash = ' stroke-dasharray="2 2"' if pal["empty_dash"] else ''
+                    eop = 0.7 if pal["empty_dash"] else 0.28
+                    parts.append(cell_shape(
+                        cx, cy, f'{dpos} fill="none" stroke="var(--line)" '
+                        f'stroke-width="1" opacity="{eop}"{dash}'))
                 continue
             op = _som_field_opacity(v, lo, hi, lower_better)
             cell_title = esc(f"row {r}, col {c}: {v:.2f} {metric}")
-            parts.append(cell_shape(
-                cx, cy, f'{dpos} fill="rgba({pal["cell"]},{op:.2f})" stroke="var(--line)" '
-                f'stroke-width="1"', title=cell_title))
+            if ridge_svg:
+                # faint fill under the ridges; the ridges carry the cost read.
+                parts.append(cell_shape(
+                    cx, cy, f'{dpos} fill="rgba({pal["cell"]},{op * 0.35:.2f})" '
+                    f'stroke="none"', title=cell_title))
+            else:
+                parts.append(cell_shape(
+                    cx, cy, f'{dpos} fill="rgba({pal["cell"]},{op:.2f})" '
+                    f'stroke="var(--line)" stroke-width="1"', title=cell_title))
+    parts.append('</g>')
+    if ridge_svg:
+        parts.append(ridge_svg)
     # deliberately no session-count dots and no history trail: they were mark types a
     # viewer could not decode. The map now carries only what reads at a glance: cost by
     # shade, where you are, and the direction to a cheaper setup.
@@ -2248,19 +2414,22 @@ def render_som_map(som_block, title="Where you work",
         tgt_xy = (tx, ty)
         dx, dy = tx - sx, ty - sy
         dist = (dx * dx + dy * dy) ** 0.5
-        if not compact and dist > 1e-6:
+        if dist > 1e-6:
+            # the arrow to a cheaper setup shows on the minis too, so "where is better"
+            # reads even at marquee size.
+            head, sw, tgap, sgap, hw = (5.0, 2.0, 6, 7, 3.0) if compact \
+                else (9.0, 2.8, 13, 14, 4.7)
             ux, uy = dx / dist, dy / dist
             px, py = -uy, ux
-            head = 9.0
-            tip_x, tip_y = tx - ux * 13, ty - uy * 13
+            tip_x, tip_y = tx - ux * tgap, ty - uy * tgap
             base_x, base_y = tip_x - ux * head, tip_y - uy * head
-            start_x, start_y = sx + ux * 14, sy + uy * 14
+            start_x, start_y = sx + ux * sgap, sy + uy * sgap
             parts.append(f'<line class="som-arrow" x1="{start_x:.1f}" '
                          f'y1="{start_y:.1f}" x2="{base_x:.1f}" y2="{base_y:.1f}" '
-                         f'stroke="{pal["arrow"]}" stroke-width="2.8" '
+                         f'stroke="{pal["arrow"]}" stroke-width="{sw}" '
                          f'stroke-linecap="round"/>')
-            l_x, l_y = base_x + px * 4.7, base_y + py * 4.7
-            r_x, r_y = base_x - px * 4.7, base_y - py * 4.7
+            l_x, l_y = base_x + px * hw, base_y + py * hw
+            r_x, r_y = base_x - px * hw, base_y - py * hw
             parts.append(f'<polygon class="som-arrow" points="{tip_x:.1f},{tip_y:.1f} '
                          f'{l_x:.1f},{l_y:.1f} {r_x:.1f},{r_y:.1f}" fill="{pal["arrow"]}"/>')
 
@@ -2510,13 +2679,40 @@ def render_shared_map_compact(merged, current_cell):
     """The shared frontier as a compact marquee tile (no arrow/key)."""
     if not merged or not (merged.get("lattice") or {}).get("rows"):
         return ""
+    g = som_merge.merged_gradient(merged, current_cell) or {}
     block = {"lattice": merged["lattice"], "field": merged.get("field"),
              "support": merged.get("support"),
              "field_metric": merged.get("field_metric", "d_per_survkb"),
              "field_lower_is_better": merged.get("field_lower_is_better", True),
-             "current_cell": current_cell, "gradient": {}}
+             "current_cell": current_cell,
+             "gradient": {"target_cell": g.get("target_cell"),
+                          "vector": g.get("vector"), "arm_change": None}}
     return render_som_map(block, style="ink-hex", compact=True,
                           title="The shared frontier")
+
+
+def _meter_bars(series, color):
+    """A compact 'now vs recent' spark of BARS (not a line): the last periods' values,
+    the most recent one in the meter color, so you see where you stand against how you
+    have been doing lately. Empty when there is not enough recent data."""
+    s = [v for v in series if v is not None][-14:]
+    if len(s) < 3:
+        return ""
+    lo, hi = min(s), max(s)
+    rng = (hi - lo) or 1.0
+    step, bw, H = 6, 3.5, 24
+    W = len(s) * step - (step - bw)
+    out = [f'<svg viewBox="0 0 {W:.0f} {H}" width="{W:.0f}" height="{H}" role="img" '
+           f'aria-label="recent trend, the last bar is now">']
+    for i, v in enumerate(s):
+        bh = 4 + (H - 6) * (v - lo) / rng
+        last = i == len(s) - 1
+        out.append(f'<rect x="{i * step:.1f}" y="{H - bh:.1f}" width="{bw}" '
+                   f'height="{bh:.1f}" rx="1.4" fill="{color if last else "var(--line)"}" '
+                   f'opacity="{1 if last else 0.9}"/>')
+    out.append('</svg>')
+    return (f'<div class="ms" style="margin-top:9px" title="recent periods; the '
+            f'colored bar is now">{"".join(out)}</div>')
 
 
 def _hero_card(report):
@@ -2533,24 +2729,36 @@ def _hero_card(report):
             '<rect x="0" y="9" width="4" height="7" rx="1.3"/>'
             '<rect x="7" y="5" width="4" height="11" rx="1.3"/>'
             '<rect x="14" y="1" width="4" height="15" rx="1.3"/></svg>')
-    # meters, side by side: efficiency (function / fuel), misery, and bloat (the
-    # over-engineering tax that per-complexity efficiency used to hide).
+    # meters, side by side, each with a small 'now vs recent' bar spark under it.
+    tline = report.get("timeline") or []
+
+    def _ser(kind):
+        out = []
+        for r in tline:
+            if kind == "eq" and r.get("eq") is not None:
+                out.append(r["eq"])
+            elif kind == "flow" and r.get("misery") is not None:
+                out.append(round(100 - r["misery"], 1))
+            elif kind == "simplicity" and r.get("shipped"):
+                out.append(round(max(0.0, 100 - r["complexity"] / r["shipped"]), 1))
+        return out
     meters = [f'<div class="meter"><div class="mv" title="durable shipped changes per '
               f'Mtok output, larger is better">{esc(str(tl["eq"]))}</div>'
               f'<div class="mn">efficiency</div><div class="mu">shipped changes / Mtok'
-              f'</div></div>']
+              f'</div>{_meter_bars(_ser("eq"), "var(--accent)")}</div>']
     if mb:
         meters.append(f'<div class="meter mis" title="how much you were in flow (100 '
                       f'minus friction from your own replies), larger is better">'
                       f'<div class="mv">{mb.get("flow", round(100 - mb["overall"], 1))}'
                       f'</div><div class="mn">flow</div><div class="mu">/100, in flow vs '
-                      f'fighting it</div></div>')
+                      f'fighting it</div>{_meter_bars(_ser("flow"), "var(--teal)")}</div>')
     if tl.get("simplicity") is not None:
         meters.append(f'<div class="meter bloat" title="leanness: 100 minus decision '
                       f'points per shipped change; larger is simpler, less '
                       f'over-engineered"><div class="mv">{tl["simplicity"]:.0f}</div>'
                       f'<div class="mn">simplicity</div><div class="mu">/100, lean vs '
-                      f'over-built</div></div>')
+                      f'over-built</div>{_meter_bars(_ser("simplicity"), "var(--good)")}'
+                      f'</div>')
     # the fingerprint used to render here as blend bars; it now lives as the learned
     # SOM maps below ("Where you work" and "The shared frontier"), which carry the same
     # position more legibly. The fingerprint data stays in report["fingerprint"]. `fp`
