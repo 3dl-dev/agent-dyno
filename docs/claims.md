@@ -77,3 +77,20 @@ Anthropic's benchmarks and will drift; the shape is what we test.
 | X2 | "Free wins" (cache hygiene, context/token trimming) are a larger efficiency lever than model or effort choice. Sessions already carry cache_r / cache_w | **Open**, needs the fuel-line decomposition below |
 | X3 | The reasoning-effort curve is often flat: lower effort gives up little and can beat an architecture change. Effort is a fingerprint axis already | **Open**, testable (eff/simp/flow by effort, holding rig) |
 | X4 | Cost concentrates in the TAIL: the hardest ~10% of tasks carry a large share of spend, and the tail (not the median) decides the setup | **Open**, needs a tail view over per-session cost |
+
+## Numerator stability: count vs continuous (measured 2026-08-16)
+
+| # | Claim | Verdict |
+|---|---|---|
+| X5 | A CONTINUOUS surviving-work numerator (surviving decision points per Mtok) is a stabler, more convention-neutral efficiency measure than counting durable changes | **Supported so far** on the reference corpus, pending more federated data |
+
+Evidence (15 configs, one corpus): counting durable changes ranks configs quite
+differently from continuous surviving work (Spearman 0.586 vs the complexity numerator,
+0.364 vs the surviving-lines numerator), while the two continuous variants agree (0.807).
+The divergence is diagnostic: `fable-5 -> haiku-4-5` ranks 3rd by change-COUNT (one lucky
+commit over tiny tokens) but near-bottom by continuous surviving work (4 decision points,
+24 surviving lines that stuck). Counting units is fragile to commit/PR granularity and to
+tiny-sample lucky units; the continuous measure is blind to how work was chopped into
+sessions/commits/PRs, so it survives unseen data better. `eq_continuous` (topline) and
+`eff_cont` (per config) are now carried in parallel with the count numerator so the
+frontier accumulates both and the switch can be made on evidence, not assertion.

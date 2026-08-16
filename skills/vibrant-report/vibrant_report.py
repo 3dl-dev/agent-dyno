@@ -587,10 +587,19 @@ def topline(metrics, numerator, denom_metrics=None):
         surv_lines = numerator.get("total_surviving", 0)
         density = (numerator.get("net_complexity", 0) / surv_lines * 1000) if surv_lines else None
     simplicity = _density_simplicity(density)
+    # PARALLEL numerator for the count-vs-continuous comparison: surviving FUNCTIONALITY
+    # (durable decision points that stuck) per Mtok, a CONTINUOUS measure blind to how the
+    # work was chopped into sessions/commits/PRs. eq (count of durable changes) is fragile
+    # to convention (commit granularity) and to tiny-sample lucky units; eq_continuous is
+    # not. Carried alongside eq so both accrue on the frontier and the data can adjudicate
+    # which is the stabler efficiency numerator across unseen teams. See docs/claims.md X5.
+    eq_continuous = round(dcx / out_mtok, 1) if out_mtok else None
     return {"eq": eq,
             "unit": "durable shipped changes per Mtok output",
             "larger_is_better": True,
             "functionality": functionality,
+            "eq_continuous": eq_continuous,  # surviving decision points per Mtok (continuous)
+            "eq_continuous_unit": "surviving decision points per Mtok output",
             "bloat": bloat,  # decision points per shipped change; a change-discipline meter
             "complexity_density": density,  # decision points per 1000 surviving lines
             "simplicity": simplicity,  # density mapped to 0..100, higher = simpler code
@@ -894,6 +903,9 @@ def _rig_objective_metrics(metrics, attribution, misery_block):
         m_ = mis.get(rig)
         stats[rig] = {
             "eff": round(commits / om, 2) if om else None,
+            # parallel continuous numerator (surviving decision points per Mtok), for the
+            # count-vs-continuous comparison; blind to commit/PR granularity.
+            "eff_cont": round(ncx / om, 1) if om else None,
             "simp": _density_simplicity(_surviving_lines(ncx, v.get("surviving", 0))),
             "flow": round(100 - m_, 1) if m_ is not None else None}
     return stats
