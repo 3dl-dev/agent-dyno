@@ -63,3 +63,17 @@ Why density, not `100 - bloat` (the earlier definition):
 - density is orthogonal AND counterbalanced by efficiency: the only way to game low density
   is to pad lines, which costs output tokens and lowers efficiency. So the two axes
   self-correct. bloat is retained as a separate change-discipline meter, not as simplicity.
+
+## External hypotheses: cost/intelligence guidance (to test on your own data)
+
+Source: Anthropic, "Optimizing for cost and intelligence" (platform.claude.com, Jul-Aug
+2026). These are the doc's measured findings, framed as claims to verify against YOUR
+git-survival data, not truths adopted. They stay model/harness-neutral: the numbers are
+Anthropic's benchmarks and will drift; the shape is what we test.
+
+| # | Claim | Verdict |
+|---|---|---|
+| X1 | A more capable model costs LESS per unit of surviving work despite a higher per-token price (it backtracks/re-reads less). Vibrant's efficiency axis already exposes this | **Open**, testable now (compare eff by orchestrator tier) |
+| X2 | "Free wins" (cache hygiene, context/token trimming) are a larger efficiency lever than model or effort choice. Sessions already carry cache_r / cache_w | **Open**, needs the fuel-line decomposition below |
+| X3 | The reasoning-effort curve is often flat: lower effort gives up little and can beat an architecture change. Effort is a fingerprint axis already | **Open**, testable (eff/simp/flow by effort, holding rig) |
+| X4 | Cost concentrates in the TAIL: the hardest ~10% of tasks carry a large share of spend, and the tail (not the median) decides the setup | **Open**, needs a tail view over per-session cost |
