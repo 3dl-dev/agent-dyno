@@ -13,24 +13,35 @@ git, harness-neutral, self-owned, federated. Repo `3dl-dev/vibrant`, local
 The deliverable is a SKILL, not code: it must TRANSFER to a blank agent and do the
 right thing, and the only proof is the clean-session transfer test.
 
-## The three meters (the current metric model, load-bearing)
+## The three meters (the current metric model, load-bearing; updated 2026-08-16)
 
-Re-derive the numbers from data; the SHAPE below is the decided design.
+Re-derive the numbers from data; the SHAPE below is the decided design. NOTE: efficiency
+and simplicity were BOTH redefined 2026-08-16 (see the metric-decision log lower in this
+file). The card shows efficiency (eff) x flow x simplicity as the combined score.
 
-- **efficiency = durable shipped CHANGES per Mtok output** (function per fuel). NOT
-  complexity. Counting complexity was "the spear": it rewarded over-engineering, so a
-  bad model looked efficient. A count of shipped units (non-fix commits) cannot be
-  inflated by over-engineering. `topline.eq`, `numerator.durable_changes`.
-- **bloat = complexity per shipped change** (`topline.bloat`). The over-engineering
-  meter; higher is worse. It is the number that exposes a fake efficiency: opus-5 runs
-  ~64 decision points per commit vs opus-4-8's ~33.
-- **misery = 0-100** operator friction, from a BLIND LLM classifier over the operator's
-  own reply texts (frustration / course-correction / scope / verbosity). Operator-
-  relative, NEVER folded into efficiency, never a cross-operator or model verdict. On
-  the card and per-era on the timeline. Spec: `misery.spec.md`, test `test_misery.py`,
-  cache `misery-cache.json` (schema `vibrant/misery@1`), driver reads via `load_misery`.
+- **efficiency = surviving FUNCTIONALITY per Mtok output** = durable decision points that
+  landed and STUCK (blame-attributed surviving complexity) per million output tokens. A
+  CONTINUOUS numerator, blind to how work was chopped into sessions/commits/PRs. Replaced
+  the earlier COUNT of durable changes, because a count is a team convention (commit/PR
+  granularity), fragile to tiny-sample lucky units, and not comparable across unseen data
+  (it produced the fable->haiku artifact). `topline.eq`, per config `eff`, per period
+  timeline `eq` (= complexity/out_mtok). The count is retained but demoted:
+  `topline.change_throughput`, per-config `eff_count`, per-period `shipped`.
+- **simplicity = complexity DENSITY of surviving code**, mapped 0..100 (higher = simpler):
+  `100 * e^(-density/100)`, density = net decision points per 1000 surviving lines. A STOCK
+  measure of the code, NOT the inverse of bloat. Independent of bloat and counterbalanced by
+  efficiency (padding lines to lower density costs tokens). `topline.simplicity`,
+  `_density_simplicity`. This axis now carries the over-engineering guard, which is what
+  freed efficiency to go continuous.
+- **flow = 100 - misery** (shown as flow on the card). **misery = 0-100** operator friction
+  from a BLIND LLM classifier over the operator's own reply texts. Operator-relative, NEVER
+  folded into efficiency, never a cross-operator or model verdict. Spec `misery.spec.md`,
+  test `test_misery.py`, cache `misery-cache.json`, driver `load_misery`.
+- **bloat = complexity per shipped CHANGE** (`topline.bloat`) is RETAINED but is NOT
+  simplicity: a change-discipline meter (per-change flow), kept for reference only.
 
-All three slice by the fingerprint arms (`_misery_by`, `attribution.by_*`).
+All slice by the fingerprint arms (`_misery_by`, `attribution.by_*`). Definitions and the
+count-vs-continuous evidence: `docs/claims.md` (X5) and the metric-decision notes below.
 
 ## The fingerprint = a trajectory in a collapsed latent space (rig_space)
 
