@@ -2047,7 +2047,7 @@ _CSS = """
 .vibrant .mtog[aria-pressed=true]{border-color:var(--oc);
  box-shadow:inset 0 0 0 1px var(--oc);}
 .vibrant .mtog[aria-pressed=false]{opacity:.5;text-decoration:line-through;}
-.vibrant .vb-detail{font-size:13px;color:var(--ink2);margin-top:16px;min-height:18px;}
+.vibrant .vb-detail{font-size:11px;color:var(--muted);margin-top:16px;min-height:16px;}
 .vibrant .vb-detail b{color:var(--ink2);}
 .vibrant .vb-rec{font-size:11px;color:var(--muted);margin-top:6px;min-height:14px;}
 .vibrant .vb-rec b{color:var(--rust);}
@@ -2606,7 +2606,7 @@ _WALK_CSS = (
     '.fp-panel{flex:1 1 300px;min-width:0}'
     '.fp-label{font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;'
     'margin-bottom:5px;min-height:14px}'
-    '.fp-cap{font-size:11px;line-height:1.4;color:var(--muted);margin-top:7px}'
+    '.fp-cap{font-size:12px;line-height:1.4;color:var(--ink2);margin-top:7px}'
     '.som-compact-t{font-size:11px;font-weight:700;letter-spacing:.04em;'
     'text-transform:uppercase;color:var(--muted);margin-bottom:2px}'
     '.som-compact-s{font-size:11px;color:var(--muted);margin-bottom:5px}'
@@ -2786,18 +2786,21 @@ _WALK_JS = r"""<script>
   function panelLabel(sel,role){var k=selKind(sel);
     var pre=(role==='A'?(HELD?'held ':(k==='generation'?'previous ':'')):(k==='generation'?'current ':''));
     return pre+k+MID+selLabel(sel);}
-  // canonical meaning of a fingerprint, the same under each chart: what the marks encode.
-  var FPCAP='Each hex is a way of working, similar setups near each other; a ring marks a setup these sessions used, bigger = more, over the cost-shaded map of all your setups.';
+  // per-print SPECIFIC line (right under each map): what THIS fingerprint shows.
+  function panelSpecific(sel){var cells=selCells(sel);var prev=cells.length?cell(cells[0].r,cells[0].c):null;
+    var s='mostly '+(prev?setup(prev):'n/a');
+    if(sel.era!=null){var g=eraById(sel.era);if(g){s+=' '+MID+' '+g.days+' session'+(g.days==1?'':'s');
+      var oth=(g.cells?g.cells.length-1:0);if(oth>0)s+=' '+MID+' +'+oth+' other setup'+(oth==1?'':'s');}}
+    return s;}
   function renderPanels(){renderInto(fxA,selA,ACOL);renderInto(fxB,selB,BCOL);
     var la=document.getElementById('fp-a-label'),lb=document.getElementById('fp-b-label');
     if(la){la.textContent=panelLabel(selA,'A');la.style.color=ACOL;}
     if(lb){lb.textContent=panelLabel(selB,'B');lb.style.color=BCOL;}
     var ca=document.getElementById('fp-a-cap'),cb=document.getElementById('fp-b-cap');
-    if(ca)ca.textContent=FPCAP; if(cb)cb.textContent=FPCAP;}
-  function detailHtml(e){var pa=selCells(selA)[0],pb=selCells(selB)[0];
-    var sa=pa?setup(cell(pa.r,pa.c)):'unused',sb=pb?setup(cell(pb.r,pb.c)):'unused';
-    return '<span class="mk-a" style="color:'+ACOL+'">'+selLabel(selA)+'</span> mostly '+sa
-      +' <span class="mk-vs">vs</span> <span class="mk-b" style="color:'+BCOL+'">'+selLabel(selB)+'</span> mostly '+sb;}
+    if(ca)ca.textContent=panelSpecific(selA); if(cb)cb.textContent=panelSpecific(selB);}
+  // the OVERALL explanation (below the pair): the canonical meaning, once and short. The
+  // per-print specifics are the two captions above it; the comparison is reading them.
+  function detailHtml(e){return 'The map of all your setups, similar ones adjacent; a ring marks where a selection worked (bigger = more sessions), shaded by cost per surviving KB.';}
   function refresh(){var e=enSet(),v=vals();
     if(vbScore)vbScore.textContent=fmt(score(e,v));
     MK.forEach(function(m){var b=tog(m);if(!b)return;b.setAttribute('aria-pressed',e[m]?'true':'false');var bb=b.querySelector('b');if(bb)bb.textContent=fmtv(m,v[m]);});
