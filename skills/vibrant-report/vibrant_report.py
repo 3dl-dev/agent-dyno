@@ -2047,12 +2047,12 @@ _CSS = """
 .vibrant .mtog[aria-pressed=true]{border-color:var(--oc);
  box-shadow:inset 0 0 0 1px var(--oc);}
 .vibrant .mtog[aria-pressed=false]{opacity:.5;text-decoration:line-through;}
-.vibrant .vb-rec{font-size:13px;color:var(--ink2);margin-top:12px;min-height:18px;}
-.vibrant .vb-rec b{color:var(--rust);}
-.vibrant .vb-rec .rec-arrow{color:var(--teal);font-weight:800;margin-right:5px;}
-.vibrant .vb-rec .rec-hold{color:var(--muted);}
-.vibrant .vb-detail{font-size:12px;color:var(--muted);margin-top:6px;min-height:16px;}
+.vibrant .vb-detail{font-size:13px;color:var(--ink2);margin-top:16px;min-height:18px;}
 .vibrant .vb-detail b{color:var(--ink2);}
+.vibrant .vb-rec{font-size:11px;color:var(--muted);margin-top:6px;min-height:14px;}
+.vibrant .vb-rec b{color:var(--rust);}
+.vibrant .vb-rec .rec-arrow{color:var(--teal);font-weight:800;margin-right:4px;}
+.vibrant .vb-rec .rec-hold{color:var(--muted);}
 .vibrant .mk-best{color:var(--rust);font-weight:700;}
 .vibrant .mk-gen{color:var(--rust);font-weight:700;}
 .vibrant .mk-day{color:var(--ink);font-weight:700;}
@@ -2606,6 +2606,7 @@ _WALK_CSS = (
     '.fp-panel{flex:1 1 300px;min-width:0}'
     '.fp-label{font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;'
     'margin-bottom:5px;min-height:14px}'
+    '.fp-cap{font-size:11px;line-height:1.4;color:var(--muted);margin-top:7px}'
     '.som-compact-t{font-size:11px;font-weight:700;letter-spacing:.04em;'
     'text-transform:uppercase;color:var(--muted);margin-bottom:2px}'
     '.som-compact-s{font-size:11px;color:var(--muted);margin-bottom:5px}'
@@ -2773,10 +2774,11 @@ _WALK_JS = r"""<script>
     var hr=host.getBoundingClientRect();if(hr.width<1)return;
     ov.setAttribute('viewBox','0 0 '+hr.width.toFixed(1)+' '+hr.height.toFixed(1));
     ov.innerHTML=upRibbon(selB,BCOL,hr)+panelRibbon(selA,document.getElementById('map-a'),ACOL,hr)+panelRibbon(selB,document.getElementById('map-b'),BCOL,hr);}
+  // demoted in the comparison view: only a confident move shows, prefixed so it reads as
+  // secondary advice about the current generation, not part of the A/B comparison.
   function setRec(e){if(!vbRec)return;var bc=best(e);
-    if(bc&&recOk(e)){vbRec.innerHTML='<span class="rec-arrow">'+REC+'</span> shift toward <b>'+setup(bc)+'</b>';return;}
-    // no move clears the noise (or no measurable baseline): say hold, do not point.
-    vbRec.innerHTML='<span class="rec-hold">You are in a stable spot for '+objName(e)+'; no confident move stands out.</span>';}
+    if(bc&&recOk(e)){vbRec.innerHTML='to improve the current generation for '+objName(e)+': <span class="rec-arrow">'+REC+'</span> shift toward <b>'+setup(bc)+'</b>';return;}
+    vbRec.innerHTML='';}
   // draw a selection's occupancy into a panel: weighted rings for a generation cloud, a
   // single ring for a day sample, coloured by the panel's identity.
   function renderInto(fxEl,sel,color){if(!fxEl)return;var h='';selCells(sel).forEach(function(cc){var p=pts(cc.r,cc.c);if(!p)return;var w=cc.w||1;
@@ -2784,10 +2786,14 @@ _WALK_JS = r"""<script>
   function panelLabel(sel,role){var k=selKind(sel);
     var pre=(role==='A'?(HELD?'held ':(k==='generation'?'previous ':'')):(k==='generation'?'current ':''));
     return pre+k+MID+selLabel(sel);}
+  // canonical meaning of a fingerprint, the same under each chart: what the marks encode.
+  var FPCAP='Each hex is a way of working, similar setups near each other; a ring marks a setup these sessions used, bigger = more, over the cost-shaded map of all your setups.';
   function renderPanels(){renderInto(fxA,selA,ACOL);renderInto(fxB,selB,BCOL);
     var la=document.getElementById('fp-a-label'),lb=document.getElementById('fp-b-label');
     if(la){la.textContent=panelLabel(selA,'A');la.style.color=ACOL;}
-    if(lb){lb.textContent=panelLabel(selB,'B');lb.style.color=BCOL;}}
+    if(lb){lb.textContent=panelLabel(selB,'B');lb.style.color=BCOL;}
+    var ca=document.getElementById('fp-a-cap'),cb=document.getElementById('fp-b-cap');
+    if(ca)ca.textContent=FPCAP; if(cb)cb.textContent=FPCAP;}
   function detailHtml(e){var pa=selCells(selA)[0],pb=selCells(selB)[0];
     var sa=pa?setup(cell(pa.r,pa.c)):'unused',sb=pb?setup(cell(pb.r,pb.c)):'unused';
     return '<span class="mk-a" style="color:'+ACOL+'">'+selLabel(selA)+'</span> mostly '+sa
@@ -2965,11 +2971,16 @@ def _card_maps(report):
                        title="", subtitle="")
     b = render_som_map(som, style="ink-hex", compact=True, svg_id="map-b", js_arrow=True,
                        title="", subtitle="")
-    panels = (f'<div class="fp-panel"><div class="fp-label" id="fp-a-label"></div>{a}</div>'
-              f'<div class="fp-panel"><div class="fp-label" id="fp-b-label"></div>{b}</div>')
-    rec = ('<div class="vb-rec" id="vb-rec"></div>'
-           '<div class="vb-detail" id="vb-detail"></div>')
-    return f'<div class="som-maps-row">{panels}</div>{rec}'
+    # each panel: which selection (label, above) / the fingerprint / a canonical caption of
+    # what a fingerprint MEANS (below). The comparison detail sits under the pair; the
+    # recommendation is demoted (it is beside the point when comparing two selections).
+    panels = (f'<div class="fp-panel"><div class="fp-label" id="fp-a-label"></div>{a}'
+              f'<div class="fp-cap" id="fp-a-cap"></div></div>'
+              f'<div class="fp-panel"><div class="fp-label" id="fp-b-label"></div>{b}'
+              f'<div class="fp-cap" id="fp-b-cap"></div></div>')
+    foot = ('<div class="vb-detail" id="vb-detail"></div>'
+            '<div class="vb-rec" id="vb-rec"></div>')
+    return f'<div class="som-maps-row">{panels}</div>{foot}'
 
 
 def render_shared_map_compact(merged, current_cell, subtitle=""):
