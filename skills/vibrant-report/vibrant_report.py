@@ -509,6 +509,29 @@ def _advice(axis, opv, matches):
     return {"frontier_id": best[0], "their_value": best[1], "technique": best[2]}
 
 
+_SIMPLICITY_D0 = 100.0  # decision-points-per-1000-lines where simplicity is 100/e; the
+# half-simplicity point is ~69/1000 lines. A fixed anchor so scores compare across reports.
+
+
+def _density_simplicity(density, d0=_SIMPLICITY_D0):
+    """Map a complexity DENSITY (decision points per 1000 surviving lines) to a 0..100
+    simplicity score, higher = simpler. A smooth exponential 100 * e^(-density/d0): density
+    0 (straight-line code) -> 100, and it decays as the surviving code gets denser/branchier.
+    None when there is no surviving code to measure. This is a STOCK property of the code the
+    setup left behind, distinct from bloat (a per-change flow); see docs/claims.md."""
+    if density is None or density < 0:
+        return None
+    return round(100.0 * math.exp(-density / d0), 1)
+
+
+def _surviving_lines(cx, surviving):
+    """Guard for per-config/per-period density: complexity per 1000 surviving lines, or None
+    when nothing survives (a config that shipped nothing durable has no density to score)."""
+    if not surviving or cx is None:
+        return None
+    return cx / surviving * 1000.0
+
+
 def topline(metrics, numerator, denom_metrics=None):
     """The one meter, LARGER IS BETTER: surviving functionality per Mtok.
 
@@ -550,18 +573,27 @@ def topline(metrics, numerator, denom_metrics=None):
     functionality = numerator.get("durable_changes", numerator.get("total_changes", 0))
     eq = round(functionality / out_mtok, 2) if out_mtok else None
     dcx = numerator.get("durable_complexity", numerator.get("net_complexity", 0))
+    # bloat stays as a change-discipline meter (decision points per shipped change), but it
+    # is NOT simplicity: it is blind to code density and, like efficiency, rewards making
+    # more changes. simplicity is now a STOCK measure of the surviving code's density.
     bloat = round(dcx / functionality, 1) if functionality else None
-    # simplicity: the positively-signed leanness meter (higher is better), the
-    # complement of bloat. bloat is decision-points per shipped change; simplicity is
-    # 100 minus that, floored at 0, so a lean change (few decision points) scores high
-    # and an over-engineered one scores low. The 100 anchor is a provisional scale.
-    simplicity = round(max(0.0, 100 - bloat), 1) if bloat is not None else None
+    # simplicity: how simple the surviving code actually is, measured as its complexity
+    # DENSITY (decision points per 1000 surviving lines) mapped to 0..100, higher = simpler.
+    # Independent of bloat (two configs with the same bloat can differ 7x in density), and
+    # counterbalanced by efficiency: padding lines to lower density costs output tokens, so
+    # efficiency penalises the one way to game it. See _density_simplicity and docs/claims.md.
+    density = numerator.get("complexity_per_1k_lines")
+    if density is None:
+        surv_lines = numerator.get("total_surviving", 0)
+        density = (numerator.get("net_complexity", 0) / surv_lines * 1000) if surv_lines else None
+    simplicity = _density_simplicity(density)
     return {"eq": eq,
             "unit": "durable shipped changes per Mtok output",
             "larger_is_better": True,
             "functionality": functionality,
-            "bloat": bloat,  # decision points per shipped change; lower is leaner
-            "simplicity": simplicity,  # 100 - bloat, higher is leaner (the signed meter)
+            "bloat": bloat,  # decision points per shipped change; a change-discipline meter
+            "complexity_density": density,  # decision points per 1000 surviving lines
+            "simplicity": simplicity,  # density mapped to 0..100, higher = simpler code
             "output_mtok": round(out_mtok, 3),
             "total_mtok": round(total_mtok, 3),
             "denominator_sessions": len(denom),
@@ -846,8 +878,9 @@ def frontier_eq(entry):
 def _rig_objective_metrics(metrics, attribution, misery_block):
     """Per rig (model_roles): the three objectives the descent can optimize, grounded
     in the by-rig git attribution so each SOM cell inherits its dominant setup's
-    numbers. efficiency = changes per Mtok output; simplicity = 100 - complexity per
-    change; flow = 100 - misery. Any may be None when its input is missing."""
+    numbers. efficiency = changes per Mtok output; simplicity = the complexity DENSITY
+    of that rig's surviving code (decision points per 1000 surviving lines) mapped to
+    0..100; flow = 100 - misery. Any may be None when its input is missing."""
     out_by = defaultdict(float)
     for m in metrics:
         out_by[m.get("model_roles")] += m.get("out_tok", 0)
@@ -861,7 +894,7 @@ def _rig_objective_metrics(metrics, attribution, misery_block):
         m_ = mis.get(rig)
         stats[rig] = {
             "eff": round(commits / om, 2) if om else None,
-            "simp": round(max(0.0, 100 - ncx / commits), 1) if commits else None,
+            "simp": _density_simplicity(_surviving_lines(ncx, v.get("surviving", 0))),
             "flow": round(100 - m_, 1) if m_ is not None else None}
     return stats
 
@@ -2944,6 +2977,13 @@ def _combined_series(report):
     tline = report.get("timeline") or []
     over_flow = (report.get("misery") or {}).get("flow")
     over_simp = (report.get("topline") or {}).get("simplicity")
+    # per-period simplicity is the same density measure as the topline: complexity per 1000
+    # of that period's net-surviving lines. The timeline carries surviving as bytes (born -
+    # killed), so convert with the corpus-wide bytes/line to keep the unit consistent.
+    num = report.get("numerator") or {}
+    surv_lines_all = num.get("total_surviving") or 0
+    surv_bytes_all = (report.get("topline") or {}).get("surv_kb", 0) * 1024
+    bpl = (surv_bytes_all / surv_lines_all) if surv_lines_all else 0
     out = []
     for r in tline:
         eq = r.get("eq")
@@ -2951,8 +2991,9 @@ def _combined_series(report):
             continue
         mis = r.get("misery")
         flow = round(100 - mis, 1) if mis is not None else over_flow
-        shipped, cx = r.get("shipped"), r.get("complexity")
-        simp = round(max(0.0, 100 - cx / shipped), 1) if shipped else over_simp
+        net_bytes = (r.get("born", 0) or 0) - (r.get("killed", 0) or 0)
+        surv_lines = (net_bytes / bpl) if bpl and net_bytes > 0 else 0
+        simp = _density_simplicity(_surviving_lines(r.get("complexity"), surv_lines)) or over_simp
         if flow is None or simp is None:
             continue
         out.append({"eq": eq, "flow": flow, "simp": simp,

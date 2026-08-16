@@ -41,3 +41,25 @@ horizon-survival accrues longitudinal data; flagged honestly, not skipped.
 
 Contribute a verdict from your own data: run the report, and open a PR against
 `frontier/reference-frontier.json` with your anonymized result.
+
+## Metric definition: simplicity (updated 2026-08-16)
+
+Simplicity is a STOCK measure of the surviving code's complexity DENSITY, not the
+inverse of bloat. Definition:
+
+    density    = net decision points per 1000 SURVIVING lines (numerator.complexity_per_1k_lines)
+    simplicity = 100 * e^(-density / 100)      # 0..100, higher = simpler; half-point ~69/1000 lines
+
+Attributed per config (net_complexity / surviving lines of that rig) and per period
+(net-surviving lines of that bucket). See `_density_simplicity` / `_surviving_lines`.
+
+Why density, not `100 - bloat` (the earlier definition):
+
+- bloat = decision points per shipped CHANGE (a per-change flow). It is blind to code
+  density: two configs with the same bloat can differ ~7x in how tightly their surviving
+  code is branched. `100 - bloat` therefore does not measure the simplicity of the code.
+- bloat, like efficiency (changes per Mtok), rewards making MORE, smaller changes, so its
+  inverse shared efficiency's salami-slicing pathology and carried little new signal.
+- density is orthogonal AND counterbalanced by efficiency: the only way to game low density
+  is to pad lines, which costs output tokens and lowers efficiency. So the two axes
+  self-correct. bloat is retained as a separate change-discipline meter, not as simplicity.

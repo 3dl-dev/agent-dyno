@@ -174,7 +174,7 @@ def _era_report():
     days = ["2026-08-0%d" % d for d in range(1, 7)]  # six consecutive days
     labels = [vr._bucket(d, "day")[1] for d in days]
     timeline = [{"week": labels[i], "eq": 5.0, "misery": 40.0, "shipped": 10.0,
-                 "complexity": 100.0,
+                 "complexity": 100.0, "born": 20000, "killed": 5000,
                  "changes": (["engine solo -> workflow"] if i == 3 else None)}
                 for i in range(6)]
     walk = []
@@ -188,6 +188,8 @@ def _era_report():
             if i == 4:
                 walk.append({"day": d, "cell": [0, 0]})
     return {"fuel_and_work": {"granularity": "day"}, "timeline": timeline,
+            "topline": {"simplicity": 60.0, "surv_kb": 100.0},
+            "numerator": {"total_surviving": 5000},
             "rig_space": {"som": {"walk": walk, "current_cell": [2, 2]}}}
 
 
