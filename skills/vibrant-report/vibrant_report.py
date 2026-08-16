@@ -2558,6 +2558,7 @@ _WALK_CSS = (
     'text-transform:uppercase;color:var(--muted);margin-bottom:2px}'
     '.som-compact-s{font-size:11px;color:var(--muted);margin-bottom:5px}'
     '.som-cell{transition:opacity .08s}'
+    '#wave-svg .wv-gen,#wave-svg .wv-hit{cursor:pointer}'
     '.vb-detail .mk-vs{color:var(--muted);margin:0 5px;font-style:italic}'
     '.walk{margin-top:12px}'
     '.walk-detail{font-size:13px;color:var(--ink2);min-height:38px;padding:9px 12px;'
@@ -2652,12 +2653,22 @@ _WALK_JS = r"""<script>
   function selKind(s){return s.day!=null?'sample':'generation';}
   function selEra(s){return s.era!=null?s.era:(s.day!=null&&PERIODS[s.day]?PERIODS[s.day].era:-1);}
   function selBars(s){var q=(s.day!=null)?('.wv-bar[data-i="'+s.day+'"]'):('.wv-bar[data-era="'+s.era+'"]');return [].slice.call(document.querySelectorAll('#wave-svg '+q));}
-  // bars stay uniform; the two selected generations' bands light, the rest quiet.
+  // bars stay uniform; the two selected generations' bands light, the rest quiet; and the
+  // A/B markers (clay/teal) show exactly what each selection is targeting.
   function emphasize(){var ws=document.getElementById('wave-svg');if(!ws)return;var ea=selEra(selA),eb=selEra(selB);
     ws.querySelectorAll('.wv-bar').forEach(function(gg){gg.setAttribute('opacity','1');});
     ws.querySelectorAll('.wv-band').forEach(function(bd){var e=+bd.getAttribute('data-era');bd.setAttribute('opacity',(e===ea||e===eb)?'0.9':'0.22');});
     ws.querySelectorAll('.wv-score').forEach(function(tx){var e=+tx.getAttribute('data-era');tx.setAttribute('opacity',(e===ea||e===eb)?'1':'0.4');});
+    var fx=ws.querySelector('.wv-fx');if(fx)fx.innerHTML=selMarker(selA,ACOL)+selMarker(selB,BCOL);
     drawMerge();drawFlow();}
+  // a day selection is marked by an outline around its bar; a generation by a colour bar on
+  // top of its band. So you can always see whether you targeted a daily value or the band.
+  function selMarker(sel,color){var ws=document.getElementById('wave-svg');if(!ws)return '';
+    if(sel.day!=null){var bar=ws.querySelector('.wv-bar[data-i="'+sel.day+'"]');if(!bar)return '';var ht=bar.querySelector('.wv-hit');if(!ht)return '';
+      var x=+ht.getAttribute('x'),y=+ht.getAttribute('y'),w=+ht.getAttribute('width'),hh=+ht.getAttribute('height');
+      return '<rect x="'+(x-2).toFixed(1)+'" y="'+(y-2).toFixed(1)+'" width="'+(w+4).toFixed(1)+'" height="'+(hh+4).toFixed(1)+'" rx="4" fill="none" stroke="'+color+'" stroke-width="2.4"/>';}
+    var bd=ws.querySelector('.wv-band[data-era="'+sel.era+'"]');if(!bd)return '';var b=bd.getBBox();
+    return '<rect x="'+b.x.toFixed(1)+'" y="'+(b.y-4.5).toFixed(1)+'" width="'+b.width.toFixed(1)+'" height="2.8" rx="1.4" fill="'+color+'"/>';}
   // a smooth ribbon: cubic edges between (x0,ya..yb) at the source and (x1,ca..cb) at the
   // target. No square corners.
   function ribbon(x0,ya,yb,x1,ca,cb){var mx=(x0+x1)/2;
@@ -2697,12 +2708,19 @@ _WALK_JS = r"""<script>
     var pr=mapEl.getBoundingClientRect();var pcx=(pr.left+pr.right)/2-hr.left,iw=pr.width*0.42,pL=pcx-iw/2,pR=pcx+iw/2,pT=pr.top-hr.top;
     var my=(B+pT)/2;
     return '<path d="M'+L.toFixed(1)+','+B.toFixed(1)+' C'+L.toFixed(1)+','+my.toFixed(1)+' '+pL.toFixed(1)+','+my.toFixed(1)+' '+pL.toFixed(1)+','+pT.toFixed(1)+' L'+pR.toFixed(1)+','+pT.toFixed(1)+' C'+pR.toFixed(1)+','+my.toFixed(1)+' '+R.toFixed(1)+','+my.toFixed(1)+' '+R.toFixed(1)+','+B.toFixed(1)+' Z" fill="'+color+'" opacity="0.15"/>';}
+  // the up-flow: B's slice of the timeline flows UP into the centred score group, since B
+  // is what the headline number reflects (the down-flows go to the fingerprints).
+  function upRibbon(sel,color,hr){var bars=selBars(sel);if(!bars.length)return '';var tg=document.getElementById('topgroup');if(!tg)return '';
+    var L=1e9,R=-1e9,T=1e9;bars.forEach(function(gg){var r=gg.getBoundingClientRect();L=Math.min(L,r.left-hr.left);R=Math.max(R,r.right-hr.left);T=Math.min(T,r.top-hr.top);});
+    if(R-L<6){var mm=(L+R)/2;L=mm-4;R=mm+4;}
+    var gr=tg.getBoundingClientRect();var gcx=(gr.left+gr.right)/2-hr.left,gw=gr.width*0.30,tL=gcx-gw/2,tR=gcx+gw/2,tB=gr.bottom-hr.top;var my=(tB+T)/2;
+    return '<path d="M'+tL.toFixed(1)+','+tB.toFixed(1)+' C'+tL.toFixed(1)+','+my.toFixed(1)+' '+L.toFixed(1)+','+my.toFixed(1)+' '+L.toFixed(1)+','+T.toFixed(1)+' L'+R.toFixed(1)+','+T.toFixed(1)+' C'+R.toFixed(1)+','+my.toFixed(1)+' '+tR.toFixed(1)+','+my.toFixed(1)+' '+tR.toFixed(1)+','+tB.toFixed(1)+' Z" fill="'+color+'" opacity="0.13"/>';}
   function drawFlow(){var host=document.querySelector('.vibrant .card');if(!host)return;
     var ov=host.querySelector('.flow-ov');
     if(!ov){ov=document.createElementNS('http://www.w3.org/2000/svg','svg');ov.setAttribute('class','flow-ov');host.insertBefore(ov,host.firstChild);}
     var hr=host.getBoundingClientRect();if(hr.width<1)return;
     ov.setAttribute('viewBox','0 0 '+hr.width.toFixed(1)+' '+hr.height.toFixed(1));
-    ov.innerHTML=panelRibbon(selA,document.getElementById('map-a'),ACOL,hr)+panelRibbon(selB,document.getElementById('map-b'),BCOL,hr);}
+    ov.innerHTML=upRibbon(selB,BCOL,hr)+panelRibbon(selA,document.getElementById('map-a'),ACOL,hr)+panelRibbon(selB,document.getElementById('map-b'),BCOL,hr);}
   function setRec(e){if(!vbRec)return;var bc=best(e);
     if(bc&&recOk(e)){vbRec.innerHTML='<span class="rec-arrow">'+REC+'</span> shift toward <b>'+setup(bc)+'</b>';return;}
     // no move clears the noise (or no measurable baseline): say hold, do not point.
@@ -2737,14 +2755,19 @@ _WALK_JS = r"""<script>
     b.addEventListener('mouseenter',function(){PV=m;refresh();});
     b.addEventListener('mouseleave',function(){PV=null;refresh();});
     b.addEventListener('click',function(){var on=MK.filter(function(k){return EN[k];});if(EN[m]&&on.length<=1)return;EN[m]=!EN[m];PV=null;refresh();});});
-  // hover a bar => B previews that day; click a bar => HOLD its generation as A (click the
-  // held generation again to release back to the previous one).
-  document.querySelectorAll('#wave-svg .wv-bar').forEach(function(g){g.style.cursor='pointer';
-    g.addEventListener('mouseenter',function(){selB={day:+g.getAttribute('data-i')};refresh();});
-    g.addEventListener('click',function(ev){ev.stopPropagation();var p=PERIODS[+g.getAttribute('data-i')];if(!p)return;
-      if(HELD&&selA.era===p.era){selA={era:prevEraId};HELD=false;}else{selA={era:p.era};HELD=true;}refresh();});});
+  // one delegated listener uses the topmost element under the pointer, so a bar targets a
+  // DAY and the band around it targets a GENERATION, unambiguously. Hover previews into B;
+  // click holds into A (click the held target again to release).
   var wsvg=document.getElementById('wave-svg');
-  if(wsvg)wsvg.addEventListener('mouseleave',function(){selB={era:curEraId};refresh();});
+  function toggleHold(sel){var same=(sel.day!=null&&selA.day===sel.day)||(sel.era!=null&&selA.era===sel.era);
+    if(HELD&&same){selA={era:prevEraId};HELD=false;}else{selA=sel;HELD=true;}refresh();}
+  function hitSel(t){if(!t||!t.classList)return null;
+    if(t.classList.contains('wv-hit'))return {day:+t.parentNode.getAttribute('data-i')};
+    if(t.classList.contains('wv-gen'))return {era:+t.getAttribute('data-era')};return null;}
+  if(wsvg){
+    wsvg.addEventListener('mouseover',function(ev){var s=hitSel(ev.target);if(s){selB=s;refresh();}});
+    wsvg.addEventListener('click',function(ev){var s=hitSel(ev.target);if(s)toggleHold(s);});
+    wsvg.addEventListener('mouseleave',function(){selB={era:curEraId};refresh();});}
   window.addEventListener('resize',function(){drawMerge();drawFlow();});
   refresh();
 })();
@@ -3117,6 +3140,15 @@ def render_waveform(report):
     # family so it sits with the brand and stays clear of the daily blue/teal/green.
     GEN = ["#B0553A", "#C79A46", "#7C6A86", "#5E7E77", "#A56E5B", "#8A7A4E"]
 
+    # a full-height hit target per GENERATION, behind everything: hovering the band area
+    # (gaps, the label, above/below the bars) targets the whole generation.
+    genhits = []
+    for e in range(neras):
+        a, b = espan[e]
+        genhits.append(f'<rect class="wv-gen" data-era="{e}" x="{a * bw:.1f}" y="0" '
+                       f'width="{(b - a) * bw:.1f}" height="{H}" fill="transparent" '
+                       f'pointer-events="all"/>')
+
     wd = max(bw * 0.78, 0.8)
     bars = []
     for i in range(n):
@@ -3125,16 +3157,17 @@ def render_waveform(report):
         y = cy - total / 2
         x = i * bw
         bx = x + (bw - wd) / 2
+        # the hit target is the BAR ITSELF (not full height): clicking the bar targets that
+        # DAY; the decorative rects below never capture, so the band behind stays reachable.
         grp = [f'<g class="wv-bar" data-i="{i}" data-era="{era_id[i]}">'
-               f'<rect x="{x:.1f}" y="0" width="{bw:.2f}" height="{H}" '
-               f'fill="transparent" pointer-events="all"/>']
+               f'<rect class="wv-hit" x="{bx:.1f}" y="{cy - total / 2:.1f}" width="{wd:.1f}" '
+               f'height="{max(total, 0.8):.1f}" fill="transparent" pointer-events="all"/>']
         for hgt, color, m in segs:
             if hgt >= 0.4:
                 grp.append(f'<rect data-m="{m}" x="{bx:.1f}" y="{y:.1f}" '
-                           f'width="{wd:.1f}" height="{hgt:.1f}" rx="2.5" fill="{color}"/>')
+                           f'width="{wd:.1f}" height="{hgt:.1f}" rx="2.5" fill="{color}" '
+                           f'pointer-events="none"/>')
             y += hgt
-        # a single soft gloss over the whole bar (white sheen fading down), for a rounded,
-        # glossy read; no data-m so it does not fade with a toggled metric.
         if total >= 0.8:
             grp.append(f'<rect x="{bx:.1f}" y="{cy - total / 2:.1f}" width="{wd:.1f}" '
                        f'height="{total:.1f}" rx="3" fill="url(#wgloss)" pointer-events="none"/>')
@@ -3156,12 +3189,13 @@ def render_waveform(report):
         col = GEN[e % len(GEN)]
         ribbons.append(f'<polygon class="wv-band" data-era="{e}" points="'
                        + " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
-                       + f'" fill="{col}" opacity="1"/>')
+                       + f'" fill="{col}" opacity="1" pointer-events="none"/>')
         xm = (xl + xr) / 2
         gt = cy - max(g[i] for i in range(a, b)) * RT
         labels.append(f'<text class="wv-score" data-era="{e}" x="{xm:.1f}" '
                       f'y="{max(9.0, gt - 4):.1f}" text-anchor="middle" font-size="10.5" '
-                      f'font-weight="700" fill="{col}">{_fmt_tok(escore[e])}</text>')
+                      f'font-weight="700" fill="{col}" pointer-events="none">'
+                      f'{_fmt_tok(escore[e])}</text>')
         if a > 0:
             dividers.append(f'<line x1="{xl:.1f}" y1="2" x2="{xl:.1f}" y2="{H - 2}" '
                             f'stroke="var(--ink)" stroke-width="1" stroke-dasharray="2 3" '
@@ -3173,17 +3207,19 @@ def render_waveform(report):
              '<stop offset="0" stop-color="#ffffff" stop-opacity="0.34"/>'
              '<stop offset="0.45" stop-color="#ffffff" stop-opacity="0.06"/>'
              '<stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient></defs>')
+    # hit targets (wv-gen) sit BEHIND the decorative band/bars; the daily bars' own hit
+    # (wv-hit) sits on top of them. wv-fx (on top, non-interactive) holds the A/B markers.
     svg = (f'<svg id="wave-svg" viewBox="0 0 {W} {H}" role="img" aria-label="the combined '
            f'score over time: a bold colour-per-generation rollup band behind the daily '
            f'bars of efficiency, flow and simplicity, each generation labelled with its '
-           f'score">{gloss}{"".join(dividers)}{"".join(ribbons)}{"".join(bars)}'
-           f'{"".join(labels)}</svg>')
+           f'score">{gloss}{"".join(genhits)}{"".join(dividers)}{"".join(ribbons)}'
+           f'{"".join(bars)}{"".join(labels)}<g class="wv-fx" pointer-events="none"></g></svg>')
     note = ('<div class="wlegend"><span class="wl-key">'
             '<span><i style="background:var(--accent)"></i>efficiency</span>'
             '<span><i style="background:var(--teal)"></i>flow</span>'
             '<span><i style="background:var(--good)"></i>simplicity</span></span>'
-            '<span class="wl-note">solid ribbon = each generation\'s level; daily bars ride '
-            'over it</span></div>')
+            '<span class="wl-note">click a bar to hold a day, the band to hold a '
+            'generation</span></div>')
     return (f'<div class="wave">{svg}{note}</div>')
 
 
