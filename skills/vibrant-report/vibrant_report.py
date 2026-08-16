@@ -2265,13 +2265,18 @@ def _rank_opacity(v, sorted_vals, lower_better=True):
     return 0.10 + 0.80 * min(max(t, 0.0), 1.0)
 
 
+_FP_A_HEX = "#B0553A"  # A (previous) identity, matches the JS ACOL
+_FP_B_HEX = "#3F6E66"  # B (current) identity, matches the JS BCOL
+
+
 def render_spheroid_map(som_block, svg_id="map-sph", compact=True):
-    """EXPERIMENT: one fingerprint, the SOM lattice projected onto an elliptical spheroid,
-    centred on the operator's center of mass (support-weighted) so the dominant region sits
-    front-and-centre at full size and rarely-used setups foreshorten toward the rim. Cost
-    shading via the same rank ramp; each cell keeps data-r/data-c so the JS overlays (the A
-    and B generation clouds and the drift arrow between them) reuse the projected geometry.
-    Deterministic; pure function of som_block."""
+    """EXPERIMENT #2: one WIDE radial fingerprint (landscape, Robinson-ish, to fill the wide
+    frame), centred on the operator's center of mass so DISTANCE FROM THE CENTRE reads as how
+    divergent a setup is from the norm; similar setups cluster (SOM property preserved), rare
+    ones foreshorten toward the rim. Faint graticule rings label the divergence scale; the
+    cost terrain rides underneath. Blob gradients (defs) and each cell's data-r/data-c let the
+    JS paint the A/B generation clouds as soft density blobs plus the drift arrow between them.
+    Pure function of som_block."""
     lattice = som_block.get("lattice") or {}
     rows, cols = lattice.get("rows") or 0, lattice.get("cols") or 0
     if rows <= 0 or cols <= 0:
@@ -2295,9 +2300,8 @@ def render_spheroid_map(som_block, svg_id="map-sph", compact=True):
     ranked = sorted(v for r in range(rows) for c in range(cols)
                     if (v := fval(r, c)) is not None)
 
-    def planar(r, c):  # hex-lattice cell centre in lattice units (odd rows shifted)
+    def planar(r, c):
         return (c + (0.5 if r % 2 else 0), r * 0.87)
-    # support-weighted center of mass, and the max offset for normalisation
     tot = cxm = cym = 0.0
     for r in range(rows):
         for c in range(cols):
@@ -2314,43 +2318,65 @@ def render_spheroid_map(som_block, svg_id="map-sph", compact=True):
     umax = max([math.hypot(planar(r, c)[0] - cxm, planar(r, c)[1] - cym)
                 for r in range(rows) for c in range(cols)] + [1e-6])
 
-    W, H = (230, 300) if compact else (300, 390)
-    cx0, cy0, Rx, Ry = W / 2, H / 2, W * 0.42, H * 0.44
-    thmax = math.radians(74.0)
+    W, H = (440, 248) if compact else (560, 320)  # LANDSCAPE: wider than tall
+    cx0, cy0, Rx, Ry = W / 2, H / 2, W * 0.45, H * 0.42
+    thmax = math.radians(64.0)
     sinmax = math.sin(thmax)
-    base_rr = (W / cols) * 0.52
+    base_rr = (min(Rx, Ry) / max(rows, cols)) * 1.25
+
+    def project(u, v):
+        rho = min(1.0, math.hypot(u, v))
+        phi = math.atan2(v, u)
+        th = rho * thmax
+        pr = math.sin(th) / sinmax
+        return cx0 + pr * Rx * math.cos(phi), cy0 + pr * Ry * math.sin(phi), th
 
     def hexpts(cx, cy, rr):
         return " ".join(f"{cx + rr * math.cos(math.radians(a)):.1f},"
                         f"{cy - rr * math.sin(math.radians(a)):.1f}"
                         for a in (90, 150, 210, 270, 330, 30))
+
+    def _grad(gid, hexc):
+        return (f'<radialGradient id="{gid}">'
+                f'<stop offset="0" stop-color="{hexc}" stop-opacity="0.5"/>'
+                f'<stop offset="0.65" stop-color="{hexc}" stop-opacity="0.16"/>'
+                f'<stop offset="1" stop-color="{hexc}" stop-opacity="0"/></radialGradient>')
+    defs = f'<defs>{_grad("blobA", _FP_A_HEX)}{_grad("blobB", _FP_B_HEX)}</defs>'
+    # graticule: concentric ellipses = divergence rings; a centre marker = your norm.
+    grat = "".join(
+        f'<ellipse cx="{cx0}" cy="{cy0}" rx="{p * Rx:.1f}" ry="{p * Ry:.1f}" fill="none" '
+        f'stroke="var(--line)" stroke-width="1" opacity="0.45"/>' for p in (0.4, 0.72, 1.0))
+    marker = (f'<circle cx="{cx0}" cy="{cy0}" r="3.2" fill="none" stroke="var(--muted)" '
+              f'stroke-width="1.4"/>'
+              f'<text x="{cx0}" y="{cy0 - 6:.0f}" text-anchor="middle" font-size="9" '
+              f'fill="var(--muted)">your norm</text>'
+              f'<text x="{cx0 + Rx - 4:.0f}" y="{cy0 - 4:.0f}" text-anchor="end" '
+              f'font-size="9" fill="var(--muted)">more divergent</text>')
     cells = []
     for r in range(rows):
         for c in range(cols):
             x, y = planar(r, c)
-            u, v = (x - cxm) / umax, (y - cym) / umax
-            rho = min(1.0, math.hypot(u, v))
-            phi = math.atan2(v, u)
-            th = rho * thmax
-            pr = math.sin(th) / sinmax
-            sx, sy = cx0 + pr * Rx * math.cos(phi), cy0 + pr * Ry * math.sin(phi)
-            rr = base_rr * (0.42 + 0.58 * math.cos(th))  # foreshorten toward the rim
+            sx, sy, th = project((x - cxm) / umax, (y - cym) / umax)
+            rr = base_rr * (0.5 + 0.5 * math.cos(th))
             cells.append((th, r, c, sx, sy, rr, fval(r, c)))
-    cells.sort(key=lambda t: -t[0])  # back (rim) to front (centre) so the centre draws on top
-    parts = [f'<svg id="{svg_id}" viewBox="0 0 {W} {H}" role="img" aria-label="working-style '
-             f'spheroid, centred on your dominant region, cells shaded by cost">']
+    cells.sort(key=lambda t: -t[0])
+    terrain = []
     for th, r, c, sx, sy, rr, val in cells:
         pts = hexpts(sx, sy, rr)
         if val is None:
-            parts.append(f'<polygon class="som-cell" data-r="{r}" data-c="{c}" points="{pts}" '
-                         f'fill="none" stroke="var(--line)" stroke-width="0.8" opacity="0.3"/>')
+            terrain.append(f'<polygon class="som-cell" data-r="{r}" data-c="{c}" points="{pts}" '
+                           f'fill="none" stroke="var(--line)" stroke-width="0.7" opacity="0.25"/>')
         else:
             op = _rank_opacity(val, ranked, lower_better)
-            parts.append(f'<polygon class="som-cell" data-r="{r}" data-c="{c}" points="{pts}" '
-                         f'fill="rgba(var(--ink-rgb),{op:.2f})" stroke="var(--line)" '
-                         f'stroke-width="0.8"/>')
-    parts.append('<g class="som-fx" pointer-events="none"></g></svg>')
-    return f'<div class="som-compact"><div class="som-wrap">{"".join(parts)}</div></div>'
+            terrain.append(f'<polygon class="som-cell" data-r="{r}" data-c="{c}" points="{pts}" '
+                           f'fill="rgba(var(--ink-rgb),{op * 0.85:.2f})" stroke="var(--line)" '
+                           f'stroke-width="0.7"/>')
+    svg = (f'<svg id="{svg_id}" viewBox="0 0 {W} {H}" role="img" aria-label="working-style '
+           f'fingerprint: a wide radial map centred on your norm, distance from centre = how '
+           f'divergent a setup is; the coloured blobs are two generations">'
+           f'{defs}{grat}{"".join(terrain)}{marker}<g class="som-fx" pointer-events="none">'
+           f'</g></svg>')
+    return f'<div class="som-compact"><div class="som-wrap">{svg}</div></div>'
 
 
 # SOM map skins. The 3dl brand mark IS a Self-Organizing Map (3dl.dev/brand): ink
@@ -2696,7 +2722,7 @@ _WALK_CSS = (
     'margin-bottom:5px;min-height:14px}'
     '.fp-cap{font-size:12px;line-height:1.4;color:var(--ink2);margin-top:7px}'
     '.sph-wrap{display:flex;flex-direction:column;align-items:center;margin-top:14px}'
-    '.sph-wrap .som-compact{width:100%;max-width:340px}'
+    '.sph-wrap .som-compact{width:100%;max-width:540px}'
     '.sph-wrap .som-wrap svg{width:100%;height:auto}'
     '.fp-legend{display:flex;gap:20px;margin-bottom:6px;font-size:11px;font-weight:700;'
     'letter-spacing:.03em;text-transform:uppercase}'
@@ -2876,9 +2902,10 @@ _WALK_JS = r"""<script>
   function setRec(e){if(!vbRec)return;var bc=best(e);
     if(bc&&recOk(e)){vbRec.innerHTML='to improve the current generation for '+objName(e)+': <span class="rec-arrow">'+REC+'</span> shift toward <b>'+setup(bc)+'</b>';return;}
     vbRec.innerHTML='';}
-  // occupancy rings for one selection, weighted, in its identity colour.
-  function cloudRings(sel,color){var h='';selCells(sel).forEach(function(cc){var p=pts(cc.r,cc.c);if(!p)return;var w=cc.w||1;
-    var sw=(1.4+w*3.2).toFixed(1),op=(0.4+w*0.6).toFixed(2);h+='<polygon points="'+p+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'" opacity="'+op+'"/>';});return h;}
+  // soft DENSITY BLOBS for one selection: a radial-gradient disc per occupied cell, sized by
+  // how many sessions landed there; overlapping discs merge into one cloud (B).
+  function cloudBlobs(sel,grad){var h='';selCells(sel).forEach(function(cc){var m=ctr(cc.r,cc.c);if(!m)return;var w=cc.w||1;
+    var rr=((m.r||8)*(1.6+w*1.8)).toFixed(1);h+='<circle cx="'+m.x.toFixed(1)+'" cy="'+m.y.toFixed(1)+'" r="'+rr+'" fill="url(#'+grad+')"/>';});return h;}
   // the projected center of mass of a selection (weighted mean of its cell centres).
   function fpCentroid(sel){var sx=0,sy=0,w=0;selCells(sel).forEach(function(cc){var m=ctr(cc.r,cc.c);if(!m)return;var ww=cc.w||1;sx+=m.x*ww;sy+=m.y*ww;w+=ww;});return w?{x:sx/w,y:sy/w}:null;}
   // the DRIFT arrow between the two selections' centres of mass (A -> B), the shift.
@@ -2887,9 +2914,9 @@ _WALK_JS = r"""<script>
     return '<circle cx="'+a.x.toFixed(1)+'" cy="'+a.y.toFixed(1)+'" r="3" fill="'+ACOL+'"/>'
       +'<line x1="'+a.x.toFixed(1)+'" y1="'+a.y.toFixed(1)+'" x2="'+bx.toFixed(1)+'" y2="'+by.toFixed(1)+'" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" opacity="0.55"/>'
       +'<polygon points="'+tx.toFixed(1)+','+ty.toFixed(1)+' '+(bx+px*4).toFixed(1)+','+(by+py*4).toFixed(1)+' '+(bx-px*4).toFixed(1)+','+(by-py*4).toFixed(1)+'" fill="'+BCOL+'"/>';}
-  // one view: B (teal) and A (clay) clouds overlaid, plus the drift arrow between them.
+  // one view: B (teal) and A (clay) density blobs overlaid, plus the drift arrow between them.
   function renderCombined(){if(!fx)return;
-    fx.innerHTML=cloudRings(selB,BCOL)+cloudRings(selA,ACOL)+driftArrow(fpCentroid(selA),fpCentroid(selB));}
+    fx.innerHTML=cloudBlobs(selB,'blobB')+cloudBlobs(selA,'blobA')+driftArrow(fpCentroid(selA),fpCentroid(selB));}
   function panelLabel(sel,role){var k=selKind(sel);
     var pre=(role==='A'?(HELD?'held ':(k==='generation'?'previous ':'')):(k==='generation'?'current ':''));
     return pre+k+MID+selLabel(sel);}
@@ -2908,7 +2935,7 @@ _WALK_JS = r"""<script>
     if(cb){cb.textContent='B '+MID+' '+panelSpecific(selB);cb.style.color=BCOL;}}
   // the OVERALL explanation (below the pair): the canonical meaning, once and short. The
   // per-print specifics are the two captions above it; the comparison is reading them.
-  function detailHtml(e){return 'The map of all your setups, similar ones adjacent; a ring marks where a selection worked (bigger = more sessions), shaded by cost per surviving KB.';}
+  function detailHtml(e){return 'Centred on your norm; the farther out a setup sits, the more it diverges from it. Each generation is a soft cloud (bigger = more sessions), the arrow its drift from A to B; cells shaded by cost.';}
   function refresh(){var e=enSet(),v=vals();
     if(vbScore)vbScore.textContent=fmt(score(e,v));
     MK.forEach(function(m){var b=tog(m);if(!b)return;b.setAttribute('aria-pressed',e[m]?'true':'false');var bb=b.querySelector('b');if(bb)bb.textContent=fmtv(m,v[m]);});
