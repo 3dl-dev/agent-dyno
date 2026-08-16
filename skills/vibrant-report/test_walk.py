@@ -60,7 +60,7 @@ def test_script(fails):
           "placeholders not filled", fails)
     check('"simp":' in out or "simp" in out, "per-cell metrics not embedded", fails)
     # references the card elements it drives
-    for hook in ("map-a", "map-b", "wv-bar", "vb-score", "mtog", "vb-rec"):
+    for hook in ("map-sph", "wv-bar", "vb-score", "mtog", "vb-rec"):
         check(hook in out, f"script does not reference {hook}", fails)
 
 
@@ -77,14 +77,14 @@ def test_no_em_dash(fails):
 
 def test_card_maps_interactive(fails):
     row = vr._card_maps(REPORT)
-    check("som-maps-row" in row, "no maps row", fails)
-    # two comparison panels (A and B), each an interactive fingerprint with an fx group.
-    check('id="map-a"' in row and 'id="map-b"' in row, "missing the two comparison panels", fails)
-    check('id="fp-a-label"' in row and 'id="fp-b-label"' in row, "missing the panel labels", fails)
-    check('data-r="2" data-c="2"' in row, "card cells not queryable", fails)
-    check(row.count("som-fx") >= 2, "each panel needs a JS-owned effects group", fails)
-    check('id="vb-rec"' in row, "no recommendation slot below the fingerprints", fails)
-    check('id="vb-detail"' in row, "no separate description/detail slot", fails)
+    # single spheroid fingerprint (A and B overlaid), with an fx group for the JS overlays.
+    check('id="map-sph"' in row, "missing the spheroid fingerprint", fails)
+    check('id="fp-a-label"' in row and 'id="fp-b-label"' in row, "missing the A/B legend", fails)
+    check('data-r="2" data-c="2"' in row, "spheroid cells not queryable", fails)
+    check("som-fx" in row, "spheroid needs a JS-owned effects group", fails)
+    check('id="fp-a-cap"' in row and 'id="fp-b-cap"' in row, "missing the per-selection captions", fails)
+    check('id="vb-rec"' in row, "no recommendation slot", fails)
+    check('id="vb-detail"' in row, "no overall explanation slot", fails)
 
 
 def test_hero_toggles(fails):
