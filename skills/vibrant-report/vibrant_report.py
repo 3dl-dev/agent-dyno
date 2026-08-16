@@ -571,8 +571,15 @@ def topline(metrics, numerator, denom_metrics=None):
     # the changes themselves is over-engineering-resistant. Complexity moves to a
     # BLOAT meter (per change) where over-engineering is exposed, not rewarded.
     functionality = numerator.get("durable_changes", numerator.get("total_changes", 0))
-    eq = round(functionality / out_mtok, 2) if out_mtok else None
     dcx = numerator.get("durable_complexity", numerator.get("net_complexity", 0))
+    # eq is now the CONTINUOUS numerator: surviving FUNCTIONALITY (durable decision points
+    # that stuck) per Mtok. It replaces the count of durable changes as the base measure,
+    # because a count is a team convention (commit/PR granularity) and fragile to tiny-sample
+    # lucky units, so it does not survive unseen data or stay comparable on the frontier. The
+    # count rides alongside as change_throughput. Over-engineering is guarded by the
+    # simplicity (density) axis, so a continuous functionality numerator is safe. See X5.
+    change_throughput = round(functionality / out_mtok, 2) if out_mtok else None
+    eq = round(dcx / out_mtok, 1) if out_mtok else None
     # bloat stays as a change-discipline meter (decision points per shipped change), but it
     # is NOT simplicity: it is blind to code density and, like efficiency, rewards making
     # more changes. simplicity is now a STOCK measure of the surviving code's density.
@@ -593,13 +600,11 @@ def topline(metrics, numerator, denom_metrics=None):
     # to convention (commit granularity) and to tiny-sample lucky units; eq_continuous is
     # not. Carried alongside eq so both accrue on the frontier and the data can adjudicate
     # which is the stabler efficiency numerator across unseen teams. See docs/claims.md X5.
-    eq_continuous = round(dcx / out_mtok, 1) if out_mtok else None
     return {"eq": eq,
-            "unit": "durable shipped changes per Mtok output",
+            "unit": "surviving decision points per Mtok output",
             "larger_is_better": True,
-            "functionality": functionality,
-            "eq_continuous": eq_continuous,  # surviving decision points per Mtok (continuous)
-            "eq_continuous_unit": "surviving decision points per Mtok output",
+            "functionality": functionality,  # durable changes (count), retained for reference
+            "change_throughput": change_throughput,  # count numerator, no longer the base
             "bloat": bloat,  # decision points per shipped change; a change-discipline meter
             "complexity_density": density,  # decision points per 1000 surviving lines
             "simplicity": simplicity,  # density mapped to 0..100, higher = simpler code
@@ -787,12 +792,13 @@ def timeline(metrics, all_fp=None, gran="week", shipped=None, complexity=None,
         survc = born - killed
         survkb = survc / 1024 if survc > 0 else 0.0
         # denominator: scoped output (measured-repo sessions) when provided, else all
-        # cells' output. eq is the HEADLINE measure: durable shipped CHANGES (units of
-        # work that landed and stuck) per Mtok output; complexity is a bloat cost, not
-        # the value, so it never enters eq. survkb stays a depth field.
+        # cells' output. eq is the HEADLINE measure: surviving FUNCTIONALITY (durable
+        # decision points that landed and stuck) per Mtok output, a CONTINUOUS numerator
+        # blind to how the work was chopped into commits/PRs; the count of durable changes
+        # rides alongside as `shipped`. survkb stays a depth field.
         out_mtok = (obk.get(k, 0.0) if out_by_day is not None
                     else sum(c["out_tok"] for c in cells)) / 1e6
-        eq = round(ship.get(k, 0) / out_mtok, 2) if out_mtok else None
+        eq = round(cxb.get(k, 0) / out_mtok, 1) if out_mtok else None
         fp = {"engine": modal([c["engine"] for c in cells]),
               "orchestrator": modal([c["model"] for c in cells]),
               "effort": modal([c["effort"] for c in cells])}
@@ -887,7 +893,8 @@ def frontier_eq(entry):
 def _rig_objective_metrics(metrics, attribution, misery_block):
     """Per rig (model_roles): the three objectives the descent can optimize, grounded
     in the by-rig git attribution so each SOM cell inherits its dominant setup's
-    numbers. efficiency = changes per Mtok output; simplicity = the complexity DENSITY
+    numbers. efficiency = surviving decision points per Mtok output (continuous, with the
+    change count alongside as eff_count); simplicity = the complexity DENSITY
     of that rig's surviving code (decision points per 1000 surviving lines) mapped to
     0..100; flow = 100 - misery. Any may be None when its input is missing."""
     out_by = defaultdict(float)
@@ -902,10 +909,10 @@ def _rig_objective_metrics(metrics, attribution, misery_block):
         ncx = v.get("net_complexity", 0)
         m_ = mis.get(rig)
         stats[rig] = {
-            "eff": round(commits / om, 2) if om else None,
-            # parallel continuous numerator (surviving decision points per Mtok), for the
-            # count-vs-continuous comparison; blind to commit/PR granularity.
-            "eff_cont": round(ncx / om, 1) if om else None,
+            # eff is the CONTINUOUS numerator (surviving decision points per Mtok), blind to
+            # commit/PR granularity; the count rides alongside as eff_count.
+            "eff": round(ncx / om, 1) if om else None,
+            "eff_count": round(commits / om, 2) if om else None,
             "simp": _density_simplicity(_surviving_lines(ncx, v.get("surviving", 0))),
             "flow": round(100 - m_, 1) if m_ is not None else None}
     return stats

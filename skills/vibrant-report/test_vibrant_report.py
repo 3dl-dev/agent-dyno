@@ -371,16 +371,20 @@ def main():
         # total surviving chars: s1 9216 + s2 14336 + s3 2048 + s4 14336 = 39936
         total_dollars = sum(costs)
         total_survkb = 39936 / 1024  # = 39.0 (still drives the lever math below)
-        # topline = FUNCTION (durable shipped changes) per Mtok OUTPUT, larger better.
-        # The fixture repo has 2 non-fix commits -> durable_changes 2; complexity (6)
-        # is now the BLOAT meter (6/2 = 3 decision points per change), never the eq.
-        # The denominator scopes to sessions whose proj names the repo: s1+s2+s3
-        # (proj "repo"); s4's output (proj "elsewhere") is excluded (item 2 join).
+        # topline eq = surviving FUNCTIONALITY (durable decision points) per Mtok OUTPUT,
+        # larger better (the continuous numerator). The fixture repo has 2 non-fix commits
+        # (durable_changes 2) carrying complexity 6 (durable_complexity 6); eq = 6/Mtok. The
+        # change count rides alongside as change_throughput = 2/Mtok. bloat (6/2 = 3) stays a
+        # change-discipline meter. The denominator scopes to sessions whose proj names the
+        # repo: s1+s2+s3 (proj "repo"); s4's output (proj "elsewhere") is excluded.
         matched_out = sum(s["main_usage"][s["model"]]["out_tok"]
                           for s in sessions if "repo" in s.get("proj", ""))
-        eq_expected = round(2 / (matched_out / 1e6), 2)  # durable_changes 2 / scoped-Mtok
+        eq_expected = round(6 / (matched_out / 1e6), 1)  # durable_complexity 6 / scoped-Mtok
         if rep["topline"]["eq"] != eq_expected:
             fails.append(f"topline EQ {rep['topline']['eq']} != {eq_expected}")
+        ct_expected = round(2 / (matched_out / 1e6), 2)  # change count / scoped-Mtok
+        if rep["topline"].get("change_throughput") != ct_expected:
+            fails.append(f"change_throughput {rep['topline'].get('change_throughput')} != {ct_expected}")
         if rep["topline"].get("bloat") != 3.0:
             fails.append(f"bloat should be 3.0 (complexity 6 / 2 changes), got "
                          f"{rep['topline'].get('bloat')}")
