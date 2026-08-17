@@ -2496,23 +2496,25 @@ def render_som_map(som_block, title="Where you work",
         cur_cell = som_block.get("current_cell")
         fs = 10 if compact else 12
         gap = fs * 1.55  # min vertical gap between two labels that overlap in x
-        rr = cell * 0.56  # a fill exactly the size of the cell hex: adjacent fills abut
+        crad = cell * 0.88  # soft radius: adjacent same-hue glows merge into one region
         tint_groups, lab_groups, any_drawn = [], [], False
         for li, L in enumerate(lenses):
             name, kind, hue = L["name"], L["kind"], L["hue"]
             tints, labs = [], []
             if kind == "cat":
-                # colour each cell by its category: adjacent same-category cells abut into a
-                # solid territory. The territories are NAMED in the legend below the maps, not
-                # on the map, so nothing competes with the always-on YOU / BEST marks.
+                # a SOFT glow per cell coloured by its category: adjacent same-category cells
+                # merge into one glowing region (types read as territories, not hard tiles;
+                # glows atmospherically on dark, stays gentle on light). The territories are
+                # NAMED in the legend below the maps, so nothing competes with YOU / BEST.
                 for cmi in cmeta:
                     k = L["key"](cmi)
                     if not k:
                         continue
                     cx, cy = center(*cmi["cell"])
                     any_drawn = True
-                    tints.append(f'<polygon points="{_hex_pts(cx, cy, rr)}" '
-                                 f'fill="{hue.get(k, "var(--muted)")}" opacity="0.30"/>')
+                    tints.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{crad:.1f}" '
+                                 f'fill="{hue.get(k, "var(--muted)")}" opacity="0.26" '
+                                 f'filter="url(#zblur)"/>')
             else:  # heat
                 cells = []
                 for i in idx:
@@ -2525,9 +2527,9 @@ def render_som_map(som_block, title="Where you work",
                     pr = _pct([v for _, _, v in cells])
                     for (cx, cy, _v), p in zip(cells, pr):
                         any_drawn = True
-                        op = 0.06 + 0.42 * (p ** 1.3)  # gamma: top cells pop, low fade out
-                        tints.append(f'<polygon points="{_hex_pts(cx, cy, rr)}" '
-                                     f'fill="{hue}" opacity="{op:.3f}"/>')
+                        op = 0.05 + 0.40 * (p ** 1.3)  # gamma: top cells glow, low fade out
+                        tints.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{crad:.1f}" '
+                                     f'fill="{hue}" opacity="{op:.3f}" filter="url(#zblur)"/>')
                     # no PEAK label: the darkest-green cell already reads as the peak, and a
                     # pin would collide with the always-on BEST mark (BEST == the eff peak when
                     # efficiency is the target).
@@ -2537,6 +2539,9 @@ def render_som_map(som_block, title="Where you work",
             lab_groups.append(f'<g class="som-lens-l" data-lens="{name}"{disp}>'
                               f'{"".join(labs)}</g>')
         if any_drawn:
+            zdefs = (f'<defs><filter id="zblur" x="-40%" y="-40%" width="180%" '
+                     f'height="180%"><feGaussianBlur stdDeviation="{cell * 0.40:.1f}"/>'
+                     f'</filter></defs>')
             lens_tints, lens_labels = "".join(tint_groups), "".join(lab_groups)
         # YOU: an always-on clay mark on your current cell, drawn over whatever lens is active.
         _, you_mark = _rig_zones(cmeta, center, hstep, cell, W, H, cur_cell, _best)
@@ -2556,8 +2561,8 @@ def render_som_map(som_block, title="Where you work",
         start = (cols - ncol) // 2
         return start, start + ncol
     parts = [f'<svg{idattr} viewBox="0 0 {W:.0f} {H:.0f}" role="img" aria-label="learned '
-             f'working-style map: hexagons in engine territories, with YOU and the '
-             f'target-best rig marked">', zdefs, '<g>']
+             f'working-style map: hexagons in soft engine territories, with YOU and the '
+             f'target-best rig marked">', zdefs, '<g>', lens_tints]
     for r in range(rows):
         c_lo, c_hi = _row_span(r)
         for c in range(cols):
@@ -2581,9 +2586,6 @@ def render_som_map(som_block, title="Where you work",
                 cx, cy, f'{dpos} fill="rgba({pal["cell"]},{op:.2f})" '
                 f'stroke="var(--line)" stroke-width="1"', title=cell_title))
     parts.append('</g>')
-    # the lens area fills ride ON TOP of the cells (flat, crisp), so adjacent same-value
-    # cells read as one solid territory rather than being hidden behind the cost shading.
-    parts.append(lens_tints)
     # deliberately no session-count dots and no history trail: they were mark types a
     # viewer could not decode. The map now carries only what reads at a glance: cost by
     # shade, where you are, and the direction to a cheaper setup.
@@ -2957,11 +2959,15 @@ _WALK_JS = r"""<script>
     if(R-L<6){var mm=(L+R)/2;L=mm-4;R=mm+4;}
     var gr=tg.getBoundingClientRect();var gcx=(gr.left+gr.right)/2-hr.left,gw=gr.width*0.30,tL=gcx-gw/2,tR=gcx+gw/2,tB=gr.bottom-hr.top;var my=(tB+T)/2;
     return '<path d="M'+tL.toFixed(1)+','+tB.toFixed(1)+' C'+tL.toFixed(1)+','+my.toFixed(1)+' '+L.toFixed(1)+','+my.toFixed(1)+' '+L.toFixed(1)+','+T.toFixed(1)+' L'+R.toFixed(1)+','+T.toFixed(1)+' C'+R.toFixed(1)+','+my.toFixed(1)+' '+tR.toFixed(1)+','+my.toFixed(1)+' '+tR.toFixed(1)+','+tB.toFixed(1)+' Z" fill="'+color+'" opacity="0.13"/>';}
-  // the big timeline->score->panel ribbon overlay was a pale full-card smudge that muddied
-  // the maps; the A/B colour coding (clay left, teal right) already ties each selection to
-  // its panel, so the ribbon is cut. Keep the hook as a no-op that clears any stale overlay.
+  // the sankey flows that tie the selectors to the readouts: B's timeline slice flows UP
+  // into the score, and each selection flows DOWN into its fingerprint panel. Soft, low
+  // opacity so it reads as atmosphere (glows on dark, stays faint on light), not a wall.
   function drawFlow(){var host=document.querySelector('.vibrant .card');if(!host)return;
-    var ov=host.querySelector('.flow-ov');if(ov)ov.innerHTML='';}
+    var ov=host.querySelector('.flow-ov');
+    if(!ov){ov=document.createElementNS('http://www.w3.org/2000/svg','svg');ov.setAttribute('class','flow-ov');host.insertBefore(ov,host.firstChild);}
+    var hr=host.getBoundingClientRect();if(hr.width<1)return;
+    ov.setAttribute('viewBox','0 0 '+hr.width.toFixed(1)+' '+hr.height.toFixed(1));
+    ov.innerHTML=upRibbon(selB,BCOL,hr)+panelRibbon(selA,document.getElementById('map-a'),ACOL,hr)+panelRibbon(selB,document.getElementById('map-b'),BCOL,hr);}
   // demoted in the comparison view: only a confident move shows, prefixed so it reads as
   // secondary advice about the current generation, not part of the A/B comparison.
   function setRec(e){if(!vbRec)return;var bc=best(e);

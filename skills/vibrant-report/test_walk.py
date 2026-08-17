@@ -106,8 +106,7 @@ def test_lens_overlays(fails):
     # two lenses, each a tint group and a label group per map; areas are crisp (no blur).
     check(row.count('class="som-lens-t"') == 4, "expected 2 area lenses on 2 maps", fails)
     check(row.count('class="som-lens-l"') == 4, "expected 2 label lenses on 2 maps", fails)
-    check("feGaussianBlur" not in row and "url(#zblur)" not in row,
-          "areas must be flat fills, not blurred smudges", fails)
+    check("url(#zblur)" in row, "areas should be soft glows (regionalization), not hard tiles", fails)
     # only the default (engine) shows; efficiency is display:none on both maps.
     check(row.count('data-lens="efficiency" style="display:none"') == 4,
           "non-default lens must start hidden", fails)
