@@ -2315,103 +2315,51 @@ def _rig_short(c):
     return f"{core} · {eng}"
 
 
-def _rig_zones(cmeta, ctr, hstep, cell, W, H, current_cell, bestfn):
-    """Partition the map into a FEW rig zones a viewer can hold at once: YOU (always), the
-    global BEST (always), and up to two other regional optima. Every cell joins the nearest
-    anchor; each zone's tint glows at its anchor and fades to the edge, showing how far that
-    rig's prevailing quality reaches. YOU and BEST are coloured (clay, green), the rest muted
-    so the eye lands on the two that matter. Each zone is NAMED in the taxonomy, tags on YOU
-    and BEST, so a viewer reads "you run this, the winning rig is that" in one vocabulary.
-    Returns (tints, labels)."""
-    q = {i: bestfn(i) for i in range(len(cmeta))}
-    ids = [i for i, v in q.items() if v is not None]
-    if len(ids) < 3:
-        return "", ""
-    pos = {i: ctr(*cmeta[i]["cell"]) for i in ids}
+def _hex_pts(cx, cy, rr):
+    """Flat point string for a hexagon centred at (cx, cy) with circumradius rr."""
+    return " ".join(f"{cx + rr * math.cos(math.radians(a)):.1f},"
+                    f"{cy - rr * math.sin(math.radians(a)):.1f}"
+                    for a in (90, 150, 210, 270, 330, 30))
 
-    def dist(a, b):
-        return math.hypot(pos[a][0] - pos[b][0], pos[a][1] - pos[b][1])
-    nd = hstep * 1.45  # immediate hex-neighbour radius
-    nbr = {i: [j for j in ids if j != i and dist(i, j) < nd] for i in ids}
-    # local optima, highest first; drop an optimum adjacent to a stronger one (one peak per hill)
-    opt = sorted((i for i in ids if all(q[i] >= q[j] for j in nbr[i])), key=lambda i: -q[i])
-    kept = []
-    for i in opt:
-        if all(dist(i, k) >= nd for k in kept):
-            kept.append(i)
-    if not kept:
+
+def _mark_hex(cx, cy, rr, col, tag, rig, W, H):
+    """One clean, high-contrast cell mark: a light fill and a bold ring on the hex, and a
+    two-line label (TAG over rig) anchored above the hex when there is room, else below,
+    always clamped inside the frame. No blur, no tint field. This is the whole vocabulary of
+    the map's marks."""
+    pts = _hex_pts(cx, cy, rr)
+    fs = 11
+    halfw = max(3, len(rig)) * fs * 0.30 + 5
+    lx = min(max(cx, halfw + 3), W - halfw - 3)
+    if (cy - rr - 30) > 2:                 # room above: rig near the hex, tag over it
+        rig_y = cy - rr - 8
+        tag_y = rig_y - (fs + 3)
+    else:                                  # near the top edge: drop the label below
+        tag_y = min(cy + rr + 16, H - fs - 5)
+        rig_y = tag_y + fs + 3
+    lab = (f'<text x="{lx:.1f}" y="{tag_y:.1f}" text-anchor="middle" font-size="{fs + 1}" '
+           f'font-weight="800" letter-spacing="0.1em" paint-order="stroke" '
+           f'stroke="var(--card)" stroke-width="3.5" stroke-linejoin="round" '
+           f'fill="{col}">{_html.escape(tag)}</text>'
+           + _lens_label(lx, rig_y, fs, col, _html.escape(rig)))
+    return (f'<polygon points="{pts}" fill="{col}" opacity="0.18"/>'
+            f'<polygon points="{pts}" fill="none" stroke="{col}" stroke-width="3.4"/>{lab}')
+
+
+def _rig_zones(cmeta, ctr, hstep, cell, W, H, current_cell, bestfn):
+    """Mark where YOU work, and nothing else. One bold clay hex on your current cell with
+    its rig named above. No tint washes (blur behind data reads as a smudge, not a region)
+    and no secondary optima (they only crowd the map). BEST is drawn client-side, reactive
+    to the score arms. Returns ("", ontop): a single clean mark in the top layer."""
+    if not current_cell:
         return "", ""
-    you = None
-    if current_cell:
-        you = next((i for i in ids if list(cmeta[i]["cell"]) == list(current_cell)), None)
-    # anchors: YOU (where your work concentrates, always) plus up to two other regional optima
-    # to NAME the terrain. The global BEST is NOT baked here: it depends on which score arms
-    # are enabled, so it is drawn client-side and reacts to the toggles. Skip the top optimum
-    # (that is usually the default BEST) and YOUR own rig from the named optima, to avoid a
-    # muted label sitting under the live green BEST marker.
-    anchors, used = [], set()
-    if you is not None:
-        anchors.append(you)
-        used.add(_rig_short(cmeta[you]))
-    for o in kept[1:]:
-        if len(anchors) >= 3:
-            break
-        rig = _rig_short(cmeta[o])
-        if o not in anchors and rig not in used:
-            anchors.append(o)
-            used.add(rig)
-    if not anchors:
-        anchors = [kept[0]]
-    zone = {i: min(anchors, key=lambda s: dist(i, s)) for i in ids}
-    reach = {s: max([dist(i, s) for i in ids if zone[i] == s] or [1.0]) for s in anchors}
-    muted = ["#6E8BA0", "#9A8B6E", "#8A7A9B"]  # named optima: present but quiet
-    hue, mi = {}, 0
-    for s in anchors:
-        if s == you:
-            hue[s] = "#B0553A"          # you: clay, the one region that reads boldly
-        else:
-            hue[s] = muted[mi % len(muted)]
-            mi += 1
-    crad = cell * 0.88
-    tints = []
-    for i in ids:
-        s = zone[i]
-        near = max(0.0, 1.0 - dist(i, s) / (reach[s] + 1e-6))  # 1 at anchor, 0 at edge
-        prom = 1.0 if s == you else 0.4  # YOUR zone reads clearly; named optima stay quiet
-        op = 0.04 + 0.38 * near * prom
-        cx, cy = pos[i]
-        tints.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{crad:.1f}" fill="{hue[s]}" '
-                     f'opacity="{op:.3f}" filter="url(#zblur)"/>')
-    # labels: ONLY YOU is named on the static terrain (clay). The named optima contribute a
-    # quiet tint but no text, and BEST is drawn client-side (green, reactive). Two labels max
-    # keeps the regions legible instead of a crowd of names fighting near one corner.
-    fs = 10
-    lineh = fs * 2.7
-    order = [you] if you is not None else anchors[:1]
-    labs, boxes = [], []
-    for s in order:
-        rig = _rig_short(cmeta[s])
-        tag = "YOU" if s == you else ""
-        halfw = max(len(rig), len(tag)) * fs * 0.30 + 4
-        cx = min(max(pos[s][0], halfw + 3), W - halfw - 3)
-        cy = min(max(pos[s][1], cell * 1.2), H - cell * 0.7)
-        for _ in range(24):
-            hit = next((b for b in boxes if abs(cy - b[1]) < lineh and abs(cx - b[0]) < halfw + b[2]), None)
-            if not hit:
-                break
-            cy = hit[1] + lineh if cy >= hit[1] else hit[1] - lineh
-        cy = min(max(cy, cell * 1.2), H - cell * 0.7)
-        boxes.append((cx, cy, halfw))
-        col = hue[s]
-        out = ""
-        if tag:
-            out += (f'<text x="{cx:.1f}" y="{cy - fs * 0.72:.1f}" text-anchor="middle" '
-                    f'font-size="{fs + 1}" font-weight="800" letter-spacing="0.09em" '
-                    f'paint-order="stroke" stroke="var(--card)" stroke-width="3" '
-                    f'stroke-linejoin="round" fill="{col}">{_html.escape(tag)}</text>')
-        out += _lens_label(cx, cy + (fs * 0.72 if tag else 0), fs, col, _html.escape(rig))
-        labs.append(out)
-    return "".join(tints), "".join(labs)
+    you = next((i for i in range(len(cmeta))
+                if list(cmeta[i]["cell"]) == list(current_cell)), None)
+    if you is None:
+        return "", ""
+    cx, cy = ctr(*cmeta[you]["cell"])
+    return "", _mark_hex(cx, cy, cell * 0.56, "#B0553A", "YOU",
+                         _rig_short(cmeta[you]), W, H)
 
 
 def render_som_map(som_block, title="Where you work",
@@ -3030,12 +2978,11 @@ _WALK_JS = r"""<script>
     if(R-L<6){var mm=(L+R)/2;L=mm-4;R=mm+4;}
     var gr=tg.getBoundingClientRect();var gcx=(gr.left+gr.right)/2-hr.left,gw=gr.width*0.30,tL=gcx-gw/2,tR=gcx+gw/2,tB=gr.bottom-hr.top;var my=(tB+T)/2;
     return '<path d="M'+tL.toFixed(1)+','+tB.toFixed(1)+' C'+tL.toFixed(1)+','+my.toFixed(1)+' '+L.toFixed(1)+','+my.toFixed(1)+' '+L.toFixed(1)+','+T.toFixed(1)+' L'+R.toFixed(1)+','+T.toFixed(1)+' C'+R.toFixed(1)+','+my.toFixed(1)+' '+tR.toFixed(1)+','+my.toFixed(1)+' '+tR.toFixed(1)+','+tB.toFixed(1)+' Z" fill="'+color+'" opacity="0.13"/>';}
+  // the big timeline->score->panel ribbon overlay was a pale full-card smudge that muddied
+  // the maps; the A/B colour coding (clay left, teal right) already ties each selection to
+  // its panel, so the ribbon is cut. Keep the hook as a no-op that clears any stale overlay.
   function drawFlow(){var host=document.querySelector('.vibrant .card');if(!host)return;
-    var ov=host.querySelector('.flow-ov');
-    if(!ov){ov=document.createElementNS('http://www.w3.org/2000/svg','svg');ov.setAttribute('class','flow-ov');host.insertBefore(ov,host.firstChild);}
-    var hr=host.getBoundingClientRect();if(hr.width<1)return;
-    ov.setAttribute('viewBox','0 0 '+hr.width.toFixed(1)+' '+hr.height.toFixed(1));
-    ov.innerHTML=upRibbon(selB,BCOL,hr)+panelRibbon(selA,document.getElementById('map-a'),ACOL,hr)+panelRibbon(selB,document.getElementById('map-b'),BCOL,hr);}
+    var ov=host.querySelector('.flow-ov');if(ov)ov.innerHTML='';}
   // demoted in the comparison view: only a confident move shows, prefixed so it reads as
   // secondary advice about the current generation, not part of the A/B comparison.
   function setRec(e){if(!vbRec)return;var bc=best(e);
@@ -3065,14 +3012,14 @@ _WALK_JS = r"""<script>
   // toggle (unlike the static YOU / named-optima terrain). Drawn as a green crown on both
   // maps; the rig-zones lens shows it, the other lenses hide it. This is what makes toggling
   // an optimization target actually move "best".
-  function renderBestZones(e){var bc=best(e),h='';
-    if(bc){var p=pts(bc.r,bc.c),c=ctr(bc.r,bc.c);
-      if(p&&c){var GB='#2F7D57';                                 // a clean green crown; the
-        var vb=svg.viewBox.baseVal,W=vb.width,Hh=vb.height;      // rig is named in the detail
-        var lx=Math.min(Math.max(c.x,16),W-16);                  // line below (no map clutter)
-        var ly=Math.min(c.y+c.r+13,Hh-6);
-        h='<polygon points="'+p+'" fill="none" stroke="'+GB+'" stroke-width="3.2"/>'
-         +'<text x="'+lx.toFixed(1)+'" y="'+ly.toFixed(1)+'" text-anchor="middle" font-size="11.5" font-weight="800" letter-spacing="0.1em" paint-order="stroke" stroke="var(--card)" stroke-width="3.5" stroke-linejoin="round" fill="'+GB+'">BEST</text>';}}
+  function renderBestZones(e){var bc=best(e),h='';                // matches the YOU mark: a
+    if(bc){var p=pts(bc.r,bc.c),c=ctr(bc.r,bc.c);                 // light fill + bold ring, tag
+      if(p&&c){var GB='#2F7D57',vb=svg.viewBox.baseVal;          // BELOW (YOU sits above), rig
+        var lx=Math.min(Math.max(c.x,20),vb.width-20);           // named in the detail line
+        var ty=(c.y+c.r+18<vb.height-2)?(c.y+c.r+15):(c.y-c.r-8); // below, or above near the edge
+        h='<polygon points="'+p+'" fill="'+GB+'" opacity="0.18"/>'
+         +'<polygon points="'+p+'" fill="none" stroke="'+GB+'" stroke-width="3.4"/>'
+         +'<text x="'+lx.toFixed(1)+'" y="'+ty.toFixed(1)+'" text-anchor="middle" font-size="12" font-weight="800" letter-spacing="0.1em" paint-order="stroke" stroke="var(--card)" stroke-width="3.5" stroke-linejoin="round" fill="'+GB+'">BEST</text>';}}
     [svg.querySelector('.zbest'),mapB.querySelector('.zbest')].forEach(function(g){if(g)g.innerHTML=h;});}
   // the OVERALL explanation (below the pair): the canonical meaning, once and short. The
   // per-print specifics are the two captions above it; the comparison is reading them.
