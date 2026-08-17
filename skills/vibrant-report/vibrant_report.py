@@ -1166,6 +1166,11 @@ def som_map(metrics, som_cache, move, field_window_days=14, now_day=None,
         # win on eff (surviving per token) while carrying almost no load. The recommender uses
         # it so a bicycle is never advised over a truck. See _recommend_cells.
         cargo = sum(max(0, (m.get("born") or 0) - (m.get("killed") or 0)) for m in ms)
+        # coordination (session-features@3): how much this cell's sessions had sibling workers
+        # share files vs silo. Mean over the sessions that carry the signal; None when none do
+        # (solo sessions, or data extracted before worker_files) so the map draws no core.
+        coords = [m["coordination"] for m in ms if m.get("coordination") is not None]
+        coord = round(sum(coords) / len(coords), 4) if coords else None
         cell_meaning.append({
             "cell": [r, c],
             "engine": modal([m.get("engine") for m in ms]),
@@ -1174,6 +1179,7 @@ def som_map(metrics, som_cache, move, field_window_days=14, now_day=None,
             "effort": modal([m.get("effort") for m in ms]),
             "sessions": len(ms),
             "cargo": cargo,
+            "coord": coord,
             "cost": field[r][c],
             "eff": obj.get("eff"),
             "flow": (round(sum(cell_flows) / len(cell_flows), 1) if cell_flows
@@ -2373,6 +2379,10 @@ def _rig_zones(cmeta, ctr, hstep, cell, W, H, current_cell, bestfn):
 _CIV_TERR = {"solo": ("#3F6E8E", "#6FA0C6"), "delegate": ("#8A6D4B", "#C9A06A"),
              "workflow": ("#6E5A8A", "#A98BD0")}
 _CIV_YOU = "#C56A4C"
+# the coordination "core": a bright inner hex sized by how much a rig's sibling workers
+# share files (session-features@3 coordination axis). Solo cells have no core (a single
+# actor cannot coordinate). Neutral by construction: bright is not "better", survival judges.
+_CIV_COORD = "#6FD6C9"
 
 
 def _civ_nbrs(r, c):
@@ -2412,10 +2422,14 @@ def render_civ_map(som_block, svg_id=None, compact=True):
 
     def poly(cx, cy):
         return " ".join(f"{x:.1f},{y:.1f}" for x, y in verts(cx, cy))
+
+    def poly_in(cx, cy, rf):
+        return " ".join(f"{cx + (x - cx) * rf:.1f},{cy + (y - cy) * rf:.1f}"
+                        for x, y in verts(cx, cy))
     W = pad * 2 + cell / 2 + (cols - 1) * hstep + hstep / 2 + cell / 2
     H = pad * 2 + cell / 2 + (rows - 1) * vstep + cell / 2
 
-    glow, fills, cells, borders, zg = [], [], [], [], {}
+    glow, fills, cells, cores, borders, zg = [], [], [], [], [], {}
     for (r, c), e in eng.items():
         cx, cy = ctr(r, c)
         V = verts(cx, cy)
@@ -2430,6 +2444,13 @@ def render_civ_map(som_block, svg_id=None, compact=True):
         cells.append(f'<polygon class="civ-cell" data-r="{r}" data-c="{c}" '
                      f'points="{poly(cx, cy)}" fill="rgba(18,18,20,{cop:.2f})" '
                      f'stroke="rgba(160,160,170,0.10)" stroke-width="1"/>')
+        # coordination core: an inner hex sized (and brightened) by the cell's coordination.
+        # None/absent (older data) or ~0 (siloed / solo) draws nothing.
+        co = cm[(r, c)].get("coord")
+        if isinstance(co, (int, float)) and co > 0.02:
+            co = min(1.0, co)
+            cores.append(f'<polygon points="{poly_in(cx, cy, 0.20 + 0.55 * co)}" '
+                         f'fill="{_CIV_COORD}" opacity="{0.5 + 0.35 * co:.2f}"/>')
         for i, nb in enumerate(_civ_nbrs(r, c)):
             if eng.get(nb) != e:  # this edge is on the territory boundary: draw a border
                 a, b = V[i], V[(i + 1) % 6]
@@ -2460,7 +2481,7 @@ def render_civ_map(som_block, svg_id=None, compact=True):
             f'current timeline selection">{defs}'
             f'<g pointer-events="none">{"".join(glow)}{"".join(fills)}</g>'
             f'{"".join(cells)}'
-            f'<g pointer-events="none">{"".join(borders)}{"".join(labels)}</g>'
+            f'<g pointer-events="none">{"".join(cores)}{"".join(borders)}{"".join(labels)}</g>'
             f'<g class="zciv" pointer-events="none"></g></svg>')
 
 
@@ -3139,7 +3160,8 @@ _WALK_JS = r"""<script>
   // hovering a territory cell decodes exactly which rig it is; leaving restores the summary.
   svg.querySelectorAll('.civ-cell').forEach(function(cl){
     cl.addEventListener('mouseenter',function(){if(!vbDetail)return;var c=cell(cl.getAttribute('data-r'),cl.getAttribute('data-c'));
-      vbDetail.innerHTML=c?('<b>'+setup(c)+'</b>'+MID+(c.sessions||0)+' session'+(c.sessions==1?'':'s')+MID+money(c.cost)+' per KB'+MID+'efficiency '+(c.eff==null?'n/a':c.eff)+MID+'flow '+(c.flow==null?'n/a':c.flow)+MID+'simplicity '+(c.simp==null?'n/a':c.simp)):'an unused setup, no sessions here';});
+      var co=(c&&c.coord!=null)?(MID+'<span style="color:#6FD6C9">coordination '+c.coord.toFixed(2)+(c.coord<0.05?' (siloed)':(c.coord>=0.5?' (shared core)':''))+'</span>'):'';
+      vbDetail.innerHTML=c?('<b>'+setup(c)+'</b>'+MID+(c.sessions||0)+' session'+(c.sessions==1?'':'s')+MID+money(c.cost)+' per KB'+MID+'efficiency '+(c.eff==null?'n/a':c.eff)+MID+'flow '+(c.flow==null?'n/a':c.flow)+MID+'simplicity '+(c.simp==null?'n/a':c.simp)+co):'an unused setup, no sessions here';});
     cl.addEventListener('mouseleave',function(){refresh();});});
   MK.forEach(function(m){var b=tog(m);if(!b)return;
     b.addEventListener('mouseenter',function(){PV=m;refresh();});
@@ -3293,7 +3315,8 @@ def render_walk(report):
               "flow": m.get("flow"), "simp": m.get("simp"), "cost": m.get("cost"),
               "engine": m.get("engine"), "model": m.get("model"),
               "worker": m.get("worker"), "effort": m.get("effort"),
-              "cargo": m.get("cargo"), "sessions": m.get("sessions")}
+              "cargo": m.get("cargo"), "coord": m.get("coord"),
+              "sessions": m.get("sessions")}
              for m in som.get("cell_meaning", [])]
     tl, mb = report.get("topline") or {}, report.get("misery") or {}
     agg = {"eff": tl.get("eq"), "flow": mb.get("flow"), "simp": tl.get("simplicity")}
@@ -3329,7 +3352,9 @@ def _card_maps(report):
               + "".join(f'<span><i style="background:{TERR[0]};border-color:{TERR[1]}"></i>'
                         f'{eng}</span>' for eng, TERR in _CIV_TERR.items())
               + f'<span class="civ-you"><b style="color:{_CIV_YOU}">&#9733;</b> you</span>'
-              + '<span class="civ-best"><b>&#11041;</b> best rig for your target</span></div>')
+              + '<span class="civ-best"><b>&#11041;</b> best rig for your target</span>'
+              + f'<span><i style="background:{_CIV_COORD};border-color:{_CIV_COORD}"></i>'
+              + 'coordination core (workers share files)</span></div>')
     foot = ('<div class="vb-detail" id="vb-detail"></div>'
             '<div class="vb-rec" id="vb-rec"></div>')
     return f'<div class="civ-wrap">{civ}</div>{legend}{foot}'
