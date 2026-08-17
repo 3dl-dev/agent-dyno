@@ -168,6 +168,28 @@ def test_recommend_noise_gate(fails):
     check(r3["ok"] is False, "recommended a move to the cell you are already on", fails)
 
 
+def test_recommend_cargo_bicycle(fails):
+    # The bicycle rule: a lean cell with huge per-token efficiency but almost no cargo (durable
+    # work moved) must NOT be recommended over the workhorse you run, which carries the load.
+    bike = {"r": 0, "c": 0, "eff": 1000.0, "flow": 60.0, "simp": 60.0, "sessions": 12, "cargo": 120}
+    truck = {"r": 1, "c": 1, "eff": 200.0, "flow": 65.0, "simp": 62.0, "sessions": 14, "cargo": 12000}
+    mid = {"r": 2, "c": 2, "eff": 300.0, "flow": 66.0, "simp": 64.0, "sessions": 10, "cargo": 9000}
+    cells = [bike, truck, mid]
+    # Without cargo measured, efficiency crowns the bike (this is the bug we are fixing).
+    nocargo = [{k: v for k, v in c.items() if k != "cargo"} for c in cells]
+    check(vr._recommend_cells(nocargo, current_cell=[1, 1])["eff"]["cell"] == [0, 0],
+          "fixture: bike should win on raw efficiency when cargo is unmeasured", fails)
+    # With cargo, from the truck the bike carries < half your load, so it is ineligible
+    # for EVERY objective; efficiency now picks the cell that actually moves the cargo.
+    rec = vr._recommend_cells(cells, current_cell=[1, 1])
+    for k, v in rec.items():
+        check(v["cell"] != [0, 0], "bike recommended for " + k + " despite tiny cargo", fails)
+    check(rec["eff"]["cell"] == [2, 2], "eff should pick the load-carrying cell, not the bike", fails)
+    # The guard only tightens: from a cell with no cargo baseline it does not fire.
+    nb = vr._recommend_cells(cells, current_cell=None)
+    check(nb["eff"]["cell"] == [0, 0], "with no load baseline the guard must not exclude", fails)
+
+
 def test_rank_opacity_spreads(fails):
     # The dynamic shade ranks values, so a clumped-cheap distribution with one costly
     # outlier does NOT collapse the cheap cluster onto the floor (the washout a fixed
@@ -257,7 +279,8 @@ def main():
     for t in (test_empty, test_script, test_no_external_refs, test_no_em_dash,
               test_card_maps_interactive, test_hero_toggles,
               test_recommend_ignores_noise,
-              test_recommend_noise_gate, test_rank_opacity_spreads,
+              test_recommend_noise_gate, test_recommend_cargo_bicycle,
+              test_rank_opacity_spreads,
               test_timeline_periods_era_smoothed, test_era_occupancy_cloud,
               test_determinism):
         t(fails)

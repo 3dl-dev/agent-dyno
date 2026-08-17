@@ -1161,6 +1161,11 @@ def som_map(metrics, som_cache, move, field_window_days=14, now_day=None,
         # flow is directly per-cell (misery is per session); efficiency and simplicity
         # come from the cell's dominant setup (they are git-attributed by rig).
         cell_flows = [100 - m["misery"] for m in ms if m.get("misery") is not None]
+        # cargo: the durable work this cell actually moved (net surviving complexity over its
+        # own sessions). This is the throughput axis efficiency is blind to: a lean cell can
+        # win on eff (surviving per token) while carrying almost no load. The recommender uses
+        # it so a bicycle is never advised over a truck. See _recommend_cells.
+        cargo = sum(max(0, (m.get("born") or 0) - (m.get("killed") or 0)) for m in ms)
         cell_meaning.append({
             "cell": [r, c],
             "engine": modal([m.get("engine") for m in ms]),
@@ -1168,6 +1173,7 @@ def som_map(metrics, som_cache, move, field_window_days=14, now_day=None,
             "worker": modal([m.get("worker") for m in ms]),
             "effort": modal([m.get("effort") for m in ms]),
             "sessions": len(ms),
+            "cargo": cargo,
             "cost": field[r][c],
             "eff": obj.get("eff"),
             "flow": (round(sum(cell_flows) / len(cell_flows), 1) if cell_flows
@@ -3141,10 +3147,20 @@ _WALK_JS = r"""<script>
 </script>"""
 
 
-def _recommend_cells(cells, current_cell=None, support_k=4.0, noise_k=1.0):
+def _recommend_cells(cells, current_cell=None, support_k=4.0, noise_k=1.0,
+                     cargo_floor=0.5):
     """For each non-empty objective subset of (eff, flow, simp): the best cell to move
-    toward, and whether recommending that move is actually warranted. Three honesty
+    toward, and whether recommending that move is actually warranted. Four honesty
     rules keep the recommendation from chasing noise:
+
+    - Cargo (the bicycle rule): efficiency is surviving work PER TOKEN, a scale-invariant
+      ratio, so a lean rig that moved almost nothing can out-score the workhorse that
+      carries your real load (a bicycle beats a truck on fuel per mile, but cannot haul
+      the cargo). A cell is eligible only if it moved at least `cargo_floor` of the durable
+      work (net surviving complexity) your CURRENT cell moves. A rig that has never carried
+      your load is never advised as an upgrade. Skipped when the current cell has no cargo
+      baseline or a cell lacks the field (older data), so it only ever tightens, never
+      breaks.
 
     - Full coverage: a cell is eligible only if it has a value for EVERY enabled
       dimension. A missing dimension (e.g. a cell never babysitting-scored, so flow
@@ -3201,11 +3217,23 @@ def _recommend_cells(cells, current_cell=None, support_k=4.0, noise_k=1.0):
         want = list(current_cell)
         cur = next((c for c in cells if [c["r"], c["c"]] == want), None)
 
+    # the bicycle rule: a candidate must carry a comparable load to where you are now.
+    cur_cargo = cur.get("cargo") if cur else None
+
+    def cargo_ok(c):
+        if not cur_cargo or cur_cargo <= 0:
+            return True  # no load baseline -> nothing to protect
+        cc = c.get("cargo")
+        if cc is None:
+            return True  # cargo not measured for this cell (older data) -> do not exclude
+        return cc >= cargo_floor * cur_cargo
+
     subsets = [("eff",), ("flow",), ("simp",), ("eff", "flow"), ("eff", "simp"),
                ("flow", "simp"), ("eff", "flow", "simp")]
     out = {}
     for subset in subsets:
-        scored = [(c, raw(c, subset)) for c in cells if (c.get("sessions") or 0) >= 2]
+        scored = [(c, raw(c, subset)) for c in cells
+                  if (c.get("sessions") or 0) >= 2 and cargo_ok(c)]
         scored = [(c, g) for c, g in scored if g is not None]
         best_c, best_sel = None, -1.0
         for c, g in scored:
@@ -3248,7 +3276,8 @@ def render_walk(report):
               "flow": m.get("flow"), "simp": m.get("simp"), "cost": m.get("cost"),
               "engine": m.get("engine"), "model": m.get("model"),
               "worker": m.get("worker"), "effort": m.get("effort"),
-              "sessions": m.get("sessions")} for m in som.get("cell_meaning", [])]
+              "cargo": m.get("cargo"), "sessions": m.get("sessions")}
+             for m in som.get("cell_meaning", [])]
     tl, mb = report.get("topline") or {}, report.get("misery") or {}
     agg = {"eff": tl.get("eq"), "flow": mb.get("flow"), "simp": tl.get("simplicity")}
 
