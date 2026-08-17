@@ -2325,7 +2325,7 @@ def render_spheroid_map(som_block, svg_id="map-sph", compact=True):
 
     W, H = (440, 250) if compact else (560, 320)  # LANDSCAPE
     cx0, cy0, Rx, Ry = W / 2, H / 2, W * 0.40, H * 0.37
-    base_rr = min(Rx, Ry) / 6.5
+    base_rr = min(Rx, Ry) / 10.0  # small position anchors; the blobs carry the density
 
     def hexpts(cx, cy, rr):
         return " ".join(f"{cx + rr * math.cos(math.radians(a)):.1f},"
@@ -2345,16 +2345,16 @@ def render_spheroid_map(som_block, svg_id="map-sph", compact=True):
             f'stroke="var(--line)" stroke-width="1" stroke-dasharray="2 3" opacity="0.6"/>'
             f'<circle cx="{cx0:.0f}" cy="{cy0:.0f}" r="3" fill="none" stroke="var(--muted)" '
             f'stroke-width="1.3"/>')
-    lab = (f'<text x="{cx0 - Rx:.0f}" y="{cy0 + 13:.0f}" font-size="9" '
-           f'fill="var(--muted)">solo</text>'
-           f'<text x="{cx0 + Rx:.0f}" y="{cy0 + 13:.0f}" text-anchor="end" font-size="9" '
-           f'fill="var(--muted)">workflow</text>'
-           f'<text x="{cx0 + 4:.0f}" y="{cy0 - Ry + 9:.0f}" font-size="9" '
-           f'fill="var(--muted)">heavier firepower</text>'
-           f'<text x="{cx0 + 4:.0f}" y="{cy0 + Ry - 2:.0f}" font-size="9" '
-           f'fill="var(--muted)">leaner firepower</text>'
-           f'<text x="{cx0:.0f}" y="{cy0 - 6:.0f}" text-anchor="middle" font-size="9" '
-           f'fill="var(--muted)">your norm</text>')
+
+    def _lbl(x, y, s, anchor="start"):  # a paper halo so labels read over the blobs
+        return (f'<text x="{x:.0f}" y="{y:.0f}" text-anchor="{anchor}" font-size="9" '
+                f'paint-order="stroke" stroke="var(--card)" stroke-width="3.5" '
+                f'stroke-linejoin="round" fill="var(--muted)">{s}</text>')
+    lab = (_lbl(cx0 - Rx, cy0 + 13, "solo")
+           + _lbl(cx0 + Rx, cy0 + 13, "workflow", "end")
+           + _lbl(cx0 + 4, cy0 - Ry + 9, "heavier firepower")
+           + _lbl(cx0 + 4, cy0 + Ry - 2, "leaner firepower")
+           + _lbl(cx0, cy0 - 6, "your norm", "middle"))
     terrain = []
     for r, c, sx, fp in data:
         px = cx0 + ((sx - nx) / sxmax) * Rx * 0.92
@@ -2901,20 +2901,22 @@ _WALK_JS = r"""<script>
     if(bc&&recOk(e)){vbRec.innerHTML='to improve the current generation for '+objName(e)+': <span class="rec-arrow">'+REC+'</span> shift toward <b>'+setup(bc)+'</b>';return;}
     vbRec.innerHTML='';}
   // soft DENSITY BLOBS for one selection: a radial-gradient disc per occupied cell, sized by
-  // how many sessions landed there; overlapping discs merge into one cloud (B).
+  // how many sessions landed there. Kept tight so A and B stay distinguishable in the overlap.
   function cloudBlobs(sel,grad){var h='';selCells(sel).forEach(function(cc){var m=ctr(cc.r,cc.c);if(!m)return;var w=cc.w||1;
-    var rr=((m.r||8)*(1.6+w*1.8)).toFixed(1);h+='<circle cx="'+m.x.toFixed(1)+'" cy="'+m.y.toFixed(1)+'" r="'+rr+'" fill="url(#'+grad+')"/>';});return h;}
+    var rr=((m.r||6)*(0.9+w*0.9)).toFixed(1);h+='<circle cx="'+m.x.toFixed(1)+'" cy="'+m.y.toFixed(1)+'" r="'+rr+'" fill="url(#'+grad+')"/>';});return h;}
   // the projected center of mass of a selection (weighted mean of its cell centres).
   function fpCentroid(sel){var sx=0,sy=0,w=0;selCells(sel).forEach(function(cc){var m=ctr(cc.r,cc.c);if(!m)return;var ww=cc.w||1;sx+=m.x*ww;sy+=m.y*ww;w+=ww;});return w?{x:sx/w,y:sy/w}:null;}
-  // the DRIFT arrow between the two selections' centres of mass (A -> B), the shift.
-  function driftArrow(a,b){if(!a||!b)return '';var dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);if(d<5)return '';
-    var ux=dx/d,uy=dy/d,px=-uy,py=ux,hh=7,tx=b.x,ty=b.y,bx=tx-ux*hh,by=ty-uy*hh;
-    return '<circle cx="'+a.x.toFixed(1)+'" cy="'+a.y.toFixed(1)+'" r="3" fill="'+ACOL+'"/>'
-      +'<line x1="'+a.x.toFixed(1)+'" y1="'+a.y.toFixed(1)+'" x2="'+bx.toFixed(1)+'" y2="'+by.toFixed(1)+'" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" opacity="0.55"/>'
-      +'<polygon points="'+tx.toFixed(1)+','+ty.toFixed(1)+' '+(bx+px*4).toFixed(1)+','+(by+py*4).toFixed(1)+' '+(bx-px*4).toFixed(1)+','+(by-py*4).toFixed(1)+'" fill="'+BCOL+'"/>';}
-  // one view: B (teal) and A (clay) density blobs overlaid, plus the drift arrow between them.
-  function renderCombined(){if(!fx)return;
-    fx.innerHTML=cloudBlobs(selB,'blobB')+cloudBlobs(selA,'blobA')+driftArrow(fpCentroid(selA),fpCentroid(selB));}
+  // the DRIFT arrow between the two selections' centres of mass (A -> B): just the shaft +
+  // head; the crisp centroid dots (added in renderCombined) mark the two ends.
+  function driftArrow(a,b){if(!a||!b)return '';var dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);if(d<6)return '';
+    var ux=dx/d,uy=dy/d,px=-uy,py=ux,hh=7,tx=b.x-ux*6,ty=b.y-uy*6,bx=tx-ux*hh,by=ty-uy*hh,sx=a.x+ux*6,sy=a.y+uy*6;
+    return '<line x1="'+sx.toFixed(1)+'" y1="'+sy.toFixed(1)+'" x2="'+bx.toFixed(1)+'" y2="'+by.toFixed(1)+'" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" opacity="0.55"/>'
+      +'<polygon points="'+tx.toFixed(1)+','+ty.toFixed(1)+' '+(bx+px*4).toFixed(1)+','+(by+py*4).toFixed(1)+' '+(bx-px*4).toFixed(1)+','+(by-py*4).toFixed(1)+'" fill="var(--ink)" opacity="0.7"/>';}
+  // one view: soft B/A density blobs, the drift arrow, and CRISP centroid dots on top so the
+  // two generations stay legible even where the clouds overlap.
+  function dot(p,color){return p?('<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="4.5" fill="'+color+'" stroke="var(--card)" stroke-width="1.5"/>'):'';}
+  function renderCombined(){if(!fx)return;var ca=fpCentroid(selA),cb=fpCentroid(selB);
+    fx.innerHTML=cloudBlobs(selB,'blobB')+cloudBlobs(selA,'blobA')+driftArrow(ca,cb)+dot(cb,BCOL)+dot(ca,ACOL);}
   function panelLabel(sel,role){var k=selKind(sel);
     var pre=(role==='A'?(HELD?'held ':(k==='generation'?'previous ':'')):(k==='generation'?'current ':''));
     return pre+k+MID+selLabel(sel);}
