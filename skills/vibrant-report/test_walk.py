@@ -94,29 +94,28 @@ def test_card_maps_interactive(fails):
 
 
 def test_lens_overlays(fails):
-    # Lenses toggle on BOTH maps from one bar. The DEFAULT is rig zones: the map speaks
-    # the rig taxonomy, YOU and BEST tagged and named, so a viewer locates themselves and
-    # the target. Efficiency (heat) and engine (territory) are the secondary lenses. Config
-    # knobs and occupancy are NOT lenses.
+    # The lens bar swaps the AREA colouring on both maps: engine territories (default) or an
+    # efficiency heat, drawn as flat per-cell fills (no blur filter). YOU and BEST are drawn
+    # ALWAYS, over any lens: YOU static (named), BEST a client group the score arms recompute.
     row = vr._card_maps(REPORT)
     check('id="lens-bar"' in row, "no lens toggle bar", fails)
-    for L in ("rig zones", "efficiency", "engine"):
-        check(f'data-lens="{L}"' in row, "missing lens " + L, fails)
-    for L in ("firepower", "effort", "where you work", "best region"):
+    for L in ("engine", "efficiency"):
+        check(f'data-lens="{L}"' in row, "missing area lens " + L, fails)
+    for L in ("rig zones", "firepower", "effort", "where you work", "best region"):
         check(f'data-lens="{L}"' not in row, "stale lens present: " + L, fails)
-    # each map carries a tint group and a label group per lens (behind cells / on top).
-    check(row.count('class="som-lens-t"') == 6, "expected 3 tint lenses on 2 maps", fails)
-    check(row.count('class="som-lens-l"') == 6, "expected 3 label lenses on 2 maps", fails)
-    # only the default (rig zones) shows; the others are display:none on both maps.
+    # two lenses, each a tint group and a label group per map; areas are crisp (no blur).
+    check(row.count('class="som-lens-t"') == 4, "expected 2 area lenses on 2 maps", fails)
+    check(row.count('class="som-lens-l"') == 4, "expected 2 label lenses on 2 maps", fails)
+    check("feGaussianBlur" not in row and "url(#zblur)" not in row,
+          "areas must be flat fills, not blurred smudges", fails)
+    # only the default (engine) shows; efficiency is display:none on both maps.
     check(row.count('data-lens="efficiency" style="display:none"') == 4,
-          "non-default lenses must start hidden", fails)
-    # rig zones locates YOU and names rigs in taxonomy terms; efficiency pins its PEAK.
+          "non-default lens must start hidden", fails)
+    # YOU is always on and named; BEST is an always-on client group; efficiency pins PEAK.
     check(">YOU</text>" in row, "the viewer is not located on the map", fails)
     check(" · solo</text>" in row or " · delegate</text>" in row or " · workflow</text>" in row,
-          "zones are not named as rigs", fails)
-    check(">PEAK</text>" in row, "efficiency lens has no peak pin", fails)
-    # BEST is NOT baked static; it is a client group the score-arm toggles recompute.
-    check(row.count('class="zbest" data-lens="rig zones"') == 2, "no reactive BEST group per map", fails)
+          "YOU is not named as a rig", fails)
+    check(row.count('class="zbest"') == 2, "no always-on reactive BEST group per map", fails)
     check(">BEST</text>" not in row, "BEST should be client-drawn, not static", fails)
 
 

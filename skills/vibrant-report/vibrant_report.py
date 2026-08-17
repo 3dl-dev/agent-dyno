@@ -2455,7 +2455,7 @@ def render_som_map(som_block, title="Where you work",
     # viewer locates themselves and the target in one vocabulary. Other lenses read a single
     # axis (efficiency heat, engine territory). One shows at a time; the grid is untouched:
     # tints ride behind the cells, labels on top.
-    zdefs, lens_tints, lens_labels = "", "", ""
+    zdefs, lens_tints, lens_labels, you_mark = "", "", "", ""
     cmeta = som_block.get("cell_meaning") if hexed else None
     if cmeta:
         def _pct(vals):
@@ -2482,64 +2482,37 @@ def render_som_map(som_block, title="Where you work",
 
         def _engine(c):
             return c.get("engine")
-        # Three kinds of lens. ZONES (default): rig basins around the notable rigs, each named
-        # in the taxonomy, YOU and BEST tagged -- "you run this, the winning rig is that."
-        # HEAT (efficiency): a per-cell green wash by percentile, peak pinned. CATEGORICAL
-        # (engine): a coloured territory per class. Config knobs a viewer already sets
-        # (firepower, effort) and occupancy (shown by the A/B rings) are NOT lenses.
+        # LENSES colour the AREAS of the map with a FLAT per-cell hex fill: crisp territories,
+        # never a blur (blur behind data reads as a smudge). `engine` = solo / delegate /
+        # workflow territories, named at their centroids (default); `efficiency` = a green
+        # quality heat. The lens toggle swaps the area colouring; YOU (where your work is) and
+        # BEST (the top rig for the enabled score arms) are drawn ALWAYS, over any lens.
         lenses = [
-            {"name": "rig zones", "kind": "zones"},
-            {"name": "efficiency", "kind": "heat", "val": (lambda i: pct.get("eff", {}).get(i)),
-             "hue": "#3F7D5A", "peak": "PEAK"},
             {"name": "engine", "kind": "cat", "key": _engine,
              "hue": {"solo": "#4E6E8E", "delegate": "#8A6D4B", "workflow": "#7C5E8B"}},
+            {"name": "efficiency", "kind": "heat",
+             "val": (lambda i: pct.get("eff", {}).get(i)), "hue": "#3F7D5A", "peak": "PEAK"},
         ]
         cur_cell = som_block.get("current_cell")
         fs = 10 if compact else 12
         gap = fs * 1.55  # min vertical gap between two labels that overlap in x
-        crad = cell * 0.88  # overlapping same-hue tints saturate; isolated cells stay faint
+        rr = cell * 0.56  # a fill exactly the size of the cell hex: adjacent fills abut
         tint_groups, lab_groups, any_drawn = [], [], False
         for li, L in enumerate(lenses):
-            name, kind = L["name"], L["kind"]
+            name, kind, hue = L["name"], L["kind"], L["hue"]
             tints, labs = [], []
-            if kind == "zones":
-                zt, zl = _rig_zones(cmeta, center, hstep, cell, W, H, cur_cell, _best)
-                if zt:
-                    any_drawn = True
-                tint_groups.append(f'<g class="som-lens-t" data-lens="{name}"'
-                                   f'{"" if li == 0 else " style=\"display:none\""}>{zt}</g>')
-                lab_groups.append(f'<g class="som-lens-l" data-lens="{name}"'
-                                  f'{"" if li == 0 else " style=\"display:none\""}>{zl}</g>')
-                continue
-            hue = L["hue"]
             if kind == "cat":
-                zg = defaultdict(lambda: {"sx": 0.0, "sy": 0.0, "w": 0.0, "n": 0})
+                # colour each cell by its category: adjacent same-category cells abut into a
+                # solid territory. The territories are NAMED in the legend below the maps, not
+                # on the map, so nothing competes with the always-on YOU / BEST marks.
                 for cmi in cmeta:
                     k = L["key"](cmi)
                     if not k:
                         continue
                     cx, cy = center(*cmi["cell"])
-                    n = (cmi.get("sessions") or 0) + 1
-                    z = zg[k]
-                    z["sx"] += cx * n
-                    z["sy"] += cy * n
-                    z["w"] += n
-                    z["n"] += 1
                     any_drawn = True
-                    tints.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{crad:.1f}" '
-                                 f'fill="{hue.get(k, "var(--muted)")}" opacity="0.22" '
-                                 f'filter="url(#zblur)"/>')
-                cand = sorted(((z["w"], z["sx"] / z["w"], z["sy"] / z["w"],
-                               hue.get(cat, "var(--muted)"), cat.upper())
-                              for cat, z in zg.items() if z["n"] >= 2 and z["w"] > 0),
-                             key=lambda t: -t[0])
-                placed = []
-                for _w, mx, my, col, txt in cand:
-                    for pmx, pmy in placed:
-                        if abs(my - pmy) < gap and abs(mx - pmx) < 64:
-                            my = pmy + gap if my >= pmy else pmy - gap
-                    placed.append((mx, my))
-                    labs.append(_lens_label(mx, my, fs, col, esc(txt)))
+                    tints.append(f'<polygon points="{_hex_pts(cx, cy, rr)}" '
+                                 f'fill="{hue.get(k, "var(--muted)")}" opacity="0.30"/>')
             else:  # heat
                 cells = []
                 for i in idx:
@@ -2552,23 +2525,21 @@ def render_som_map(som_block, title="Where you work",
                     pr = _pct([v for _, _, v in cells])
                     for (cx, cy, _v), p in zip(cells, pr):
                         any_drawn = True
-                        op = 0.04 + 0.34 * (p ** 1.4)  # gamma: top cells pop, low fade out
-                        tints.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{crad:.1f}" '
-                                     f'fill="{hue}" opacity="{op:.3f}" filter="url(#zblur)"/>')
-                    bx, by, _bv = max(cells, key=lambda t: t[2])
-                    bx = min(max(bx, cell * 1.6), W - cell * 1.6)  # keep the pin off the edge
-                    by = min(max(by, cell * 0.9), H - cell * 0.9)
-                    labs.append(_lens_label(bx, by, fs, hue, L["peak"]))
+                        op = 0.06 + 0.42 * (p ** 1.3)  # gamma: top cells pop, low fade out
+                        tints.append(f'<polygon points="{_hex_pts(cx, cy, rr)}" '
+                                     f'fill="{hue}" opacity="{op:.3f}"/>')
+                    # no PEAK label: the darkest-green cell already reads as the peak, and a
+                    # pin would collide with the always-on BEST mark (BEST == the eff peak when
+                    # efficiency is the target).
             disp = "" if li == 0 else ' style="display:none"'
             tint_groups.append(f'<g class="som-lens-t" data-lens="{name}"{disp}>'
                                f'{"".join(tints)}</g>')
             lab_groups.append(f'<g class="som-lens-l" data-lens="{name}"{disp}>'
                               f'{"".join(labs)}</g>')
         if any_drawn:
-            zdefs = (f'<defs><filter id="zblur" x="-40%" y="-40%" width="180%" '
-                     f'height="180%"><feGaussianBlur stdDeviation="{cell * 0.40:.1f}"/>'
-                     f'</filter></defs>')
             lens_tints, lens_labels = "".join(tint_groups), "".join(lab_groups)
+        # YOU: an always-on clay mark on your current cell, drawn over whatever lens is active.
+        _, you_mark = _rig_zones(cmeta, center, hstep, cell, W, H, cur_cell, _best)
 
     idattr = f' id="{svg_id}"' if svg_id else ''
     # shape the grid as an oval by TAPERING columns per row: middle rows full width,
@@ -2585,8 +2556,8 @@ def render_som_map(som_block, title="Where you work",
         start = (cols - ncol) // 2
         return start, start + ncol
     parts = [f'<svg{idattr} viewBox="0 0 {W:.0f} {H:.0f}" role="img" aria-label="learned '
-             f'working-style map: hexagons shaded by cost, in labelled regional lenses '
-             f'(engine, firepower, effort), with your position">', zdefs, '<g>', lens_tints]
+             f'working-style map: hexagons in engine territories, with YOU and the '
+             f'target-best rig marked">', zdefs, '<g>']
     for r in range(rows):
         c_lo, c_hi = _row_span(r)
         for c in range(cols):
@@ -2610,6 +2581,9 @@ def render_som_map(som_block, title="Where you work",
                 cx, cy, f'{dpos} fill="rgba({pal["cell"]},{op:.2f})" '
                 f'stroke="var(--line)" stroke-width="1"', title=cell_title))
     parts.append('</g>')
+    # the lens area fills ride ON TOP of the cells (flat, crisp), so adjacent same-value
+    # cells read as one solid territory rather than being hidden behind the cost shading.
+    parts.append(lens_tints)
     # deliberately no session-count dots and no history trail: they were mark types a
     # viewer could not decode. The map now carries only what reads at a glance: cost by
     # shade, where you are, and the direction to a cheaper setup.
@@ -2677,9 +2651,10 @@ def render_som_map(som_block, title="Where you work",
     if js_arrow or svg_id:
         # JS owns all live markers (hex outlines) and the arrow on interactive maps.
         parts.append('<g class="som-fx"></g>')
-    parts.append(lens_labels)  # region names on top, so they read over cells and overlays
-    if lens_labels:  # the live, target-reactive BEST marker (JS fills it; shown in rig zones)
-        parts.append('<g class="zbest" data-lens="rig zones"></g>')
+    parts.append(lens_labels)  # territory names on top, so they read over cells and overlays
+    parts.append(you_mark)      # YOU: always-on, over any lens
+    if cmeta:                   # BEST: always-on, JS fills it and reacts to the score arms
+        parts.append('<g class="zbest"></g>')
     parts.append("</svg>")
     if compact:
         sub = (f'<div class="som-compact-s">{esc(subtitle)}</div>'
@@ -2811,6 +2786,10 @@ _WALK_CSS = (
     'background:transparent;color:var(--ink2);transition:all .1s}'
     '.lens-btn:hover{border-color:var(--muted)}'
     '.lens-btn.on{background:var(--ink);color:var(--card);border-color:var(--ink)}'
+    '.lens-legend{display:inline-flex;align-items:center;gap:11px;margin-left:8px;'
+    'font-size:11px;color:var(--ink2)}'
+    '.lens-legend span{display:inline-flex;align-items:center;gap:5px}'
+    '.lens-legend i{width:10px;height:10px;border-radius:2px;display:inline-block}'
     '.som-maps-row{display:flex;flex-wrap:wrap;gap:24px;margin-top:10px}'
     '.som-maps-row>div{flex:1 1 300px;min-width:0}'
     '.fp-panel{flex:1 1 300px;min-width:0}'
@@ -3054,14 +3033,20 @@ _WALK_JS = r"""<script>
     wsvg.addEventListener('mouseover',function(ev){var s=hitSel(ev.target);if(s){selB=s;refresh();}});
     wsvg.addEventListener('click',function(ev){var s=hitSel(ev.target);if(s)toggleHold(s);});
     wsvg.addEventListener('mouseleave',function(){selB={era:curEraId};refresh();});}
-  // lens toggle (Civ-V map modes): show one axis-overlay at a time on BOTH maps.
-  var lensBar=document.getElementById('lens-bar');
+  // lens toggle: swap which AREA colouring shows on both maps, and name it in the legend.
+  var lensBar=document.getElementById('lens-bar'),lensLeg=document.getElementById('lens-legend');
+  function sw(c,t){return '<span><i style="background:'+c+'"></i>'+t+'</span>';}
+  function setLegend(L){if(!lensLeg)return;
+    lensLeg.innerHTML=(L==='engine')
+      ?(sw('#4E6E8E','solo')+sw('#8A6D4B','delegate')+sw('#7C5E8B','workflow'))
+      :(sw('#d3e5dc','lower')+sw('#3F7D57','higher efficiency'));}
+  function setLens(L){lensBar.querySelectorAll('.lens-btn').forEach(function(o){o.classList.toggle('on',o.getAttribute('data-lens')===L);});
+    [svg,mapB].forEach(function(mp){mp.querySelectorAll('.som-lens-t,.som-lens-l').forEach(function(g){
+      g.style.display=(g.getAttribute('data-lens')===L)?'':'none';});});
+    setLegend(L);}
   if(lensBar){lensBar.querySelectorAll('.lens-btn').forEach(function(lb){
-    lb.addEventListener('click',function(){var L=lb.getAttribute('data-lens');
-      lensBar.querySelectorAll('.lens-btn').forEach(function(o){o.classList.toggle('on',o===lb);});
-      [svg,mapB].forEach(function(mp){
-        mp.querySelectorAll('.som-lens-t,.som-lens-l,.zbest').forEach(function(g){
-          g.style.display=(g.getAttribute('data-lens')===L)?'':'none';});});});});}
+    lb.addEventListener('click',function(){setLens(lb.getAttribute('data-lens'));});});
+    setLegend('engine');}
   window.addEventListener('resize',function(){drawMerge();drawFlow();});
   refresh();
 })();
@@ -3218,10 +3203,10 @@ def _card_maps(report):
             '<div class="vb-rec" id="vb-rec"></div>')
     # lens toggle (Civ-V map modes): one axis-overlay at a time on BOTH maps. Default engine.
     lens = ('<div class="lens-bar" id="lens-bar">'
-            '<span class="lens-cue">lens</span>'
-            '<button class="lens-btn on" data-lens="rig zones">rig zones</button>'
+            '<span class="lens-cue">areas</span>'
+            '<button class="lens-btn on" data-lens="engine">engine</button>'
             '<button class="lens-btn" data-lens="efficiency">efficiency</button>'
-            '<button class="lens-btn" data-lens="engine">engine</button></div>')
+            '<span class="lens-legend" id="lens-legend"></span></div>')
     return f'{lens}<div class="som-maps-row">{panels}</div>{foot}'
 
 
