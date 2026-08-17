@@ -2269,20 +2269,32 @@ _FP_A_HEX = "#B0553A"  # A (previous) identity, matches the JS ACOL
 _FP_B_HEX = "#3F6E66"  # B (current) identity, matches the JS BCOL
 
 
+_ENG_STRUCTURE = {"solo": 0.0, "delegate": 0.5, "workflow": 1.0}
+
+
+def _setup_axes(cmi):
+    """The two readable levers of a setup: STRUCTURE (solo->delegate->workflow) and FIREPOWER
+    (lean->heavy models; orchestrator weighted, worker blended in when delegated)."""
+    struct = _ENG_STRUCTURE.get(cmi.get("engine"), 0.5)
+    m = _FIRE.get(cmi.get("model"), 0.5)
+    w = cmi.get("worker")
+    fire = m * 0.6 + _FIRE.get(w, 0.5) * 0.4 if (w and w != "solo") else m
+    return struct, fire
+
+
 def render_spheroid_map(som_block, svg_id="map-sph", compact=True):
-    """EXPERIMENT #2: one WIDE radial fingerprint (landscape, Robinson-ish, to fill the wide
-    frame), centred on the operator's center of mass so DISTANCE FROM THE CENTRE reads as how
-    divergent a setup is from the norm; similar setups cluster (SOM property preserved), rare
-    ones foreshorten toward the rim. Faint graticule rings label the divergence scale; the
-    cost terrain rides underneath. Blob gradients (defs) and each cell's data-r/data-c let the
-    JS paint the A/B generation clouds as soft density blobs plus the drift arrow between them.
-    Pure function of som_block."""
+    """EXPERIMENT #3: a READABLE fingerprint on real, labelled axes. Every setup is placed by
+    how it diverges from YOUR NORM on two levers: X = orchestration STRUCTURE (solo -> delegate
+    -> workflow), Y = FIREPOWER (lean -> heavy models). Centre = your norm, distance =
+    divergence, and the DIRECTION says which lever you pushed -- so position reads at a glance
+    instead of decode-by-hover. Cost-shaded cells, a labelled crosshair, and a som-fx group for
+    the JS blobs + drift arrow. Landscape. Pure function of som_block (uses cell_meaning)."""
     lattice = som_block.get("lattice") or {}
     rows, cols = lattice.get("rows") or 0, lattice.get("cols") or 0
-    if rows <= 0 or cols <= 0:
+    cm = som_block.get("cell_meaning") or []
+    if rows <= 0 or cols <= 0 or not cm:
         return ""
     field = som_block.get("field") or []
-    support = som_block.get("support") or []
     lower_better = som_block.get("field_lower_is_better", True)
 
     def fval(r, c):
@@ -2290,46 +2302,30 @@ def render_spheroid_map(som_block, svg_id="map-sph", compact=True):
             return field[r][c]
         except (IndexError, TypeError):
             return None
-
-    def sval(r, c):
-        try:
-            v = support[r][c]
-            return v if v else 0
-        except (IndexError, TypeError):
-            return 0
     ranked = sorted(v for r in range(rows) for c in range(cols)
                     if (v := fval(r, c)) is not None)
 
-    def planar(r, c):
-        return (c + (0.5 if r % 2 else 0), r * 0.87)
-    tot = cxm = cym = 0.0
-    for r in range(rows):
-        for c in range(cols):
-            w = sval(r, c)
-            if w > 0:
-                x, y = planar(r, c)
-                cxm += w * x
-                cym += w * y
-                tot += w
+    # per-cell (structure, firepower) and the support-weighted norm
+    data, tot, nx, nf = [], 0.0, 0.0, 0.0
+    for cmi in cm:
+        r, c = cmi["cell"]
+        sx, fp = _setup_axes(cmi)
+        n = cmi.get("sessions", 0) or 0
+        data.append((r, c, sx, fp))
+        tot += n
+        nx += n * sx
+        nf += n * fp
     if tot <= 0:
-        cxm, cym = (cols - 1) / 2.0, (rows - 1) * 0.87 / 2.0
+        nx = sum(d[2] for d in data) / len(data)
+        nf = sum(d[3] for d in data) / len(data)
     else:
-        cxm, cym = cxm / tot, cym / tot
-    umax = max([math.hypot(planar(r, c)[0] - cxm, planar(r, c)[1] - cym)
-                for r in range(rows) for c in range(cols)] + [1e-6])
+        nx, nf = nx / tot, nf / tot
+    sxmax = max([abs(d[2] - nx) for d in data] + [1e-6])
+    sfmax = max([abs(d[3] - nf) for d in data] + [1e-6])
 
-    W, H = (440, 248) if compact else (560, 320)  # LANDSCAPE: wider than tall
-    cx0, cy0, Rx, Ry = W / 2, H / 2, W * 0.45, H * 0.42
-    thmax = math.radians(64.0)
-    sinmax = math.sin(thmax)
-    base_rr = (min(Rx, Ry) / max(rows, cols)) * 1.25
-
-    def project(u, v):
-        rho = min(1.0, math.hypot(u, v))
-        phi = math.atan2(v, u)
-        th = rho * thmax
-        pr = math.sin(th) / sinmax
-        return cx0 + pr * Rx * math.cos(phi), cy0 + pr * Ry * math.sin(phi), th
+    W, H = (440, 250) if compact else (560, 320)  # LANDSCAPE
+    cx0, cy0, Rx, Ry = W / 2, H / 2, W * 0.40, H * 0.37
+    base_rr = min(Rx, Ry) / 6.5
 
     def hexpts(cx, cy, rr):
         return " ".join(f"{cx + rr * math.cos(math.radians(a)):.1f},"
@@ -2342,40 +2338,42 @@ def render_spheroid_map(som_block, svg_id="map-sph", compact=True):
                 f'<stop offset="0.65" stop-color="{hexc}" stop-opacity="0.16"/>'
                 f'<stop offset="1" stop-color="{hexc}" stop-opacity="0"/></radialGradient>')
     defs = f'<defs>{_grad("blobA", _FP_A_HEX)}{_grad("blobB", _FP_B_HEX)}</defs>'
-    # graticule: concentric ellipses = divergence rings; a centre marker = your norm.
-    grat = "".join(
-        f'<ellipse cx="{cx0}" cy="{cy0}" rx="{p * Rx:.1f}" ry="{p * Ry:.1f}" fill="none" '
-        f'stroke="var(--line)" stroke-width="1" opacity="0.45"/>' for p in (0.4, 0.72, 1.0))
-    marker = (f'<circle cx="{cx0}" cy="{cy0}" r="3.2" fill="none" stroke="var(--muted)" '
-              f'stroke-width="1.4"/>'
-              f'<text x="{cx0}" y="{cy0 - 6:.0f}" text-anchor="middle" font-size="9" '
-              f'fill="var(--muted)">your norm</text>'
-              f'<text x="{cx0 + Rx - 4:.0f}" y="{cy0 - 4:.0f}" text-anchor="end" '
-              f'font-size="9" fill="var(--muted)">more divergent</text>')
-    cells = []
-    for r in range(rows):
-        for c in range(cols):
-            x, y = planar(r, c)
-            sx, sy, th = project((x - cxm) / umax, (y - cym) / umax)
-            rr = base_rr * (0.5 + 0.5 * math.cos(th))
-            cells.append((th, r, c, sx, sy, rr, fval(r, c)))
-    cells.sort(key=lambda t: -t[0])
+    # labelled crosshair: X = structure, Y = firepower, centre = your norm.
+    axes = (f'<line x1="{cx0 - Rx:.0f}" y1="{cy0:.0f}" x2="{cx0 + Rx:.0f}" y2="{cy0:.0f}" '
+            f'stroke="var(--line)" stroke-width="1" stroke-dasharray="2 3" opacity="0.6"/>'
+            f'<line x1="{cx0:.0f}" y1="{cy0 - Ry:.0f}" x2="{cx0:.0f}" y2="{cy0 + Ry:.0f}" '
+            f'stroke="var(--line)" stroke-width="1" stroke-dasharray="2 3" opacity="0.6"/>'
+            f'<circle cx="{cx0:.0f}" cy="{cy0:.0f}" r="3" fill="none" stroke="var(--muted)" '
+            f'stroke-width="1.3"/>')
+    lab = (f'<text x="{cx0 - Rx:.0f}" y="{cy0 + 13:.0f}" font-size="9" '
+           f'fill="var(--muted)">solo</text>'
+           f'<text x="{cx0 + Rx:.0f}" y="{cy0 + 13:.0f}" text-anchor="end" font-size="9" '
+           f'fill="var(--muted)">workflow</text>'
+           f'<text x="{cx0 + 4:.0f}" y="{cy0 - Ry + 9:.0f}" font-size="9" '
+           f'fill="var(--muted)">heavier firepower</text>'
+           f'<text x="{cx0 + 4:.0f}" y="{cy0 + Ry - 2:.0f}" font-size="9" '
+           f'fill="var(--muted)">leaner firepower</text>'
+           f'<text x="{cx0:.0f}" y="{cy0 - 6:.0f}" text-anchor="middle" font-size="9" '
+           f'fill="var(--muted)">your norm</text>')
     terrain = []
-    for th, r, c, sx, sy, rr, val in cells:
-        pts = hexpts(sx, sy, rr)
+    for r, c, sx, fp in data:
+        px = cx0 + ((sx - nx) / sxmax) * Rx * 0.92
+        py = cy0 - ((fp - nf) / sfmax) * Ry * 0.92
+        pts = hexpts(px, py, base_rr)
+        val = fval(r, c)
         if val is None:
             terrain.append(f'<polygon class="som-cell" data-r="{r}" data-c="{c}" points="{pts}" '
-                           f'fill="none" stroke="var(--line)" stroke-width="0.7" opacity="0.25"/>')
+                           f'fill="none" stroke="var(--line)" stroke-width="0.7" opacity="0.3"/>')
         else:
             op = _rank_opacity(val, ranked, lower_better)
             terrain.append(f'<polygon class="som-cell" data-r="{r}" data-c="{c}" points="{pts}" '
-                           f'fill="rgba(var(--ink-rgb),{op * 0.85:.2f})" stroke="var(--line)" '
+                           f'fill="rgba(var(--ink-rgb),{op * 0.8:.2f})" stroke="var(--line)" '
                            f'stroke-width="0.7"/>')
     svg = (f'<svg id="{svg_id}" viewBox="0 0 {W} {H}" role="img" aria-label="working-style '
-           f'fingerprint: a wide radial map centred on your norm, distance from centre = how '
-           f'divergent a setup is; the coloured blobs are two generations">'
-           f'{defs}{grat}{"".join(terrain)}{marker}<g class="som-fx" pointer-events="none">'
-           f'</g></svg>')
+           f'fingerprint on real axes: x = orchestration structure (solo to workflow), '
+           f'y = firepower (lean to heavy), centred on your norm; blobs are two generations">'
+           f'{defs}{axes}{"".join(terrain)}<g class="som-fx" pointer-events="none"></g>'
+           f'{lab}</svg>')
     return f'<div class="som-compact"><div class="som-wrap">{svg}</div></div>'
 
 
@@ -2935,7 +2933,7 @@ _WALK_JS = r"""<script>
     if(cb){cb.textContent='B '+MID+' '+panelSpecific(selB);cb.style.color=BCOL;}}
   // the OVERALL explanation (below the pair): the canonical meaning, once and short. The
   // per-print specifics are the two captions above it; the comparison is reading them.
-  function detailHtml(e){return 'Centred on your norm; the farther out a setup sits, the more it diverges from it. Each generation is a soft cloud (bigger = more sessions), the arrow its drift from A to B; cells shaded by cost.';}
+  function detailHtml(e){return 'Real axes, centred on your norm: left to right = solo to workflow (more orchestration); bottom to top = leaner to heavier firepower. Each generation is a soft cloud, the arrow its drift from A to B; cells shaded by cost.';}
   function refresh(){var e=enSet(),v=vals();
     if(vbScore)vbScore.textContent=fmt(score(e,v));
     MK.forEach(function(m){var b=tog(m);if(!b)return;b.setAttribute('aria-pressed',e[m]?'true':'false');var bb=b.querySelector('b');if(bb)bb.textContent=fmtv(m,v[m]);});
