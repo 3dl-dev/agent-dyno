@@ -294,3 +294,74 @@ family grouping (from model names) and `FAMILY_CAP`; NO capability tier is intro
 - Deep opus->sonnet->haiku (sub-orchestrator): `depth = 0.5`, `family_diversity`
   reflects three families.
 - v1 dict with no `depth` / `tree_mix`: embeds via the documented fallbacks, no raise.
+
+## Schema v3 (proposed): coordination
+
+Status: PROPOSED, not yet built. `SCHEMA = "vibrant/session-features@3"`. Draft for review;
+no code until the axis is confirmed. A v3 vector is a superset of v2: the retained v2
+features are unchanged, one new fingerprint axis appends. See docs/claims.md X8 and the
+coordination-signal probe (2026-08-17) that established feasibility.
+
+### Why
+
+v2 describes the SHAPE of an orchestration by its depth, breadth (fanout) and model-family
+mix. It cannot tell whether the workers actually WORK TOGETHER. Two workflows with identical
+depth, fanout and family mix can be entirely different: one where sub-agents build on a shared
+body of code, and one where they SILO (each fans out onto its own files and never interacts).
+Anthropic's multi-agent research finds this coordination-vs-siloing behaviour, not the
+flat-vs-hierarchical scaffolding, is what decides whether more agents help. Our own probe
+confirms it is real and measurable: across 113 in-session multi-agent trees, orchestrations
+are overwhelmingly siloed (mean pairwise file-overlap ~0.00). v3 gives the map an axis for it.
+
+Per the four-slot schema this lands in ONE slot, the fingerprint axis. No fifth slot.
+
+### No capability / quality priors (why this is NEUTRAL)
+
+`coordination` measures only observable STRUCTURE: how much sibling workers touch the same
+files. It is NOT a quality claim. High overlap can mean genuine coordination (workers building
+on shared code) OR conflict (workers stepping on each other); low overlap can mean clean
+parallelism OR missed collective intelligence. The fingerprint never adjudicates which: as
+with every axis, whether a shape paid off is MEASURED by the field (survival per token, cargo),
+never asserted. Do not encode "coordinated is better" anywhere.
+
+### Attribution scope
+
+Computed over the IN-SESSION orchestration tree only: the sibling sub-agents recorded under the
+session directory, and the files each one edited. CROSS-JOB siloing (workers driven as separate
+top-level jobs) is out of scope for the same reason as v2 and the cargo work: no lineage link.
+Tracked with that gap.
+
+### New input field (on the per-session metric dict)
+
+- `worker_files` (list of lists of str, or null): one entry per in-session worker (sub-agent),
+  each the set of file paths that worker edited (Edit / Write / MultiEdit / NotebookEdit
+  `file_path`). The extractor already reads the `subagents/**` transcripts; this collects the
+  edited paths per sub-agent. Missing / fewer than 2 workers -> `coordination` is 0.0 (a lone
+  or single actor cannot coordinate), never raises.
+
+### New feature (fixed absolute transform, in [0, 1])
+
+Continuous, appended after the retained v2 features:
+
+- `coordination`: the share of the tree's edited files that more than one worker touched,
+  `min(1.0, shared / distinct / COORD_CAP)` with `COORD_CAP = 0.20`. `shared` = count of
+  files edited by >= 2 workers; `distinct` = count of files edited by any worker. 0.0 when
+  there are fewer than 2 workers or no edits. Fully siloed (disjoint files) -> 0.0; a fifth
+  or more of the touched files shared across workers -> ~1.0. The cap (like FANOUT_CAP /
+  DEPTH_CAP) is fixed and federation-shared, chosen because real values cluster low (siloing
+  is the norm), so the axis needs the low range expanded to have resolution.
+
+### Federation and versioning
+
+v3 is a version bump every federated map adopts together; a v2 map and a v3 map do not share
+coordinates and must not be merged. Gated on sign-off. The only shared constant v3 adds is
+`COORD_CAP`; no capability tier is introduced.
+
+### Acceptance (to accompany the build, not this draft)
+
+- Length v2 + 1, every element in [0, 1], pure and deterministic (byte-identical re-run).
+- Solo session (no `worker_files`): `coordination = 0.0`.
+- Two workers, fully disjoint file sets: `coordination = 0.0`.
+- Two workers sharing all files: `coordination = 1.0` (shared/distinct = 1 >= COORD_CAP).
+- Twenty workers, ~10% of files shared: `coordination = min(1, 0.10/0.20) = 0.5`.
+- v2 dict with no `worker_files`: embeds via the fallback (0.0), no raise.
