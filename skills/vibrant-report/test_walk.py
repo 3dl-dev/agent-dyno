@@ -94,25 +94,27 @@ def test_card_maps_interactive(fails):
 
 
 def test_lens_overlays(fails):
-    # Civ-V lenses: each is a toggleable regional overlay on BOTH maps, one lens bar
-    # driving the pair. The set flashes OUTCOMES (the winning corner, the efficiency
-    # peak) plus engine territory, NOT config knobs a glance already knows. Default is
-    # the composite "best region"; efficiency and engine start hidden.
+    # Lenses toggle on BOTH maps from one bar. The DEFAULT is rig zones: the map speaks
+    # the rig taxonomy, YOU and BEST tagged and named, so a viewer locates themselves and
+    # the target. Efficiency (heat) and engine (territory) are the secondary lenses. Config
+    # knobs and occupancy are NOT lenses.
     row = vr._card_maps(REPORT)
     check('id="lens-bar"' in row, "no lens toggle bar", fails)
-    for L in ("best region", "efficiency", "engine"):
+    for L in ("rig zones", "efficiency", "engine"):
         check(f'data-lens="{L}"' in row, "missing lens " + L, fails)
-    # config knobs and occupancy are deliberately not lenses.
-    for L in ("firepower", "effort", "where you work"):
-        check(f'data-lens="{L}"' not in row, "stale config lens present: " + L, fails)
+    for L in ("firepower", "effort", "where you work", "best region"):
+        check(f'data-lens="{L}"' not in row, "stale lens present: " + L, fails)
     # each map carries a tint group and a label group per lens (behind cells / on top).
     check(row.count('class="som-lens-t"') == 6, "expected 3 tint lenses on 2 maps", fails)
     check(row.count('class="som-lens-l"') == 6, "expected 3 label lenses on 2 maps", fails)
-    # only the default lens shows; the other two are display:none on both maps.
+    # only the default (rig zones) shows; the others are display:none on both maps.
     check(row.count('data-lens="efficiency" style="display:none"') == 4,
           "non-default lenses must start hidden", fails)
-    # outcome lenses pin their peak with a single haloed label.
-    check(">BEST</text>" in row and ">PEAK</text>" in row, "no outcome peak pins", fails)
+    # rig zones locates YOU and names rigs in taxonomy terms; efficiency pins its PEAK.
+    check(">YOU</text>" in row, "the viewer is not located on the map", fails)
+    check(" · solo</text>" in row or " · delegate</text>" in row or " · workflow</text>" in row,
+          "zones are not named as rigs", fails)
+    check(">PEAK</text>" in row, "efficiency lens has no peak pin", fails)
 
 
 def test_hero_toggles(fails):

@@ -2293,6 +2293,115 @@ def _lens_label(x, y, fs, col, txt):
             f'fill="{col}">{txt}</text>')
 
 
+def _rig_short(c):
+    """A cell's rig in the shared taxonomy vocabulary, compact enough for a map label:
+    orchestrator model (with worker when it delegates) then the engine."""
+    eng = c.get("engine") or "?"
+    model = c.get("model") or "?"
+    worker = c.get("worker")
+    core = f"{model}›{worker}" if (worker and worker != "solo") else model
+    return f"{core} · {eng}"
+
+
+def _rig_zones(cmeta, ctr, hstep, cell, W, H, current_cell, bestfn):
+    """Partition the map into a FEW rig zones a viewer can hold at once: YOU (always), the
+    global BEST (always), and up to two other regional optima. Every cell joins the nearest
+    anchor; each zone's tint glows at its anchor and fades to the edge, showing how far that
+    rig's prevailing quality reaches. YOU and BEST are coloured (clay, green), the rest muted
+    so the eye lands on the two that matter. Each zone is NAMED in the taxonomy, tags on YOU
+    and BEST, so a viewer reads "you run this, the winning rig is that" in one vocabulary.
+    Returns (tints, labels)."""
+    q = {i: bestfn(i) for i in range(len(cmeta))}
+    ids = [i for i, v in q.items() if v is not None]
+    if len(ids) < 3:
+        return "", ""
+    pos = {i: ctr(*cmeta[i]["cell"]) for i in ids}
+
+    def dist(a, b):
+        return math.hypot(pos[a][0] - pos[b][0], pos[a][1] - pos[b][1])
+    nd = hstep * 1.45  # immediate hex-neighbour radius
+    nbr = {i: [j for j in ids if j != i and dist(i, j) < nd] for i in ids}
+    # local optima, highest first; drop an optimum adjacent to a stronger one (one peak per hill)
+    opt = sorted((i for i in ids if all(q[i] >= q[j] for j in nbr[i])), key=lambda i: -q[i])
+    kept = []
+    for i in opt:
+        if all(dist(i, k) >= nd for k in kept):
+            kept.append(i)
+    if not kept:
+        return "", ""
+    best = kept[0]
+    you = None
+    if current_cell:
+        you = next((i for i in ids if list(cmeta[i]["cell"]) == list(current_cell)), None)
+    # anchors, in priority order: YOU and BEST always, then the strongest other optima,
+    # capped so the map never carries more names than a glance can hold.
+    anchors, used = [], set()
+    for a in ([you, best] if you is not None else [best]):
+        if a not in anchors:
+            anchors.append(a)
+            used.add(_rig_short(cmeta[a]))
+    for o in kept:  # other optima, but never a second label with a rig name already shown
+        if len(anchors) >= 4:
+            break
+        rig = _rig_short(cmeta[o])
+        if o not in anchors and rig not in used:
+            anchors.append(o)
+            used.add(rig)
+    zone = {i: min(anchors, key=lambda s: dist(i, s)) for i in ids}
+    reach = {s: max([dist(i, s) for i in ids if zone[i] == s] or [1.0]) for s in anchors}
+    muted = ["#6E8BA0", "#9A8B6E"]  # other optima: present but quiet
+    hue, mi = {}, 0
+    for s in anchors:
+        if s == best:
+            hue[s] = "#3F7D5A"          # the winning rig: green
+        elif s == you:
+            hue[s] = "#B0553A"          # you: clay
+        else:
+            hue[s] = muted[mi % len(muted)]
+            mi += 1
+    crad = cell * 0.88
+    tints = []
+    for i in ids:
+        s = zone[i]
+        near = max(0.0, 1.0 - dist(i, s) / (reach[s] + 1e-6))  # 1 at anchor, 0 at edge
+        prom = 1.0 if s in (you, best) else 0.5  # you/best zones read; others stay quiet
+        op = 0.045 + 0.34 * near * prom
+        cx, cy = pos[i]
+        tints.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{crad:.1f}" fill="{hue[s]}" '
+                     f'opacity="{op:.3f}" filter="url(#zblur)"/>')
+    # labels: a tag line (YOU / BEST) over the rig name. Lay out with width-aware edge
+    # clamping and a 2-D nudge so no two boxes overlap; YOU and BEST placed first (win ties).
+    fs = 10
+    lineh = fs * 2.7  # two stacked lines
+    order = sorted(anchors, key=lambda s: (0 if s in (you, best) else 1, -q[s]))
+    labs, boxes = [], []
+    for s in order:
+        rig = _rig_short(cmeta[s])
+        tag = "YOU" if s == you else ("BEST" if s == best else "")
+        if s == you and s == best:
+            tag = "YOU · BEST"
+        halfw = max(len(rig), len(tag)) * fs * 0.30 + 4  # rough half text width
+        cx = min(max(pos[s][0], halfw + 3), W - halfw - 3)
+        cy = min(max(pos[s][1], cell * 1.2), H - cell * 0.7)
+        for _ in range(24):  # nudge vertically until this box clears the placed ones
+            hit = next((b for b in boxes if abs(cy - b[1]) < lineh and abs(cx - b[0]) < halfw + b[2]), None)
+            if not hit:
+                break
+            cy = hit[1] + lineh if cy >= hit[1] else hit[1] - lineh
+        cy = min(max(cy, cell * 1.2), H - cell * 0.7)
+        boxes.append((cx, cy, halfw))
+        col = hue[s]
+        out = ""
+        if tag:
+            out += (f'<text x="{cx:.1f}" y="{cy - fs * 0.72:.1f}" text-anchor="middle" '
+                    f'font-size="{fs + 1}" font-weight="800" letter-spacing="0.09em" '
+                    f'paint-order="stroke" stroke="var(--card)" stroke-width="3" '
+                    f'stroke-linejoin="round" fill="{col}">{_html.escape(tag)}</text>')
+        out += _lens_label(cx, cy + (fs * 0.72 if tag else 0), fs, col, _html.escape(rig))
+        labs.append(out)
+    return "".join(tints), "".join(labs)
+
+
 def render_som_map(som_block, title="Where you work",
                    subtitle="each hexagon is a way you work, shaded by what it costs",
                    legend_bits=None, style="classic", compact=False, svg_id=None,
@@ -2379,12 +2488,12 @@ def render_som_map(som_block, title="Where you work",
         return (f'<rect class="som-cell" x="{cx - cell / 2:.1f}" y="{cy - cell / 2:.1f}" '
                 f'width="{cell}" height="{cell}" rx="4" {attrs}>{inner}</rect>')
 
-    # Civ-V-style LENSES: each fingerprint axis is a regional overlay on the clean map. Each
-    # cell is a specific setup, but the SOM lays similar setups next to each other, so a per-
-    # cell tint coloured by an axis paints "regional monotony" -- coherent territories where
-    # the axis organises the map (engine does), mottled where it does not. A named label rides
-    # each category's session-weighted centroid, nudged apart when centroids collide. One lens
-    # shows at a time (toggle in the card); default engine. The grid itself is untouched:
+    # Civ-V-style LENSES on the clean map. Each cell is a specific RIG (a permutation in the
+    # taxonomy: engine x model x worker x effort); the SOM lays similar rigs next to each
+    # other. The default lens partitions the map into rig ZONES -- basins around the notable
+    # rigs (YOU, the global BEST, other regional optima), each NAMED in the taxonomy so a
+    # viewer locates themselves and the target in one vocabulary. Other lenses read a single
+    # axis (efficiency heat, engine territory). One shows at a time; the grid is untouched:
     # tints ride behind the cells, labels on top.
     zdefs, lens_tints, lens_labels = "", "", ""
     cmeta = som_block.get("cell_meaning") if hexed else None
@@ -2413,29 +2522,36 @@ def render_som_map(som_block, title="Where you work",
 
         def _engine(c):
             return c.get("engine")
-        # Two kinds of lens. CATEGORICAL (engine): a coloured territory per class, named at
-        # its centroid. HEAT (outcomes): a per-cell green wash by percentile, so the good
-        # region glows and a single peak label pins it. Outcomes carry the signal a config
-        # knob cannot: "which corner is winning, and am I in it?"
-        # Three lenses that each pull weight: the winning corner (composite), the single
-        # biggest lever (efficiency), and what kind of setup that territory is (engine).
-        # Config knobs a viewer already sets (firepower, effort) and occupancy (shown by the
-        # A/B rings) are deliberately NOT lenses: they flash nothing a glance does not know.
+        # Three kinds of lens. ZONES (default): rig basins around the notable rigs, each named
+        # in the taxonomy, YOU and BEST tagged -- "you run this, the winning rig is that."
+        # HEAT (efficiency): a per-cell green wash by percentile, peak pinned. CATEGORICAL
+        # (engine): a coloured territory per class. Config knobs a viewer already sets
+        # (firepower, effort) and occupancy (shown by the A/B rings) are NOT lenses.
         lenses = [
-            {"name": "best region", "kind": "heat", "val": _best,
-             "hue": "#3F7D5A", "peak": "BEST"},
+            {"name": "rig zones", "kind": "zones"},
             {"name": "efficiency", "kind": "heat", "val": (lambda i: pct.get("eff", {}).get(i)),
              "hue": "#3F7D5A", "peak": "PEAK"},
             {"name": "engine", "kind": "cat", "key": _engine,
              "hue": {"solo": "#4E6E8E", "delegate": "#8A6D4B", "workflow": "#7C5E8B"}},
         ]
+        cur_cell = som_block.get("current_cell")
         fs = 10 if compact else 12
         gap = fs * 1.55  # min vertical gap between two labels that overlap in x
         crad = cell * 0.88  # overlapping same-hue tints saturate; isolated cells stay faint
         tint_groups, lab_groups, any_drawn = [], [], False
         for li, L in enumerate(lenses):
-            name, kind, hue = L["name"], L["kind"], L["hue"]
+            name, kind = L["name"], L["kind"]
             tints, labs = [], []
+            if kind == "zones":
+                zt, zl = _rig_zones(cmeta, center, hstep, cell, W, H, cur_cell, _best)
+                if zt:
+                    any_drawn = True
+                tint_groups.append(f'<g class="som-lens-t" data-lens="{name}"'
+                                   f'{"" if li == 0 else " style=\"display:none\""}>{zt}</g>')
+                lab_groups.append(f'<g class="som-lens-l" data-lens="{name}"'
+                                  f'{"" if li == 0 else " style=\"display:none\""}>{zl}</g>')
+                continue
+            hue = L["hue"]
             if kind == "cat":
                 zg = defaultdict(lambda: {"sx": 0.0, "sy": 0.0, "w": 0.0, "n": 0})
                 for cmi in cmeta:
@@ -3126,7 +3242,7 @@ def _card_maps(report):
     # lens toggle (Civ-V map modes): one axis-overlay at a time on BOTH maps. Default engine.
     lens = ('<div class="lens-bar" id="lens-bar">'
             '<span class="lens-cue">lens</span>'
-            '<button class="lens-btn on" data-lens="best region">best region</button>'
+            '<button class="lens-btn on" data-lens="rig zones">rig zones</button>'
             '<button class="lens-btn" data-lens="efficiency">efficiency</button>'
             '<button class="lens-btn" data-lens="engine">engine</button></div>')
     return f'{lens}<div class="som-maps-row">{panels}</div>{foot}'
