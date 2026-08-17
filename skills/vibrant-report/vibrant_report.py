@@ -2045,7 +2045,7 @@ _CSS = """
 .vibrant .topgroup{position:relative;display:inline-flex;align-items:center;gap:74px;}
 .vibrant .score-col{position:relative;z-index:1;text-align:left;}
 .vibrant .cv{font-size:78px;font-weight:760;letter-spacing:-.04em;line-height:.82;
- color:var(--ink);font-variant-numeric:tabular-nums;}
+ color:var(--ink);font-variant-numeric:tabular-nums;display:inline-block;text-align:left;}
 .vibrant .cn{font-size:14px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
  color:var(--muted);margin-top:12px;}
 .vibrant .cparts{position:relative;z-index:1;font-size:13px;color:var(--ink2);
@@ -2341,33 +2341,34 @@ def _rig_zones(cmeta, ctr, hstep, cell, W, H, current_cell, bestfn):
             kept.append(i)
     if not kept:
         return "", ""
-    best = kept[0]
     you = None
     if current_cell:
         you = next((i for i in ids if list(cmeta[i]["cell"]) == list(current_cell)), None)
-    # anchors, in priority order: YOU and BEST always, then the strongest other optima,
-    # capped so the map never carries more names than a glance can hold.
+    # anchors: YOU (where your work concentrates, always) plus up to two other regional optima
+    # to NAME the terrain. The global BEST is NOT baked here: it depends on which score arms
+    # are enabled, so it is drawn client-side and reacts to the toggles. Skip the top optimum
+    # (that is usually the default BEST) and YOUR own rig from the named optima, to avoid a
+    # muted label sitting under the live green BEST marker.
     anchors, used = [], set()
-    for a in ([you, best] if you is not None else [best]):
-        if a not in anchors:
-            anchors.append(a)
-            used.add(_rig_short(cmeta[a]))
-    for o in kept:  # other optima, but never a second label with a rig name already shown
-        if len(anchors) >= 4:
+    if you is not None:
+        anchors.append(you)
+        used.add(_rig_short(cmeta[you]))
+    for o in kept[1:]:
+        if len(anchors) >= 3:
             break
         rig = _rig_short(cmeta[o])
         if o not in anchors and rig not in used:
             anchors.append(o)
             used.add(rig)
+    if not anchors:
+        anchors = [kept[0]]
     zone = {i: min(anchors, key=lambda s: dist(i, s)) for i in ids}
     reach = {s: max([dist(i, s) for i in ids if zone[i] == s] or [1.0]) for s in anchors}
-    muted = ["#6E8BA0", "#9A8B6E"]  # other optima: present but quiet
+    muted = ["#6E8BA0", "#9A8B6E", "#8A7A9B"]  # named optima: present but quiet
     hue, mi = {}, 0
     for s in anchors:
-        if s == best:
-            hue[s] = "#3F7D5A"          # the winning rig: green
-        elif s == you:
-            hue[s] = "#B0553A"          # you: clay
+        if s == you:
+            hue[s] = "#B0553A"          # you: clay, the one region that reads boldly
         else:
             hue[s] = muted[mi % len(muted)]
             mi += 1
@@ -2376,26 +2377,25 @@ def _rig_zones(cmeta, ctr, hstep, cell, W, H, current_cell, bestfn):
     for i in ids:
         s = zone[i]
         near = max(0.0, 1.0 - dist(i, s) / (reach[s] + 1e-6))  # 1 at anchor, 0 at edge
-        prom = 1.0 if s in (you, best) else 0.5  # you/best zones read; others stay quiet
-        op = 0.045 + 0.34 * near * prom
+        prom = 1.0 if s == you else 0.4  # YOUR zone reads clearly; named optima stay quiet
+        op = 0.04 + 0.38 * near * prom
         cx, cy = pos[i]
         tints.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{crad:.1f}" fill="{hue[s]}" '
                      f'opacity="{op:.3f}" filter="url(#zblur)"/>')
-    # labels: a tag line (YOU / BEST) over the rig name. Lay out with width-aware edge
-    # clamping and a 2-D nudge so no two boxes overlap; YOU and BEST placed first (win ties).
+    # labels: ONLY YOU is named on the static terrain (clay). The named optima contribute a
+    # quiet tint but no text, and BEST is drawn client-side (green, reactive). Two labels max
+    # keeps the regions legible instead of a crowd of names fighting near one corner.
     fs = 10
-    lineh = fs * 2.7  # two stacked lines
-    order = sorted(anchors, key=lambda s: (0 if s in (you, best) else 1, -q[s]))
+    lineh = fs * 2.7
+    order = [you] if you is not None else anchors[:1]
     labs, boxes = [], []
     for s in order:
         rig = _rig_short(cmeta[s])
-        tag = "YOU" if s == you else ("BEST" if s == best else "")
-        if s == you and s == best:
-            tag = "YOU · BEST"
-        halfw = max(len(rig), len(tag)) * fs * 0.30 + 4  # rough half text width
+        tag = "YOU" if s == you else ""
+        halfw = max(len(rig), len(tag)) * fs * 0.30 + 4
         cx = min(max(pos[s][0], halfw + 3), W - halfw - 3)
         cy = min(max(pos[s][1], cell * 1.2), H - cell * 0.7)
-        for _ in range(24):  # nudge vertically until this box clears the placed ones
+        for _ in range(24):
             hit = next((b for b in boxes if abs(cy - b[1]) < lineh and abs(cx - b[0]) < halfw + b[2]), None)
             if not hit:
                 break
@@ -2730,6 +2730,8 @@ def render_som_map(som_block, title="Where you work",
         # JS owns all live markers (hex outlines) and the arrow on interactive maps.
         parts.append('<g class="som-fx"></g>')
     parts.append(lens_labels)  # region names on top, so they read over cells and overlays
+    if lens_labels:  # the live, target-reactive BEST marker (JS fills it; shown in rig zones)
+        parts.append('<g class="zbest" data-lens="rig zones"></g>')
     parts.append("</svg>")
     if compact:
         sub = (f'<div class="som-compact-s">{esc(subtitle)}</div>'
@@ -2970,7 +2972,7 @@ _WALK_JS = r"""<script>
   // A/B markers (clay/teal) show exactly what each selection is targeting.
   function emphasize(){var ws=document.getElementById('wave-svg');if(!ws)return;var ea=selEra(selA),eb=selEra(selB);
     ws.querySelectorAll('.wv-bar').forEach(function(gg){gg.setAttribute('opacity','1');});
-    ws.querySelectorAll('.wv-band').forEach(function(bd){var e=+bd.getAttribute('data-era');bd.setAttribute('opacity',(e===ea||e===eb)?'0.9':'0.22');});
+    ws.querySelectorAll('.wv-band').forEach(function(bd){var e=+bd.getAttribute('data-era');bd.setAttribute('opacity',(e===ea||e===eb)?'0.5':'0.13');});
     ws.querySelectorAll('.wv-score').forEach(function(tx){var e=+tx.getAttribute('data-era');tx.setAttribute('opacity',(e===ea||e===eb)?'1':'0.4');});
     var fx=ws.querySelector('.wv-fx');if(fx)fx.innerHTML=selMarker(selA,ACOL)+selMarker(selB,BCOL);
     drawMerge();drawFlow();}
@@ -3058,14 +3060,30 @@ _WALK_JS = r"""<script>
     if(lb){lb.textContent=panelLabel(selB,'B');lb.style.color=BCOL;}
     var ca=document.getElementById('fp-a-cap'),cb=document.getElementById('fp-b-cap');
     if(ca)ca.textContent=panelSpecific(selA); if(cb)cb.textContent=panelSpecific(selB);}
+  function rigShort(c){if(!c)return '';var w=(c.worker&&c.worker!=='solo')?('›'+c.worker):'';return c.model+w+' · '+c.engine;}
+  // the target-reactive BEST: the best rig for the ENABLED score arms, recomputed on every
+  // toggle (unlike the static YOU / named-optima terrain). Drawn as a green crown on both
+  // maps; the rig-zones lens shows it, the other lenses hide it. This is what makes toggling
+  // an optimization target actually move "best".
+  function renderBestZones(e){var bc=best(e),h='';
+    if(bc){var p=pts(bc.r,bc.c),c=ctr(bc.r,bc.c);
+      if(p&&c){var GB='#2F7D57';                                 // a clean green crown; the
+        var vb=svg.viewBox.baseVal,W=vb.width,Hh=vb.height;      // rig is named in the detail
+        var lx=Math.min(Math.max(c.x,16),W-16);                  // line below (no map clutter)
+        var ly=Math.min(c.y+c.r+13,Hh-6);
+        h='<polygon points="'+p+'" fill="none" stroke="'+GB+'" stroke-width="3.2"/>'
+         +'<text x="'+lx.toFixed(1)+'" y="'+ly.toFixed(1)+'" text-anchor="middle" font-size="11.5" font-weight="800" letter-spacing="0.1em" paint-order="stroke" stroke="var(--card)" stroke-width="3.5" stroke-linejoin="round" fill="'+GB+'">BEST</text>';}}
+    [svg.querySelector('.zbest'),mapB.querySelector('.zbest')].forEach(function(g){if(g)g.innerHTML=h;});}
   // the OVERALL explanation (below the pair): the canonical meaning, once and short. The
   // per-print specifics are the two captions above it; the comparison is reading them.
-  function detailHtml(e){return 'The map of all your setups, similar ones adjacent; a ring marks where a selection worked (bigger = more of your work), shaded by cost per surviving KB.';}
+  function detailHtml(e){var bc=best(e);
+    var bt=bc?(' <b style="color:#2F7D57">BEST</b> for '+objName(e)+' is <b>'+rigShort(bc)+'</b> (toggle the score arms to move it).'):'';
+    return 'The map of all your setups, similar ones adjacent; <b style="color:'+ACOL+'">YOU</b> marks where your work concentrates.'+bt;}
   function refresh(){var e=enSet(),v=vals();
     if(vbScore)vbScore.textContent=fmt(score(e,v));
     MK.forEach(function(m){var b=tog(m);if(!b)return;b.setAttribute('aria-pressed',e[m]?'true':'false');var bb=b.querySelector('b');if(bb)bb.textContent=fmtv(m,v[m]);});
     if(vbLabel)vbLabel.textContent=(selB.day!=null?selLabel(selB)+' ':(selB.era===curEraId?'':'that generation '))+'score';
-    dimWave(e);emphasize();renderPanels();setRec(e);
+    dimWave(e);emphasize();renderPanels();renderBestZones(e);setRec(e);
     if(vbDetail)vbDetail.innerHTML=detailHtml(e);}
   // hovering a cell in either fingerprint decodes it.
   [svg,mapB].forEach(function(mp){mp.querySelectorAll('.som-cell').forEach(function(cl){
@@ -3095,7 +3113,7 @@ _WALK_JS = r"""<script>
     lb.addEventListener('click',function(){var L=lb.getAttribute('data-lens');
       lensBar.querySelectorAll('.lens-btn').forEach(function(o){o.classList.toggle('on',o===lb);});
       [svg,mapB].forEach(function(mp){
-        mp.querySelectorAll('.som-lens-t,.som-lens-l').forEach(function(g){
+        mp.querySelectorAll('.som-lens-t,.som-lens-l,.zbest').forEach(function(g){
           g.style.display=(g.getAttribute('data-lens')===L)?'':'none';});});});});}
   window.addEventListener('resize',function(){drawMerge();drawFlow();});
   refresh();
@@ -3653,6 +3671,7 @@ def _hero_card(report):
             f'<svg class="merge-flow" id="merge-flow" aria-hidden="true"></svg>'
             f'<div class="cparts" id="vb-parts">{"".join(comps)}</div>'
             f'<div class="score-col"><div class="cv" id="vb-score" '
+            f'style="min-width:{len(cv)}ch" '
             f'title="the enabled metrics multiplied; toggle a metric to change it. '
             f'Watch it move, not its absolute size">{cv}</div>'
             f'<div class="cn" id="vb-label">score</div></div>'

@@ -115,6 +115,9 @@ def test_lens_overlays(fails):
     check(" · solo</text>" in row or " · delegate</text>" in row or " · workflow</text>" in row,
           "zones are not named as rigs", fails)
     check(">PEAK</text>" in row, "efficiency lens has no peak pin", fails)
+    # BEST is NOT baked static; it is a client group the score-arm toggles recompute.
+    check(row.count('class="zbest" data-lens="rig zones"') == 2, "no reactive BEST group per map", fails)
+    check(">BEST</text>" not in row, "BEST should be client-drawn, not static", fails)
 
 
 def test_hero_toggles(fails):
