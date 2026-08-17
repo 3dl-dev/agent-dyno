@@ -75,6 +75,11 @@ Rough timings on a ~2.8GB, ~300-session transcript store:
 | either tool, re-run with warm cache | <1s |
 | `horizon_attribute` (on a small/medium repo) | a few seconds to a minute, blame-bound |
 
+Once you have a rendered report, `reading-the-report.md` walks the scorecard element by
+element (the score, the three meters, the timeline generations, the map territories, the
+coordination core, and the recommendation) and lists the external research the design draws
+on.
+
 ## 5. Verify the build against its spec
 
 ```bash
