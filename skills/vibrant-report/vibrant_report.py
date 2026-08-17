@@ -2060,6 +2060,8 @@ _CSS = """
  color:var(--ink);font-variant-numeric:tabular-nums;display:inline-block;text-align:left;}
 .vibrant .cn{font-size:14px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
  color:var(--muted);margin-top:12px;}
+.vibrant .chint{font-size:11px;color:var(--muted);margin-top:3px;font-style:italic;
+ max-width:26ch;line-height:1.35;}
 .vibrant .cparts{position:relative;z-index:1;font-size:13px;color:var(--ink2);
  display:flex;flex-direction:column;gap:9px;align-items:flex-end;margin:0;}
 .vibrant .merge-flow{position:absolute;left:0;top:0;width:100%;height:100%;
@@ -2083,6 +2085,8 @@ _CSS = """
 .vibrant .mk-mix{color:var(--muted);}
 .vibrant .wave{margin:52px 0 24px;}
 .vibrant .wave svg{width:100%;height:auto;}
+.vibrant .wcap{font-size:10px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;
+ color:var(--muted);margin-bottom:6px;}
 .vibrant .wlegend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:12px;
  font-weight:700;align-items:center;}
 .vibrant .wlegend .wl-note{color:var(--muted);font-weight:400;margin-left:auto;
@@ -2935,6 +2939,7 @@ _WALK_CSS = (
     '.civ-legend i{width:12px;height:12px;border-radius:3px;display:inline-block;'
     'border:2px solid transparent}'
     '.civ-legend .civ-best b{color:#4FB07E}'
+    '.civ-note{font-size:11px;color:var(--muted);margin-top:7px;line-height:1.4;max-width:60ch}'
     '.som-maps-row{display:flex;flex-wrap:wrap;gap:24px;margin-top:10px}'
     '.som-maps-row>div{flex:1 1 300px;min-width:0}'
     '.fp-panel{flex:1 1 300px;min-width:0}'
@@ -3386,10 +3391,13 @@ def _card_maps(report):
               + '<span class="civ-best"><b>&#11041;</b> best rig for your target</span>'
               + f'<span><i style="background:{_CIV_COORD};border-color:{_CIV_COORD}"></i>'
               + 'coordination core (workers share files)</span></div>')
+    note = ('<div class="civ-note">the coordination core is neutral: a brighter core is '
+            'not "better", survival decides whether the sharing paid off. Hover any hex to '
+            'read its rig.</div>')
     foot = ('<div class="vb-detail" id="vb-detail"></div>'
             '<div class="vb-rec" id="vb-rec"></div>')
     return (f'<div class="civ-wrap">{civ}<div class="civ-tip" id="civ-tip"></div></div>'
-            f'{legend}{foot}')
+            f'{legend}{note}{foot}')
 
 
 def render_shared_map_compact(merged, current_cell, subtitle=""):
@@ -3717,7 +3725,9 @@ def render_waveform(report):
             '<span><i style="background:var(--good)"></i>simplicity</span></span>'
             '<span class="wl-note">click a bar to hold a day, the band to hold a '
             'generation</span></div>')
-    return (f'<div class="wave">{svg}{note}</div>')
+    cap = ('<div class="wcap">score over time &middot; each shaded band is a rig '
+           'generation, labelled with its score</div>')
+    return (f'<div class="wave">{cap}{svg}{note}</div>')
 
 
 def _som_mark():
@@ -3788,7 +3798,9 @@ def _hero_card(report):
             f'style="min-width:{len(cv)}ch" '
             f'title="the enabled metrics multiplied; toggle a metric to change it. '
             f'Watch it move, not its absolute size">{cv}</div>'
-            f'<div class="cn" id="vb-label">score</div></div>'
+            f'<div class="cn" id="vb-label">score</div>'
+            f'<div class="chint">the three meters multiplied; watch the trend, not the total</div>'
+            f'</div>'
             f'</div></div>')
     _ = fp  # fingerprint data stays in report["fingerprint"]; the maps render it below
     return "".join([
