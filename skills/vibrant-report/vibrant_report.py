@@ -2362,6 +2362,109 @@ def _rig_zones(cmeta, ctr, hstep, cell, W, H, current_cell, bestfn):
                          _rig_short(cmeta[you]), W, H)
 
 
+# Civ-V territory colours: (soft terrain fill, bright national-border). Mid-tones that read
+# on dark and light alike; not a capability ranking, just distinct identities.
+_CIV_TERR = {"solo": ("#3F6E8E", "#6FA0C6"), "delegate": ("#8A6D4B", "#C9A06A"),
+             "workflow": ("#6E5A8A", "#A98BD0")}
+_CIV_YOU = "#C56A4C"
+
+
+def _civ_nbrs(r, c):
+    """Pointy-top odd-r hex neighbours, in the vertex/edge order [NW, W, SW, SE, E, NE], so a
+    border edge can be matched to the cell across it."""
+    d = ([(-1, 0), (0, -1), (1, 0), (1, 1), (0, 1), (-1, 1)] if r % 2
+         else [(-1, -1), (0, -1), (1, -1), (1, 0), (0, 1), (-1, 0)])
+    return [(r + dr, c + dc) for dr, dc in d]
+
+
+def render_civ_map(som_block, svg_id=None, compact=True):
+    """The rig fingerprint as a Civ-V map: engine TERRITORIES traced with national-style
+    borders (self-evident like a strategy map) over the soft glow (atmospheric), cost-shaded
+    hexes underneath, YOU fixed as your capital, and BEST plus the move drawn client-side so
+    they react to the enabled score arms. One landscape map: identity and next-move in a
+    single picture, no second panel. The geometry is emitted as data-* so the JS can place
+    the reactive BEST on any cell."""
+    lat = som_block.get("lattice") or {}
+    rows, cols = lat.get("rows"), lat.get("cols")
+    cmeta = som_block.get("cell_meaning") or []
+    if not (rows and cols and cmeta):
+        return ""
+    cm = {tuple(c["cell"]): c for c in cmeta}
+    eng = {tuple(c["cell"]): c.get("engine") for c in cmeta if c.get("engine")}
+    cur = som_block.get("current_cell")
+    esc = _html.escape
+    cell = 26 if compact else 34
+    hstep, vstep, pad, rr = cell + 2, (cell + 2) * 0.87, 8, cell * 0.575
+
+    def ctr(r, c):
+        return (pad + cell / 2 + c * hstep + (hstep / 2 if r % 2 else 0),
+                pad + cell / 2 + r * vstep)
+
+    def verts(cx, cy):
+        return [(cx + rr * math.cos(math.radians(a)), cy - rr * math.sin(math.radians(a)))
+                for a in (90, 150, 210, 270, 330, 30)]
+
+    def poly(cx, cy):
+        return " ".join(f"{x:.1f},{y:.1f}" for x, y in verts(cx, cy))
+    W = pad * 2 + cell / 2 + (cols - 1) * hstep + hstep / 2 + cell / 2
+    H = pad * 2 + cell / 2 + (rows - 1) * vstep + cell / 2
+
+    glow, fills, cells, borders, zg = [], [], [], [], {}
+    for (r, c), e in eng.items():
+        cx, cy = ctr(r, c)
+        V = verts(cx, cy)
+        col, bcol = _CIV_TERR.get(e, ("#6E6E76", "#9A9AA2"))
+        glow.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{cell * 0.9:.1f}" fill="{col}" '
+                    f'opacity="0.16" filter="url(#cvg)"/>')
+        fills.append(f'<polygon points="{poly(cx, cy)}" fill="{col}" opacity="0.28"/>')
+        cost = cm[(r, c)].get("cost")
+        cop = 0.0 if cost is None else min(0.55, 0.10 + 0.45 * min(cost / 6.0, 1.0))
+        cells.append(f'<polygon points="{poly(cx, cy)}" fill="rgba(18,18,20,{cop:.2f})" '
+                     f'stroke="rgba(160,160,170,0.10)" stroke-width="1"/>')
+        for i, nb in enumerate(_civ_nbrs(r, c)):
+            if eng.get(nb) != e:  # this edge is on the territory boundary: draw a border
+                a, b = V[i], V[(i + 1) % 6]
+                borders.append(f'<line x1="{a[0]:.1f}" y1="{a[1]:.1f}" x2="{b[0]:.1f}" '
+                               f'y2="{b[1]:.1f}" stroke="{bcol}" stroke-width="2.4" '
+                               f'stroke-linecap="round"/>')
+        z = zg.setdefault(e, [0.0, 0.0, 0])
+        z[0] += cx
+        z[1] += cy
+        z[2] += 1
+    labels = []
+    for e, (sx, sy, n) in zg.items():
+        bcol = _CIV_TERR.get(e, ("", "#9A9AA2"))[1]
+        labels.append(f'<text x="{sx / n:.1f}" y="{sy / n:.1f}" text-anchor="middle" '
+                      f'font-size="12" font-weight="800" letter-spacing="0.14em" opacity="0.4" '
+                      f'paint-order="stroke" stroke="var(--card)" stroke-width="3" '
+                      f'fill="{bcol}">{esc(e.upper())}</text>')
+    you_mark = ""
+    if cur and tuple(cur) in cm:
+        cx, cy = ctr(*cur)
+        star = []
+        for k in range(10):
+            ang = math.pi / 2 + k * math.pi / 5
+            rad = 6.2 if k % 2 == 0 else 2.6
+            star.append(f"{cx + rad * math.cos(ang):.1f},{cy - rad * math.sin(ang):.1f}")
+        you_mark = (f'<polygon points="{poly(cx, cy)}" fill="{_CIV_YOU}" opacity="0.22"/>'
+                    f'<polygon points="{poly(cx, cy)}" fill="none" stroke="{_CIV_YOU}" '
+                    f'stroke-width="3.4"/><polygon points="{" ".join(star)}" fill="{_CIV_YOU}"/>'
+                    f'<text x="{cx:.1f}" y="{cy + rr + 15:.1f}" text-anchor="middle" '
+                    f'font-size="12.5" font-weight="800" letter-spacing="0.1em" '
+                    f'paint-order="stroke" stroke="var(--card)" stroke-width="3.5" '
+                    f'stroke-linejoin="round" fill="{_CIV_YOU}">YOU</text>')
+    idattr = f' id="{svg_id}"' if svg_id else ''
+    geo = (f' data-cell="{cell}" data-hstep="{hstep}" data-vstep="{vstep:.3f}" '
+           f'data-pad="{pad}" data-rr="{rr:.2f}"')
+    defs = ('<defs><filter id="cvg" x="-60%" y="-60%" width="220%" height="220%">'
+            '<feGaussianBlur stdDeviation="9"/></filter></defs>')
+    return (f'<svg{idattr}{geo} viewBox="0 0 {W:.0f} {H:.0f}" role="img" '
+            f'style="width:100%;height:auto;display:block" aria-label="rig fingerprint as a '
+            f'map: engine territories with borders, your capital, and the best rig to move to">'
+            f'{defs}{"".join(glow)}{"".join(fills)}{"".join(cells)}{"".join(borders)}'
+            f'{"".join(labels)}{you_mark}<g class="zciv"></g></svg>')
+
+
 def render_som_map(som_block, title="Where you work",
                    subtitle="each hexagon is a way you work, shaded by what it costs",
                    legend_bits=None, style="classic", compact=False, svg_id=None,
@@ -2792,6 +2895,13 @@ _WALK_CSS = (
     'font-size:11px;color:var(--ink2)}'
     '.lens-legend span{display:inline-flex;align-items:center;gap:5px}'
     '.lens-legend i{width:10px;height:10px;border-radius:2px;display:inline-block}'
+    '.civ-wrap{margin-top:12px}'
+    '.civ-legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px;font-size:12px;'
+    'color:var(--ink2);align-items:center}'
+    '.civ-legend>span{display:inline-flex;align-items:center;gap:6px}'
+    '.civ-legend i{width:12px;height:12px;border-radius:3px;display:inline-block;'
+    'border:2px solid transparent}'
+    '.civ-legend .civ-best b{color:#4FB07E}'
     '.som-maps-row{display:flex;flex-wrap:wrap;gap:24px;margin-top:10px}'
     '.som-maps-row>div{flex:1 1 300px;min-width:0}'
     '.fp-panel{flex:1 1 300px;min-width:0}'
@@ -2839,19 +2949,26 @@ def _arm_phrase(arm_change):
 _WALK_JS = r"""<script>
 (function(){
   var CELLS=__CELLS__, BEST=__BEST__, PERIODS=__PERIODS__, ERAS=__ERAS__, CUR=__CUR__, AGG=__AGG__;
-  var svg=document.getElementById('map-a'), mapB=document.getElementById('map-b');
-  if(!svg||!mapB) return;  // svg (map-a) is also the shared geometry reference for pts/ctr
+  var svg=document.getElementById('map-civ');
+  if(!svg) return;  // the single Civ-V fingerprint
+  var GEO={cell:+svg.getAttribute('data-cell'),hstep:+svg.getAttribute('data-hstep'),
+           vstep:+svg.getAttribute('data-vstep'),pad:+svg.getAttribute('data-pad'),
+           rr:+svg.getAttribute('data-rr')};
+  var zciv=svg.querySelector('.zciv');
   var vbScore=document.getElementById('vb-score'), vbLabel=document.getElementById('vb-label'),
       vbRec=document.getElementById('vb-rec'), vbDetail=document.getElementById('vb-detail');
-  var fxA=svg.querySelector('.som-fx'), fxB=mapB.querySelector('.som-fx');
   var OBJC={eff:'var(--accent)',flow:'var(--teal)',simp:'var(--good)'},
       OBJN={eff:'efficiency',flow:'flow',simp:'simplicity'};
   var MID=' · ', ARR=' › ', REC='→', MK=['eff','flow','simp'];
   var cmap={}; CELLS.forEach(function(c){cmap[c.r+','+c.c]=c;});
   function cell(r,c){return cmap[r+','+c];}
-  function el(r,c){return svg.querySelector('[data-r="'+r+'"][data-c="'+c+'"]');}
-  function pts(r,c){var e=el(r,c);return e?e.getAttribute('points'):null;}
-  function ctr(r,c){var e=el(r,c);if(!e)return null;var b=e.getBBox();return {x:b.x+b.width/2,y:b.y+b.height/2,r:b.width/2};}
+  // Civ-V map geometry: compute a cell centre and hexagon directly (the map has no per-cell
+  // data-r/data-c nodes, unlike the old SOM grid).
+  var CIVA=[90,150,210,270,330,30];
+  function ctr(r,c){return {x:GEO.pad+GEO.cell/2+c*GEO.hstep+((r%2)?GEO.hstep/2:0),
+                            y:GEO.pad+GEO.cell/2+r*GEO.vstep, r:GEO.rr};}
+  function hexAt(cx,cy){var p=[];for(var k=0;k<6;k++){var a=CIVA[k]*Math.PI/180;
+    p.push((cx+GEO.rr*Math.cos(a)).toFixed(1)+','+(cy-GEO.rr*Math.sin(a)).toFixed(1));}return p.join(' ');}
   function money(v){return v==null?'n/a':(v<10?'$'+(+v).toFixed(1):'$'+Math.round(v));}
   function setup(c){if(!c)return 'an unused setup';
     var w=(c.worker&&c.worker!=='solo')?(ARR+c.worker):'';return c.engine+MID+c.model+w+MID+c.effort;}
@@ -2967,61 +3084,40 @@ _WALK_JS = r"""<script>
     if(!ov){ov=document.createElementNS('http://www.w3.org/2000/svg','svg');ov.setAttribute('class','flow-ov');host.insertBefore(ov,host.firstChild);}
     var hr=host.getBoundingClientRect();if(hr.width<1)return;
     ov.setAttribute('viewBox','0 0 '+hr.width.toFixed(1)+' '+hr.height.toFixed(1));
-    ov.innerHTML=upRibbon(selB,BCOL,hr)+panelRibbon(selA,document.getElementById('map-a'),ACOL,hr)+panelRibbon(selB,document.getElementById('map-b'),BCOL,hr);}
+    ov.innerHTML=upRibbon(selB,BCOL,hr);}  // timeline slice flows up into the score
   // demoted in the comparison view: only a confident move shows, prefixed so it reads as
   // secondary advice about the current generation, not part of the A/B comparison.
   function setRec(e){if(!vbRec)return;var bc=best(e);
     if(bc&&recOk(e)){vbRec.innerHTML='to improve the current generation for '+objName(e)+': <span class="rec-arrow">'+REC+'</span> shift toward <b>'+setup(bc)+'</b>';return;}
     vbRec.innerHTML='';}
-  // draw a selection's occupancy into a panel: weighted rings for a generation cloud, a
-  // single ring for a day sample, coloured by the panel's identity.
-  function renderInto(fxEl,sel,color){if(!fxEl)return;var h='';selCells(sel).forEach(function(cc){var p=pts(cc.r,cc.c);if(!p)return;var w=cc.w||1;
-    var sw=(1.5+w*3.4).toFixed(1),op=(0.4+w*0.6).toFixed(2);h+='<polygon points="'+p+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'" opacity="'+op+'"/>';});fxEl.innerHTML=h;}
-  function panelLabel(sel,role){var k=selKind(sel);
-    var pre=(role==='A'?(HELD?'held ':(k==='generation'?'previous ':'')):(k==='generation'?'current ':''));
-    return pre+k+MID+selLabel(sel);}
-  // per-print SPECIFIC line (right under each map): what THIS fingerprint shows.
-  function panelSpecific(sel){var cells=selCells(sel);var prev=cells.length?cell(cells[0].r,cells[0].c):null;
-    var s='mostly '+(prev?setup(prev):'n/a');
-    if(sel.era!=null){var g=eraById(sel.era);if(g){s+=' '+MID+' '+g.days+' session'+(g.days==1?'':'s');
-      var oth=(g.cells?g.cells.length-1:0);if(oth>0)s+=' '+MID+' +'+oth+' other setup'+(oth==1?'':'s');}}
-    return s;}
-  function renderPanels(){renderInto(fxA,selA,ACOL);renderInto(fxB,selB,BCOL);
-    var la=document.getElementById('fp-a-label'),lb=document.getElementById('fp-b-label');
-    if(la){la.textContent=panelLabel(selA,'A');la.style.color=ACOL;}
-    if(lb){lb.textContent=panelLabel(selB,'B');lb.style.color=BCOL;}
-    var ca=document.getElementById('fp-a-cap'),cb=document.getElementById('fp-b-cap');
-    if(ca)ca.textContent=panelSpecific(selA); if(cb)cb.textContent=panelSpecific(selB);}
   function rigShort(c){if(!c)return '';var w=(c.worker&&c.worker!=='solo')?('›'+c.worker):'';return c.model+w+' · '+c.engine;}
-  // the target-reactive BEST: the best rig for the ENABLED score arms, recomputed on every
-  // toggle (unlike the static YOU / named-optima terrain). Drawn as a green crown on both
-  // maps; the rig-zones lens shows it, the other lenses hide it. This is what makes toggling
-  // an optimization target actually move "best".
-  function renderBestZones(e){var bc=best(e),h='';                // matches the YOU mark: a
-    if(bc){var p=pts(bc.r,bc.c),c=ctr(bc.r,bc.c);                 // light fill + bold ring, tag
-      if(p&&c){var GB='#2F7D57',vb=svg.viewBox.baseVal;          // BELOW (YOU sits above), rig
-        var lx=Math.min(Math.max(c.x,20),vb.width-20);           // named in the detail line
-        var ty=(c.y+c.r+18<vb.height-2)?(c.y+c.r+15):(c.y-c.r-8); // below, or above near the edge
-        h='<polygon points="'+p+'" fill="'+GB+'" opacity="0.18"/>'
-         +'<polygon points="'+p+'" fill="none" stroke="'+GB+'" stroke-width="3.4"/>'
-         +'<text x="'+lx.toFixed(1)+'" y="'+ty.toFixed(1)+'" text-anchor="middle" font-size="12" font-weight="800" letter-spacing="0.1em" paint-order="stroke" stroke="var(--card)" stroke-width="3.5" stroke-linejoin="round" fill="'+GB+'">BEST</text>';}}
-    [svg.querySelector('.zbest'),mapB.querySelector('.zbest')].forEach(function(g){if(g)g.innerHTML=h;});}
+  // BEST + the move on the single Civ-V map, reactive to the enabled score arms: a green hex
+  // on the best cell for the target, and a dashed arrow from YOU (your capital) to it. This
+  // is what makes toggling an optimization target actually move "best".
+  function renderBestCiv(e){if(!zciv)return;var bc=best(e);if(!bc){zciv.innerHTML='';return;}
+    var b=ctr(bc.r,bc.c),y=(CUR?ctr(CUR[0],CUR[1]):null),GB='#4FB07E',AR='#7FCBA6',h='';
+    if(y){var dx=b.x-y.x,dy=b.y-y.y,d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d;
+      var sx=y.x+ux*(y.r+3),sy=y.y+uy*(y.r+3),tx=b.x-ux*(b.r+3),ty=b.y-uy*(b.r+3);
+      var hx=tx-ux*10,hy=ty-uy*10,px=-uy,py=ux;
+      h+='<line x1="'+sx.toFixed(1)+'" y1="'+sy.toFixed(1)+'" x2="'+hx.toFixed(1)+'" y2="'+hy.toFixed(1)+'" stroke="'+AR+'" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="1 6" opacity="0.9"/>'
+       +'<polygon points="'+tx.toFixed(1)+','+ty.toFixed(1)+' '+(hx+px*5).toFixed(1)+','+(hy+py*5).toFixed(1)+' '+(hx-px*5).toFixed(1)+','+(hy-py*5).toFixed(1)+'" fill="'+AR+'"/>';}
+    var vb=svg.viewBox.baseVal,lx=Math.min(Math.max(b.x,20),vb.width-20);
+    var ly=(b.y+b.r+18<vb.height-2)?(b.y+b.r+15):(b.y-b.r-9);
+    h+='<polygon points="'+hexAt(b.x,b.y)+'" fill="'+GB+'" opacity="0.20"/>'
+     +'<polygon points="'+hexAt(b.x,b.y)+'" fill="none" stroke="'+GB+'" stroke-width="3.4"/>'
+     +'<text x="'+lx.toFixed(1)+'" y="'+ly.toFixed(1)+'" text-anchor="middle" font-size="12.5" font-weight="800" letter-spacing="0.1em" paint-order="stroke" stroke="var(--card)" stroke-width="3.6" stroke-linejoin="round" fill="'+GB+'">BEST</text>';
+    zciv.innerHTML=h;}
   // the OVERALL explanation (below the pair): the canonical meaning, once and short. The
   // per-print specifics are the two captions above it; the comparison is reading them.
   function detailHtml(e){var bc=best(e);
-    var bt=bc?(' <b style="color:#2F7D57">BEST</b> for '+objName(e)+' is <b>'+rigShort(bc)+'</b> (toggle the score arms to move it).'):'';
-    return 'The map of all your setups, similar ones adjacent; <b style="color:'+ACOL+'">YOU</b> marks where your work concentrates.'+bt;}
+    var bt=bc?(' <b style="color:#4FB07E">BEST</b> for '+objName(e)+' is <b>'+rigShort(bc)+'</b> (toggle the score arms to move it).'):'';
+    return 'Your fingerprint as a map: engine <b>territories</b> with borders, <b style="color:#C56A4C">&#9733; YOU</b> where your work concentrates.'+bt;}
   function refresh(){var e=enSet(),v=vals();
     if(vbScore)vbScore.textContent=fmt(score(e,v));
     MK.forEach(function(m){var b=tog(m);if(!b)return;b.setAttribute('aria-pressed',e[m]?'true':'false');var bb=b.querySelector('b');if(bb)bb.textContent=fmtv(m,v[m]);});
     if(vbLabel)vbLabel.textContent=(selB.day!=null?selLabel(selB)+' ':(selB.era===curEraId?'':'that generation '))+'score';
-    dimWave(e);emphasize();renderPanels();renderBestZones(e);setRec(e);
+    dimWave(e);emphasize();renderBestCiv(e);setRec(e);
     if(vbDetail)vbDetail.innerHTML=detailHtml(e);}
-  // hovering a cell in either fingerprint decodes it.
-  [svg,mapB].forEach(function(mp){mp.querySelectorAll('.som-cell').forEach(function(cl){
-    cl.addEventListener('mouseenter',function(){var c=cell(cl.getAttribute('data-r'),cl.getAttribute('data-c'));if(!vbDetail)return;
-      vbDetail.innerHTML=c?('<b>'+setup(c)+'</b>'+MID+c.sessions+' session'+(c.sessions==1?'':'s')+', '+money(c.cost)+' per KB, efficiency '+(c.eff==null?'n/a':c.eff)+', flow '+(c.flow==null?'n/a':c.flow)+', simplicity '+(c.simp==null?'n/a':c.simp)):'an unused setup, no sessions here';});
-    cl.addEventListener('mouseleave',function(){refresh();});});});
   MK.forEach(function(m){var b=tog(m);if(!b)return;
     b.addEventListener('mouseenter',function(){PV=m;refresh();});
     b.addEventListener('mouseleave',function(){PV=null;refresh();});
@@ -3039,20 +3135,6 @@ _WALK_JS = r"""<script>
     wsvg.addEventListener('mouseover',function(ev){var s=hitSel(ev.target);if(s){selB=s;refresh();}});
     wsvg.addEventListener('click',function(ev){var s=hitSel(ev.target);if(s)toggleHold(s);});
     wsvg.addEventListener('mouseleave',function(){selB={era:curEraId};refresh();});}
-  // lens toggle: swap which AREA colouring shows on both maps, and name it in the legend.
-  var lensBar=document.getElementById('lens-bar'),lensLeg=document.getElementById('lens-legend');
-  function sw(c,t){return '<span><i style="background:'+c+'"></i>'+t+'</span>';}
-  function setLegend(L){if(!lensLeg)return;
-    lensLeg.innerHTML=(L==='engine')
-      ?(sw('#4E6E8E','solo')+sw('#8A6D4B','delegate')+sw('#7C5E8B','workflow'))
-      :(sw('#d3e5dc','lower')+sw('#3F7D57','higher efficiency'));}
-  function setLens(L){lensBar.querySelectorAll('.lens-btn').forEach(function(o){o.classList.toggle('on',o.getAttribute('data-lens')===L);});
-    [svg,mapB].forEach(function(mp){mp.querySelectorAll('.som-lens-t,.som-lens-l').forEach(function(g){
-      g.style.display=(g.getAttribute('data-lens')===L)?'':'none';});});
-    setLegend(L);}
-  if(lensBar){lensBar.querySelectorAll('.lens-btn').forEach(function(lb){
-    lb.addEventListener('click',function(){setLens(lb.getAttribute('data-lens'));});});
-    setLegend('engine');}
   window.addEventListener('resize',function(){drawMerge();drawFlow();});
   refresh();
 })();
@@ -3186,34 +3268,25 @@ def render_walk(report):
 
 
 def _card_maps(report):
-    """Two comparison fingerprints on the SAME lattice: panel A (left) and panel B (right).
-    Which selection each shows is driven by JS: by default A is the previous generation and
-    B the current one; hover a wave bar to sample a day into B, click a bar to hold a
-    generation into A. Each panel is linked to its slice of the timeline by a sankey ribbon.
+    """ONE fingerprint, drawn as a Civ-V map: engine territories with borders, YOU fixed as
+    your capital, and BEST plus the move drawn by JS so they react to the enabled score arms.
+    The old two-panel A/B comparison is gone (it was redundant, and time already lives in the
+    wave above); this single landscape map is the identity and the next move in one picture.
     Empty when the map is absent."""
     som = (report.get("rig_space") or {}).get("som")
     if not som:
         return ""
-    a = render_som_map(som, style="ink-hex", compact=True, svg_id="map-a", js_arrow=True,
-                       title="", subtitle="")
-    b = render_som_map(som, style="ink-hex", compact=True, svg_id="map-b", js_arrow=True,
-                       title="", subtitle="")
-    # each panel: which selection (label, above) / the fingerprint / a canonical caption of
-    # what a fingerprint MEANS (below). The comparison detail sits under the pair; the
-    # recommendation is demoted (it is beside the point when comparing two selections).
-    panels = (f'<div class="fp-panel"><div class="fp-label" id="fp-a-label"></div>{a}'
-              f'<div class="fp-cap" id="fp-a-cap"></div></div>'
-              f'<div class="fp-panel"><div class="fp-label" id="fp-b-label"></div>{b}'
-              f'<div class="fp-cap" id="fp-b-cap"></div></div>')
+    civ = render_civ_map(som, svg_id="map-civ", compact=True)
+    if not civ:
+        return ""
+    legend = ('<div class="civ-legend" id="civ-legend">'
+              + "".join(f'<span><i style="background:{TERR[0]};border-color:{TERR[1]}"></i>'
+                        f'{eng}</span>' for eng, TERR in _CIV_TERR.items())
+              + f'<span class="civ-you"><b style="color:{_CIV_YOU}">&#9733;</b> you</span>'
+              + '<span class="civ-best"><b>&#11041;</b> best rig for your target</span></div>')
     foot = ('<div class="vb-detail" id="vb-detail"></div>'
             '<div class="vb-rec" id="vb-rec"></div>')
-    # lens toggle (Civ-V map modes): one axis-overlay at a time on BOTH maps. Default engine.
-    lens = ('<div class="lens-bar" id="lens-bar">'
-            '<span class="lens-cue">areas</span>'
-            '<button class="lens-btn on" data-lens="engine">engine</button>'
-            '<button class="lens-btn" data-lens="efficiency">efficiency</button>'
-            '<span class="lens-legend" id="lens-legend"></span></div>')
-    return f'{lens}<div class="som-maps-row">{panels}</div>{foot}'
+    return f'<div class="civ-wrap">{civ}</div>{legend}{foot}'
 
 
 def render_shared_map_compact(merged, current_cell, subtitle=""):

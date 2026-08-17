@@ -66,7 +66,7 @@ def test_script(fails):
           "placeholders not filled", fails)
     check('"simp":' in out or "simp" in out, "per-cell metrics not embedded", fails)
     # references the card elements it drives
-    for hook in ("map-a", "map-b", "wv-bar", "vb-score", "mtog", "vb-rec"):
+    for hook in ("map-civ", "zciv", "wv-bar", "vb-score", "mtog", "vb-rec"):
         check(hook in out, f"script does not reference {hook}", fails)
 
 
@@ -82,39 +82,22 @@ def test_no_em_dash(fails):
 
 
 def test_card_maps_interactive(fails):
+    # ONE Civ-V fingerprint: engine territories with borders, YOU (capital, named on the map)
+    # and a client group (.zciv) the JS fills with the reactive BEST + move arrow. No second
+    # panel, no lens bar.
     row = vr._card_maps(REPORT)
-    check("som-maps-row" in row, "no maps row", fails)
-    # two comparison panels (A and B), each an interactive fingerprint with an fx group.
-    check('id="map-a"' in row and 'id="map-b"' in row, "missing the two comparison panels", fails)
-    check('id="fp-a-label"' in row and 'id="fp-b-label"' in row, "missing the panel labels", fails)
-    check('data-r="2" data-c="2"' in row, "card cells not queryable", fails)
-    check(row.count("som-fx") >= 2, "each panel needs a JS-owned effects group", fails)
-    check('id="vb-rec"' in row, "no recommendation slot below the fingerprints", fails)
-    check('id="vb-detail"' in row, "no separate description/detail slot", fails)
-
-
-def test_lens_overlays(fails):
-    # The lens bar swaps the AREA colouring on both maps: engine territories (default) or an
-    # efficiency heat, drawn as flat per-cell fills (no blur filter). YOU and BEST are drawn
-    # ALWAYS, over any lens: YOU static (named), BEST a client group the score arms recompute.
-    row = vr._card_maps(REPORT)
-    check('id="lens-bar"' in row, "no lens toggle bar", fails)
-    for L in ("engine", "efficiency"):
-        check(f'data-lens="{L}"' in row, "missing area lens " + L, fails)
-    for L in ("rig zones", "firepower", "effort", "where you work", "best region"):
-        check(f'data-lens="{L}"' not in row, "stale lens present: " + L, fails)
-    # two lenses, each a tint group and a label group per map; areas are crisp (no blur).
-    check(row.count('class="som-lens-t"') == 4, "expected 2 area lenses on 2 maps", fails)
-    check(row.count('class="som-lens-l"') == 4, "expected 2 label lenses on 2 maps", fails)
-    check("url(#zblur)" in row, "areas should be soft glows (regionalization), not hard tiles", fails)
-    # only the default (engine) shows; efficiency is display:none on both maps.
-    check(row.count('data-lens="efficiency" style="display:none"') == 4,
-          "non-default lens must start hidden", fails)
-    # YOU is always on and named; BEST is an always-on client group; efficiency pins PEAK.
-    check(">YOU</text>" in row, "the viewer is not located on the map", fails)
-    check(" · solo</text>" in row or " · delegate</text>" in row or " · workflow</text>" in row,
-          "YOU is not named as a rig", fails)
-    check(row.count('class="zbest"') == 2, "no always-on reactive BEST group per map", fails)
+    check('id="map-civ"' in row, "missing the single Civ-V map", fails)
+    check("map-a" not in row and "map-b" not in row and "som-maps-row" not in row,
+          "the old dual A/B map should be gone", fails)
+    check('data-cell="' in row and 'data-hstep="' in row,
+          "map geometry must be exposed for the JS to place BEST", fails)
+    check('class="zciv"' in row, "no client group for the reactive BEST + move", fails)
+    check(">YOU</text>" in row, "YOU (your capital) is not marked on the map", fails)
+    check('<line ' in row and 'stroke-linecap="round"' in row,
+          "no traced territory borders", fails)
+    check("civ-legend" in row, "no legend naming the territories", fails)
+    check('id="vb-rec"' in row and 'id="vb-detail"' in row, "missing detail/recommendation slots", fails)
+    # BEST is drawn client-side (reactive to the score arms), never baked static.
     check(">BEST</text>" not in row, "BEST should be client-drawn, not static", fails)
 
 
@@ -272,7 +255,7 @@ def test_determinism(fails):
 def main():
     fails = []
     for t in (test_empty, test_script, test_no_external_refs, test_no_em_dash,
-              test_card_maps_interactive, test_lens_overlays, test_hero_toggles,
+              test_card_maps_interactive, test_hero_toggles,
               test_recommend_ignores_noise,
               test_recommend_noise_gate, test_rank_opacity_spreads,
               test_timeline_periods_era_smoothed, test_era_occupancy_cloud,
