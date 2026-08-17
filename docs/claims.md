@@ -109,9 +109,12 @@ numbers are theirs and will drift, the SHAPE is what we test. Model/harness-neut
 
 Coordination-signal probe (2026-08-17, live logs): parse the files each in-session subagent
 edits (Edit/Write/MultiEdit `file_path`), then measure how much sibling subagents overlap.
-Across 113 sessions with 2+ subagents, orchestrations are overwhelmingly SILOED: mean
-pairwise file-overlap (Jaccard) ~0.00, only a handful of files touched by 2+ agents out of
-hundreds (e.g. 370 agents / 2554 files / 36 shared). This is a real, extractable, NEUTRAL
+By raw pairwise Jaccard, orchestrations look overwhelmingly siloed (mean ~0.00; a handful of
+files shared out of hundreds). But the axis we chose, shared/distinct (fraction of files
+touched by 2+ workers, the fraction the pairwise measure washes out), DISCRIMINATES: on 75
+live multi-worker sessions the built `coordination` feature has mean 0.23 and 42/75 (56%)
+show real file-sharing (several at 1.0), while 33/75 are fully siloed. So the axis is not
+flat: some fleets coordinate on a shared core, others silo. This is a real, extractable, NEUTRAL
 shape axis (a "coordination" or worker-sharing fraction), not a quality claim: whether
 sharing paid off is left to the field, since high overlap can mean coordination OR conflict
 and only survival disambiguates. Caveats: it reads only the IN-SESSION tree (cross-job

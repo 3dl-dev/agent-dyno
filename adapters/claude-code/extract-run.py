@@ -102,6 +102,38 @@ def model_census(paths, main_thread_only):
     return counts
 
 
+_EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
+
+
+def edited_files(path):
+    """The set of file paths a single transcript edited (Edit/Write/MultiEdit/NotebookEdit
+    file_path). Feeds the coordination axis (session_features v3): how much sibling workers
+    share files vs silo. Robust to malformed lines."""
+    fs = set()
+    try:
+        fh = open(path, errors="replace")
+    except OSError:
+        return fs
+    with fh:
+        for line in fh:
+            if "file_path" not in line:
+                continue
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            content = (d.get("message") or {}).get("content")
+            if not isinstance(content, list):
+                continue
+            for blk in content:
+                if (isinstance(blk, dict) and blk.get("type") == "tool_use"
+                        and blk.get("name") in _EDIT_TOOLS):
+                    fp = (blk.get("input") or {}).get("file_path")
+                    if fp:
+                        fs.add(fp)
+    return fs
+
+
 def extract_one(session_path):
     session_dir = session_path[:-6]  # strip ".jsonl"
     subagent_files = glob.glob(os.path.join(session_dir, "subagents", "**", "*.jsonl"), recursive=True)
@@ -145,6 +177,10 @@ def extract_one(session_path):
     main_models_seen = dict(model_census([session_path], main_thread_only=True))
     worker_models_seen = dict(model_census(subagent_files, main_thread_only=False))
 
+    # per-worker edited-file sets (one per in-session sub-agent transcript), for the
+    # coordination axis. Workers that edited nothing are dropped.
+    worker_files = [sorted(fs) for fs in (edited_files(f) for f in subagent_files) if fs]
+
     return {
         "session_id": os.path.basename(session_path)[:-6],
         "edits_main": orch.get("edits", 0),
@@ -168,6 +204,7 @@ def extract_one(session_path):
         "worker_models_seen": worker_models_seen,
         "wf_agents": sess_record.get("wf_agents", 0),
         "plain_agents": sess_record.get("plain_agents", 0),
+        "worker_files": worker_files,
         "n_turns": len(turn_records),
     }
 
