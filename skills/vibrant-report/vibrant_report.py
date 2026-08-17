@@ -2265,118 +2265,6 @@ def _rank_opacity(v, sorted_vals, lower_better=True):
     return 0.10 + 0.80 * min(max(t, 0.0), 1.0)
 
 
-_FP_A_HEX = "#B0553A"  # A (previous) identity, matches the JS ACOL
-_FP_B_HEX = "#3F6E66"  # B (current) identity, matches the JS BCOL
-
-
-_ENG_STRUCTURE = {"solo": 0.0, "delegate": 0.5, "workflow": 1.0}
-
-
-def _setup_axes(cmi):
-    """The two readable levers of a setup: STRUCTURE (solo->delegate->workflow) and FIREPOWER
-    (lean->heavy models; orchestrator weighted, worker blended in when delegated)."""
-    struct = _ENG_STRUCTURE.get(cmi.get("engine"), 0.5)
-    m = _FIRE.get(cmi.get("model"), 0.5)
-    w = cmi.get("worker")
-    fire = m * 0.6 + _FIRE.get(w, 0.5) * 0.4 if (w and w != "solo") else m
-    return struct, fire
-
-
-def render_spheroid_map(som_block, svg_id="map-sph", compact=True):
-    """EXPERIMENT #3: a READABLE fingerprint on real, labelled axes. Every setup is placed by
-    how it diverges from YOUR NORM on two levers: X = orchestration STRUCTURE (solo -> delegate
-    -> workflow), Y = FIREPOWER (lean -> heavy models). Centre = your norm, distance =
-    divergence, and the DIRECTION says which lever you pushed -- so position reads at a glance
-    instead of decode-by-hover. Cost-shaded cells, a labelled crosshair, and a som-fx group for
-    the JS blobs + drift arrow. Landscape. Pure function of som_block (uses cell_meaning)."""
-    lattice = som_block.get("lattice") or {}
-    rows, cols = lattice.get("rows") or 0, lattice.get("cols") or 0
-    cm = som_block.get("cell_meaning") or []
-    if rows <= 0 or cols <= 0 or not cm:
-        return ""
-    field = som_block.get("field") or []
-    lower_better = som_block.get("field_lower_is_better", True)
-
-    def fval(r, c):
-        try:
-            return field[r][c]
-        except (IndexError, TypeError):
-            return None
-    ranked = sorted(v for r in range(rows) for c in range(cols)
-                    if (v := fval(r, c)) is not None)
-
-    # per-cell (structure, firepower) and the support-weighted norm
-    data, tot, nx, nf = [], 0.0, 0.0, 0.0
-    for cmi in cm:
-        r, c = cmi["cell"]
-        sx, fp = _setup_axes(cmi)
-        n = cmi.get("sessions", 0) or 0
-        data.append((r, c, sx, fp))
-        tot += n
-        nx += n * sx
-        nf += n * fp
-    if tot <= 0:
-        nx = sum(d[2] for d in data) / len(data)
-        nf = sum(d[3] for d in data) / len(data)
-    else:
-        nx, nf = nx / tot, nf / tot
-    sxmax = max([abs(d[2] - nx) for d in data] + [1e-6])
-    sfmax = max([abs(d[3] - nf) for d in data] + [1e-6])
-
-    W, H = (440, 250) if compact else (560, 320)  # LANDSCAPE
-    cx0, cy0, Rx, Ry = W / 2, H / 2, W * 0.40, H * 0.37
-    base_rr = min(Rx, Ry) / 10.0  # small position anchors; the blobs carry the density
-
-    def hexpts(cx, cy, rr):
-        return " ".join(f"{cx + rr * math.cos(math.radians(a)):.1f},"
-                        f"{cy - rr * math.sin(math.radians(a)):.1f}"
-                        for a in (90, 150, 210, 270, 330, 30))
-
-    def _grad(gid, hexc):
-        return (f'<radialGradient id="{gid}">'
-                f'<stop offset="0" stop-color="{hexc}" stop-opacity="0.5"/>'
-                f'<stop offset="0.65" stop-color="{hexc}" stop-opacity="0.16"/>'
-                f'<stop offset="1" stop-color="{hexc}" stop-opacity="0"/></radialGradient>')
-    defs = f'<defs>{_grad("blobA", _FP_A_HEX)}{_grad("blobB", _FP_B_HEX)}</defs>'
-    # labelled crosshair: X = structure, Y = firepower, centre = your norm.
-    axes = (f'<line x1="{cx0 - Rx:.0f}" y1="{cy0:.0f}" x2="{cx0 + Rx:.0f}" y2="{cy0:.0f}" '
-            f'stroke="var(--line)" stroke-width="1" stroke-dasharray="2 3" opacity="0.6"/>'
-            f'<line x1="{cx0:.0f}" y1="{cy0 - Ry:.0f}" x2="{cx0:.0f}" y2="{cy0 + Ry:.0f}" '
-            f'stroke="var(--line)" stroke-width="1" stroke-dasharray="2 3" opacity="0.6"/>'
-            f'<circle cx="{cx0:.0f}" cy="{cy0:.0f}" r="3" fill="none" stroke="var(--muted)" '
-            f'stroke-width="1.3"/>')
-
-    def _lbl(x, y, s, anchor="start"):  # a paper halo so labels read over the blobs
-        return (f'<text x="{x:.0f}" y="{y:.0f}" text-anchor="{anchor}" font-size="9" '
-                f'paint-order="stroke" stroke="var(--card)" stroke-width="3.5" '
-                f'stroke-linejoin="round" fill="var(--muted)">{s}</text>')
-    lab = (_lbl(cx0 - Rx, cy0 + 13, "solo")
-           + _lbl(cx0 + Rx, cy0 + 13, "workflow", "end")
-           + _lbl(cx0 + 4, cy0 - Ry + 9, "heavier firepower")
-           + _lbl(cx0 + 4, cy0 + Ry - 2, "leaner firepower")
-           + _lbl(cx0, cy0 - 6, "your norm", "middle"))
-    terrain = []
-    for r, c, sx, fp in data:
-        px = cx0 + ((sx - nx) / sxmax) * Rx * 0.92
-        py = cy0 - ((fp - nf) / sfmax) * Ry * 0.92
-        pts = hexpts(px, py, base_rr)
-        val = fval(r, c)
-        if val is None:
-            terrain.append(f'<polygon class="som-cell" data-r="{r}" data-c="{c}" points="{pts}" '
-                           f'fill="none" stroke="var(--line)" stroke-width="0.7" opacity="0.3"/>')
-        else:
-            op = _rank_opacity(val, ranked, lower_better)
-            terrain.append(f'<polygon class="som-cell" data-r="{r}" data-c="{c}" points="{pts}" '
-                           f'fill="rgba(var(--ink-rgb),{op * 0.8:.2f})" stroke="var(--line)" '
-                           f'stroke-width="0.7"/>')
-    svg = (f'<svg id="{svg_id}" viewBox="0 0 {W} {H}" role="img" aria-label="working-style '
-           f'fingerprint on real axes: x = orchestration structure (solo to workflow), '
-           f'y = firepower (lean to heavy), centred on your norm; blobs are two generations">'
-           f'{defs}{axes}{"".join(terrain)}<g class="som-fx" pointer-events="none"></g>'
-           f'{lab}</svg>')
-    return f'<div class="som-compact"><div class="som-wrap">{svg}</div></div>'
-
-
 # SOM map skins. The 3dl brand mark IS a Self-Organizing Map (3dl.dev/brand): ink
 # cells, one rust peak unit, teal for links, on paper. So the maps ARE the logo, drawn
 # from the operator's data. "classic" keeps the earlier red cost hue; "ink" and
@@ -2719,13 +2607,6 @@ _WALK_CSS = (
     '.fp-label{font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;'
     'margin-bottom:5px;min-height:14px}'
     '.fp-cap{font-size:12px;line-height:1.4;color:var(--ink2);margin-top:7px}'
-    '.sph-wrap{display:flex;flex-direction:column;align-items:center;margin-top:14px}'
-    '.sph-wrap .som-compact{width:100%;max-width:540px}'
-    '.sph-wrap .som-wrap svg{width:100%;height:auto}'
-    '.fp-legend{display:flex;gap:20px;margin-bottom:6px;font-size:11px;font-weight:700;'
-    'letter-spacing:.03em;text-transform:uppercase}'
-    '.fp-legend span::before{content:"";display:inline-block;width:9px;height:9px;'
-    'border-radius:50%;background:currentColor;margin-right:6px;vertical-align:middle}'
     '.som-compact-t{font-size:11px;font-weight:700;letter-spacing:.04em;'
     'text-transform:uppercase;color:var(--muted);margin-bottom:2px}'
     '.som-compact-s{font-size:11px;color:var(--muted);margin-bottom:5px}'
@@ -2767,11 +2648,11 @@ def _arm_phrase(arm_change):
 _WALK_JS = r"""<script>
 (function(){
   var CELLS=__CELLS__, BEST=__BEST__, PERIODS=__PERIODS__, ERAS=__ERAS__, CUR=__CUR__, AGG=__AGG__;
-  var svg=document.getElementById('map-sph');
-  if(!svg) return;  // the single spheroid fingerprint; also the geometry reference for pts/ctr
+  var svg=document.getElementById('map-a'), mapB=document.getElementById('map-b');
+  if(!svg||!mapB) return;  // svg (map-a) is also the shared geometry reference for pts/ctr
   var vbScore=document.getElementById('vb-score'), vbLabel=document.getElementById('vb-label'),
       vbRec=document.getElementById('vb-rec'), vbDetail=document.getElementById('vb-detail');
-  var fx=svg.querySelector('.som-fx');
+  var fxA=svg.querySelector('.som-fx'), fxB=mapB.querySelector('.som-fx');
   var OBJC={eff:'var(--accent)',flow:'var(--teal)',simp:'var(--good)'},
       OBJN={eff:'efficiency',flow:'flow',simp:'simplicity'};
   var MID=' · ', ARR=' › ', REC='→', MK=['eff','flow','simp'];
@@ -2892,50 +2773,34 @@ _WALK_JS = r"""<script>
     if(!ov){ov=document.createElementNS('http://www.w3.org/2000/svg','svg');ov.setAttribute('class','flow-ov');host.insertBefore(ov,host.firstChild);}
     var hr=host.getBoundingClientRect();if(hr.width<1)return;
     ov.setAttribute('viewBox','0 0 '+hr.width.toFixed(1)+' '+hr.height.toFixed(1));
-    // one spheroid now: the timeline flows up into the score group (B feeds the number) and
-    // down into the single fingerprint (B feeds the print).
-    ov.innerHTML=upRibbon(selB,BCOL,hr)+panelRibbon(selB,document.getElementById('map-sph'),BCOL,hr);}
+    ov.innerHTML=upRibbon(selB,BCOL,hr)+panelRibbon(selA,document.getElementById('map-a'),ACOL,hr)+panelRibbon(selB,document.getElementById('map-b'),BCOL,hr);}
   // demoted in the comparison view: only a confident move shows, prefixed so it reads as
   // secondary advice about the current generation, not part of the A/B comparison.
   function setRec(e){if(!vbRec)return;var bc=best(e);
     if(bc&&recOk(e)){vbRec.innerHTML='to improve the current generation for '+objName(e)+': <span class="rec-arrow">'+REC+'</span> shift toward <b>'+setup(bc)+'</b>';return;}
     vbRec.innerHTML='';}
-  // soft DENSITY BLOBS for one selection: a radial-gradient disc per occupied cell, sized by
-  // how many sessions landed there. Kept tight so A and B stay distinguishable in the overlap.
-  function cloudBlobs(sel,grad){var h='';selCells(sel).forEach(function(cc){var m=ctr(cc.r,cc.c);if(!m)return;var w=cc.w||1;
-    var rr=((m.r||6)*(0.9+w*0.9)).toFixed(1);h+='<circle cx="'+m.x.toFixed(1)+'" cy="'+m.y.toFixed(1)+'" r="'+rr+'" fill="url(#'+grad+')"/>';});return h;}
-  // the projected center of mass of a selection (weighted mean of its cell centres).
-  function fpCentroid(sel){var sx=0,sy=0,w=0;selCells(sel).forEach(function(cc){var m=ctr(cc.r,cc.c);if(!m)return;var ww=cc.w||1;sx+=m.x*ww;sy+=m.y*ww;w+=ww;});return w?{x:sx/w,y:sy/w}:null;}
-  // the DRIFT arrow between the two selections' centres of mass (A -> B): just the shaft +
-  // head; the crisp centroid dots (added in renderCombined) mark the two ends.
-  function driftArrow(a,b){if(!a||!b)return '';var dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);if(d<6)return '';
-    var ux=dx/d,uy=dy/d,px=-uy,py=ux,hh=7,tx=b.x-ux*6,ty=b.y-uy*6,bx=tx-ux*hh,by=ty-uy*hh,sx=a.x+ux*6,sy=a.y+uy*6;
-    return '<line x1="'+sx.toFixed(1)+'" y1="'+sy.toFixed(1)+'" x2="'+bx.toFixed(1)+'" y2="'+by.toFixed(1)+'" stroke="var(--ink)" stroke-width="2" stroke-linecap="round" opacity="0.55"/>'
-      +'<polygon points="'+tx.toFixed(1)+','+ty.toFixed(1)+' '+(bx+px*4).toFixed(1)+','+(by+py*4).toFixed(1)+' '+(bx-px*4).toFixed(1)+','+(by-py*4).toFixed(1)+'" fill="var(--ink)" opacity="0.7"/>';}
-  // one view: soft B/A density blobs, the drift arrow, and CRISP centroid dots on top so the
-  // two generations stay legible even where the clouds overlap.
-  function dot(p,color){return p?('<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="4.5" fill="'+color+'" stroke="var(--card)" stroke-width="1.5"/>'):'';}
-  function renderCombined(){if(!fx)return;var ca=fpCentroid(selA),cb=fpCentroid(selB);
-    fx.innerHTML=cloudBlobs(selB,'blobB')+cloudBlobs(selA,'blobA')+driftArrow(ca,cb)+dot(cb,BCOL)+dot(ca,ACOL);}
+  // draw a selection's occupancy into a panel: weighted rings for a generation cloud, a
+  // single ring for a day sample, coloured by the panel's identity.
+  function renderInto(fxEl,sel,color){if(!fxEl)return;var h='';selCells(sel).forEach(function(cc){var p=pts(cc.r,cc.c);if(!p)return;var w=cc.w||1;
+    var sw=(1.5+w*3.4).toFixed(1),op=(0.4+w*0.6).toFixed(2);h+='<polygon points="'+p+'" fill="none" stroke="'+color+'" stroke-width="'+sw+'" opacity="'+op+'"/>';});fxEl.innerHTML=h;}
   function panelLabel(sel,role){var k=selKind(sel);
     var pre=(role==='A'?(HELD?'held ':(k==='generation'?'previous ':'')):(k==='generation'?'current ':''));
     return pre+k+MID+selLabel(sel);}
-  // per-selection SPECIFIC line: what that fingerprint shows.
+  // per-print SPECIFIC line (right under each map): what THIS fingerprint shows.
   function panelSpecific(sel){var cells=selCells(sel);var prev=cells.length?cell(cells[0].r,cells[0].c):null;
     var s='mostly '+(prev?setup(prev):'n/a');
     if(sel.era!=null){var g=eraById(sel.era);if(g){s+=' '+MID+' '+g.days+' session'+(g.days==1?'':'s');
       var oth=(g.cells?g.cells.length-1:0);if(oth>0)s+=' '+MID+' +'+oth+' other setup'+(oth==1?'':'s');}}
     return s;}
-  function renderPanels(){renderCombined();
+  function renderPanels(){renderInto(fxA,selA,ACOL);renderInto(fxB,selB,BCOL);
     var la=document.getElementById('fp-a-label'),lb=document.getElementById('fp-b-label');
-    if(la){la.textContent='A '+MID+' '+panelLabel(selA,'A');la.style.color=ACOL;}
-    if(lb){lb.textContent='B '+MID+' '+panelLabel(selB,'B');lb.style.color=BCOL;}
+    if(la){la.textContent=panelLabel(selA,'A');la.style.color=ACOL;}
+    if(lb){lb.textContent=panelLabel(selB,'B');lb.style.color=BCOL;}
     var ca=document.getElementById('fp-a-cap'),cb=document.getElementById('fp-b-cap');
-    if(ca){ca.textContent='A '+MID+' '+panelSpecific(selA);ca.style.color=ACOL;}
-    if(cb){cb.textContent='B '+MID+' '+panelSpecific(selB);cb.style.color=BCOL;}}
+    if(ca)ca.textContent=panelSpecific(selA); if(cb)cb.textContent=panelSpecific(selB);}
   // the OVERALL explanation (below the pair): the canonical meaning, once and short. The
   // per-print specifics are the two captions above it; the comparison is reading them.
-  function detailHtml(e){return 'Real axes, centred on your norm: left to right = solo to workflow (more orchestration); bottom to top = leaner to heavier firepower. Each generation is a soft cloud, the arrow its drift from A to B; cells shaded by cost.';}
+  function detailHtml(e){return 'The map of all your setups, similar ones adjacent; a ring marks where a selection worked (bigger = more sessions), shaded by cost per surviving KB.';}
   function refresh(){var e=enSet(),v=vals();
     if(vbScore)vbScore.textContent=fmt(score(e,v));
     MK.forEach(function(m){var b=tog(m);if(!b)return;b.setAttribute('aria-pressed',e[m]?'true':'false');var bb=b.querySelector('b');if(bb)bb.textContent=fmtv(m,v[m]);});
@@ -2943,7 +2808,7 @@ _WALK_JS = r"""<script>
     dimWave(e);emphasize();renderPanels();setRec(e);
     if(vbDetail)vbDetail.innerHTML=detailHtml(e);}
   // hovering a cell in either fingerprint decodes it.
-  [svg].forEach(function(mp){mp.querySelectorAll('.som-cell').forEach(function(cl){
+  [svg,mapB].forEach(function(mp){mp.querySelectorAll('.som-cell').forEach(function(cl){
     cl.addEventListener('mouseenter',function(){var c=cell(cl.getAttribute('data-r'),cl.getAttribute('data-c'));if(!vbDetail)return;
       vbDetail.innerHTML=c?('<b>'+setup(c)+'</b>'+MID+c.sessions+' session'+(c.sessions==1?'':'s')+', '+money(c.cost)+' per KB, efficiency '+(c.eff==null?'n/a':c.eff)+', flow '+(c.flow==null?'n/a':c.flow)+', simplicity '+(c.simp==null?'n/a':c.simp)):'an unused setup, no sessions here';});
     cl.addEventListener('mouseleave',function(){refresh();});});});
@@ -3105,18 +2970,20 @@ def _card_maps(report):
     som = (report.get("rig_space") or {}).get("som")
     if not som:
         return ""
-    # EXPERIMENT: ONE spheroid fingerprint with A and B overlaid + a drift arrow between
-    # them, centred on the operator's center of mass, instead of two flat panels. A legend
-    # says which colour is which; the per-selection captions and the overall explanation
-    # follow, then the demoted recommendation.
-    sph = render_spheroid_map(som, svg_id="map-sph", compact=True)
-    legend = ('<div class="fp-legend"><span class="fp-a" id="fp-a-label"></span>'
-              '<span class="fp-b" id="fp-b-label"></span></div>')
-    foot = ('<div class="fp-cap" id="fp-a-cap"></div>'
-            '<div class="fp-cap" id="fp-b-cap"></div>'
-            '<div class="vb-detail" id="vb-detail"></div>'
+    a = render_som_map(som, style="ink-hex", compact=True, svg_id="map-a", js_arrow=True,
+                       title="", subtitle="")
+    b = render_som_map(som, style="ink-hex", compact=True, svg_id="map-b", js_arrow=True,
+                       title="", subtitle="")
+    # each panel: which selection (label, above) / the fingerprint / a canonical caption of
+    # what a fingerprint MEANS (below). The comparison detail sits under the pair; the
+    # recommendation is demoted (it is beside the point when comparing two selections).
+    panels = (f'<div class="fp-panel"><div class="fp-label" id="fp-a-label"></div>{a}'
+              f'<div class="fp-cap" id="fp-a-cap"></div></div>'
+              f'<div class="fp-panel"><div class="fp-label" id="fp-b-label"></div>{b}'
+              f'<div class="fp-cap" id="fp-b-cap"></div></div>')
+    foot = ('<div class="vb-detail" id="vb-detail"></div>'
             '<div class="vb-rec" id="vb-rec"></div>')
-    return f'<div class="sph-wrap">{legend}{sph}</div>{foot}'
+    return f'<div class="som-maps-row">{panels}</div>{foot}'
 
 
 def render_shared_map_compact(merged, current_cell, subtitle=""):
