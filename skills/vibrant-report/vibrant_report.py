@@ -1097,7 +1097,6 @@ def som_map(metrics, som_cache, move, field_window_days=14, now_day=None,
 
     waypoints = [{"day": m["day"], "cell": list(sid_to_bmu[m["sid"]])} for m in joined]
     trajectory = _downsample(waypoints, 24)
-    current_cell = trajectory[-1]["cell"]
     # the smoothed drift (mood) the map draws: the raw per-session cells are the noise,
     # the drift is the signal. See _drift_path.
     drift = _drift_path([w["cell"] for w in waypoints],
@@ -1111,6 +1110,15 @@ def som_map(metrics, som_cache, move, field_window_days=14, now_day=None,
     for m in in_window:
         r, c = sid_to_bmu[m["sid"]]
         by_cell[(r, c)].append(m)
+    # "you are here" is your PREVAILING recent rig, NOT the last session. The single most
+    # recent BMU bounces cell to cell (raw per-session noise); the honest current position
+    # is where the recent window concentrates: most in-window sessions wins, ties to the
+    # more recent day. Fall back to the last waypoint only when the window is empty.
+    if by_cell:
+        recency = {rc: max(m["day"] for m in ms) for rc, ms in by_cell.items()}
+        current_cell = list(max(by_cell, key=lambda rc: (len(by_cell[rc]), recency[rc])))
+    else:
+        current_cell = trajectory[-1]["cell"]
     field = [[None] * cols for _ in range(rows)]
     support = [[0] * cols for _ in range(rows)]
     for r in range(rows):

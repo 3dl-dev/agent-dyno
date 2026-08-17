@@ -121,6 +121,22 @@ def test_field_and_window(fails):
     check(field[3][3] is None and support[3][3] == 0, "empty cell not null", fails)
 
 
+def test_current_is_prevailing_not_last(fails):
+    # Regression: "you are here" must be your PREVAILING recent rig, not the single most
+    # recent (noisy) session. Here the last session sits alone in [3,3] while [0,0] holds
+    # the recent window; current_cell must be [0,0], the place you actually work.
+    metrics = [
+        _m("p1", "2026-08-10", [0, 0], "opus-4-8", 2048, 10.0),
+        _m("p2", "2026-08-11", [0, 0], "opus-4-8", 2048, 10.0),
+        _m("p3", "2026-08-12", [0, 0], "opus-4-8", 2048, 10.0),
+        _m("stray", "2026-08-14", [3, 3], "sonnet-5", 1024, 5.0),  # last, but a lone cell
+    ]
+    blk = vr.som_map(metrics, _cache(metrics), MOVE)
+    check(blk["trajectory"][-1]["cell"] == [3, 3], "fixture: last waypoint should be [3,3]", fails)
+    check(blk["current_cell"] == [0, 0],
+          f"current should be prevailing [0,0], got {blk['current_cell']}", fails)
+
+
 def test_drift(fails):
     blk = vr.som_map(METRICS, _cache(METRICS), MOVE)
     drift = blk.get("drift")
@@ -191,7 +207,8 @@ def test_determinism(fails):
 def main():
     fails = []
     for t in (test_load_som, test_none_when_empty, test_map_structure,
-              test_trajectory_and_current, test_drift, test_walk_and_meaning,
+              test_trajectory_and_current, test_current_is_prevailing_not_last,
+              test_drift, test_walk_and_meaning,
               test_field_and_window, test_gradient, test_gradient_edge_cases,
               test_undated_dropped, test_determinism):
         t(fails)
