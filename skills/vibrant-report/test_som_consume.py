@@ -137,6 +137,23 @@ def test_current_is_prevailing_not_last(fails):
           f"current should be prevailing [0,0], got {blk['current_cell']}", fails)
 
 
+def test_current_is_work_weighted(fails):
+    # "You are here" weights by WORK (output tokens), not session count: one heavy
+    # orchestration outweighs several quick solo blips, so a few-session high-token cell
+    # wins over a many-session low-token one. This is the fix for "mostly solo" being a
+    # session-count artifact.
+    metrics = [
+        dict(_m("q1", "2026-08-10", [0, 0], "opus-4-8", 1024, 10.0), out_tok=1000),
+        dict(_m("q2", "2026-08-11", [0, 0], "opus-4-8", 1024, 10.0), out_tok=1000),
+        dict(_m("q3", "2026-08-12", [0, 0], "opus-4-8", 1024, 10.0), out_tok=1000),
+        dict(_m("heavy", "2026-08-13", [2, 2], "opus-5", 8192, 40.0), out_tok=9000),
+    ]
+    blk = vr.som_map(metrics, _cache(metrics), MOVE)
+    check(blk["current_cell"] == [2, 2],
+          f"work-weighted current should be [2,2] (9000 tok > 3x1000), got {blk['current_cell']}",
+          fails)
+
+
 def test_drift(fails):
     blk = vr.som_map(METRICS, _cache(METRICS), MOVE)
     drift = blk.get("drift")
@@ -208,7 +225,7 @@ def main():
     fails = []
     for t in (test_load_som, test_none_when_empty, test_map_structure,
               test_trajectory_and_current, test_current_is_prevailing_not_last,
-              test_drift, test_walk_and_meaning,
+              test_current_is_work_weighted, test_drift, test_walk_and_meaning,
               test_field_and_window, test_gradient, test_gradient_edge_cases,
               test_undated_dropped, test_determinism):
         t(fails)

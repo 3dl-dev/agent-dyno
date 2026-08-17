@@ -1110,13 +1110,16 @@ def som_map(metrics, som_cache, move, field_window_days=14, now_day=None,
     for m in in_window:
         r, c = sid_to_bmu[m["sid"]]
         by_cell[(r, c)].append(m)
-    # "you are here" is your PREVAILING recent rig, NOT the last session. The single most
-    # recent BMU bounces cell to cell (raw per-session noise); the honest current position
-    # is where the recent window concentrates: most in-window sessions wins, ties to the
-    # more recent day. Fall back to the last waypoint only when the window is empty.
+    # "you are here" is where your recent WORK concentrates, NOT the last session and NOT
+    # the most-sessions cell. Counting sessions equally over-weights quick solo blips: on
+    # real data solo is ~half the sessions but under a fifth of the output tokens, while
+    # orchestration is a few heavy sessions carrying most of the work. So weight the recent
+    # window by output tokens (the work), ties to the more recent day. Fall back to the last
+    # waypoint only when the window is empty.
     if by_cell:
         recency = {rc: max(m["day"] for m in ms) for rc, ms in by_cell.items()}
-        current_cell = list(max(by_cell, key=lambda rc: (len(by_cell[rc]), recency[rc])))
+        work = {rc: sum(m.get("out_tok", 0) for m in ms) for rc, ms in by_cell.items()}
+        current_cell = list(max(by_cell, key=lambda rc: (work[rc], recency[rc])))
     else:
         current_cell = trajectory[-1]["cell"]
     field = [[None] * cols for _ in range(rows)]
@@ -1180,7 +1183,8 @@ def som_map(metrics, som_cache, move, field_window_days=14, now_day=None,
              "flow": (round(100 - m["misery"], 1) if m.get("misery") is not None
                       else None),
              "cost": _sess_cost(m), "engine": m.get("engine"),
-             "model": m.get("model"), "effort": m.get("effort")}
+             "model": m.get("model"), "effort": m.get("effort"),
+             "work": m.get("out_tok", 0)}  # weight prevalence by work, not session count
             for m in joined]
 
     return {"source": "learned",
@@ -3056,7 +3060,7 @@ _WALK_JS = r"""<script>
     if(ca)ca.textContent=panelSpecific(selA); if(cb)cb.textContent=panelSpecific(selB);}
   // the OVERALL explanation (below the pair): the canonical meaning, once and short. The
   // per-print specifics are the two captions above it; the comparison is reading them.
-  function detailHtml(e){return 'The map of all your setups, similar ones adjacent; a ring marks where a selection worked (bigger = more sessions), shaded by cost per surviving KB.';}
+  function detailHtml(e){return 'The map of all your setups, similar ones adjacent; a ring marks where a selection worked (bigger = more of your work), shaded by cost per surviving KB.';}
   function refresh(){var e=enSet(),v=vals();
     if(vbScore)vbScore.textContent=fmt(score(e,v));
     MK.forEach(function(m){var b=tog(m);if(!b)return;b.setAttribute('aria-pressed',e[m]?'true':'false');var bb=b.querySelector('b');if(bb)bb.textContent=fmtv(m,v[m]);});
@@ -3326,12 +3330,18 @@ def _timeline_periods(report):
     for eid, (a, b) in enumerate(zip(bounds, bounds[1:])):
         if b <= a:
             continue
-        # the prevailing style of the era: the modal BMU across ALL its sessions, so a
-        # day-to-day wobble in the mix does not move the map inside a stable era.
-        cells = []
+        # the prevailing style of the era: the WORK-weighted BMU across all its sessions
+        # (a heavy orchestration outweighs quick solo blips), so a day-to-day wobble in the
+        # mix does not move the map inside a stable era. Fall back to count if no work.
+        w = Counter()
         for j in range(a, b):
-            cells += by_label.get(s[j]["label"], [])
-        prevailing = list(Counter(cells).most_common(1)[0][0]) if cells else None
+            for (c, wk) in by_label.get(s[j]["label"], []):
+                w[c] += wk
+        if not any(w.values()):
+            for j in range(a, b):
+                for (c, _wk) in by_label.get(s[j]["label"], []):
+                    w[c] += 1
+        prevailing = list(w.most_common(1)[0][0]) if w else None
         for j in range(a, b):
             era_of[j] = eid
             prevailing_of[j] = prevailing
@@ -3339,10 +3349,15 @@ def _timeline_periods(report):
     for i, b in enumerate(s):
         cell = prevailing_of.get(i) or last
         last = cell if cell is not None else last
-        # the narrow, day-level position: this bucket's OWN modal BMU (what the map shows
-        # when you hover a single bar), distinct from the era's prevailing cell above.
-        dc = by_label.get(b["label"])
-        day_cell = list(Counter(dc).most_common(1)[0][0]) if dc else None
+        # the narrow, day-level position: this bucket's OWN work-weighted BMU (what the map
+        # shows when you hover a single bar), distinct from the era's prevailing cell above.
+        dcw = Counter()
+        for (c, wk) in by_label.get(b["label"], []):
+            dcw[c] += wk
+        if not any(dcw.values()):
+            for (c, _wk) in by_label.get(b["label"], []):
+                dcw[c] += 1
+        day_cell = list(dcw.most_common(1)[0][0]) if dcw else None
         out.append({"label": b["label"], "comb": round(b["comb"]),
                     "eff": b["eq"], "flow": b["flow"], "simp": b["simp"],
                     "cell": cell, "day_cell": day_cell, "era": era_of.get(i)})
@@ -3357,7 +3372,7 @@ def _walk_by_label(report):
     by_label = defaultdict(list)
     for w in (som.get("walk") or []):
         if w.get("day"):
-            by_label[_bucket(w["day"], gran)[1]].append(tuple(w["cell"]))
+            by_label[_bucket(w["day"], gran)[1]].append((tuple(w["cell"]), w.get("work", 0)))
     return by_label
 
 
@@ -3379,17 +3394,23 @@ def _era_occupancy(report):
     for eid, (a, b) in enumerate(zip(bounds, bounds[1:])):
         if b <= a:
             continue
-        cnt = Counter()
+        # prevalence is weighted by WORK (output tokens), not session count: a heavy
+        # orchestration outweighs several quick solo blips, so "mostly X" and the ring
+        # sizes reflect where the work went. Fall back to session count if an era carries
+        # no work signal. Keep the raw session count (n / days) for display.
+        work, cnt = Counter(), Counter()
         for j in range(a, b):
-            for c in by_label.get(s[j]["label"], []):
+            for (c, wk) in by_label.get(s[j]["label"], []):
+                work[c] += wk
                 cnt[c] += 1
+        weight = work if any(work.values()) else cnt
         span = b - a
         mE = sum(s[j]["eq"] for j in range(a, b)) / span
         mF = sum(s[j]["flow"] for j in range(a, b)) / span
         mS = sum(s[j]["simp"] for j in range(a, b)) / span
-        mx = max(cnt.values()) if cnt else 1
-        cells = [{"r": r, "c": c, "w": round(w / mx, 3), "n": w}
-                 for (r, c), w in sorted(cnt.items(), key=lambda kv: (-kv[1], kv[0]))]
+        mx = max(weight.values()) if weight else 1
+        cells = [{"r": r, "c": c, "w": round(wv / mx, 3), "n": cnt[(r, c)]}
+                 for (r, c), wv in sorted(weight.items(), key=lambda kv: (-kv[1], kv[0]))]
         out.append({"era": eid, "cells": cells,
                     "eff": round(mE, 2), "flow": round(mF, 1), "simp": round(mS, 1),
                     "score": round(mE * mF * mS), "days": sum(cnt.values()),
