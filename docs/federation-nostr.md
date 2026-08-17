@@ -1,10 +1,12 @@
-# Nostr as a federation transport (proposal, not adopted)
+# Nostr as a federation transport (adopted, opt-in)
 
-Status: exploratory. `federation.md` is unchanged and remains the shipped design. This note
-records why Nostr is a strong fit for Vibrant's federation, a proposed shape, the one real
-tension it creates, and the hard-won lessons to reuse from three sibling projects that
-already went Nostr-first (`ready`, `dontguess`, `nostr-relay`/moot.pub). Adopting it is a
-posture decision, reserved.
+Status: ADOPTED as an opt-in live-mesh transport (owner decision, 2026-08-17), additive to
+the file model, which stays the default. The aggregate-as-event path is proven end to end
+(`docs/spikes/nostr-aggregate-spike.md`); the build sequence is the roadmap at the end of
+this note. `federation.md` carries the posture change (file path keyless; opt-in keys for the
+mesh; still no wallet, no chain). This note records why Nostr fits, the shape, the one real
+tension and its resolution, and the hard-won lessons reused from three sibling projects that
+went Nostr-first (`ready`, `dontguess`, `nostr-relay`/moot.pub).
 
 ## Why it fits
 
@@ -119,14 +121,27 @@ aggregates, like the Slack/CI surfaces `federation.md` already anticipates.
 - **Agent-level web-of-trust.** Rejected there as a "trust assumption dressed as
   trustlessness"; our owner-rooted board grants and proof tiers do the job.
 
-## Reserved decision and smallest first step
+## Adoption roadmap
 
-Reserved to the owner: whether to adopt Nostr as an optional federation transport, and
-whether that shifts the stated "no keys" posture in `federation.md` (proposed shift: "no
-keys on the file path; opt-in keys for the live mesh").
+Adopted, staged so each step is provable and the file model never regresses:
 
-If yes, the smallest honest first step is a spike: publish a single `summarize` aggregate as
-an addressable event to the 3dl relay and render it in `leaderboard/vibrant.html` by folding
-the relay instead of reading the file, with no encryption and no group grants yet. That
-proves the aggregate-as-event path end to end before any identity or group machinery is
-built.
+- **Stage 0, aggregate-as-event (DONE).** `summarize` output published as addressable
+  kind-30078 events; `leaderboard/vibrant.html?relay=` folds them. All acceptance passed,
+  including latest-wins-per-shape (`docs/spikes/nostr-aggregate-spike.md`).
+- **Stage 1, owner-rooted grants (NEXT, scoped).** A team frontier is a board; only
+  owner-granted npubs contribute; the client re-verifies. Scoped in
+  `docs/spikes/nostr-grants-spike.md`.
+- **Stage 2, our own publisher (the Nostr hoistable).** Replace `nak` with a stdlib
+  BIP-340 signer plus a minimal WebSocket writer, landed source-first (spec plus acceptance
+  test, per `SOURCE.md`), routed through one write choke point. This is the one real build,
+  and the piece a hoisted skill bundles so the publish side is proven in a clean session.
+- **Stage 3, skill wiring.** `vibrant-contribute` publishes your `summarize` aggregate to a
+  frontier board; `vibrant-report` and the leaderboard subscribe and fold. The file path
+  stays the zero-setup default; the mesh is chosen with `--relay` / `--board`.
+- **Stage 4, the public frontier as a board.** 3dl runs the public frontier as a board on
+  the relay we already operate; curation is the owner merging grants, as `CLAUDE.md`
+  describes. Proof tiers ride on the event; reproduction stays the sybil tax.
+
+Invariants held at every stage: the file is the default and stays keyless; the relay is a
+cache, never the source of truth; only anonymized aggregates travel, never raw logs; no
+wallet and no chain; trust stays the proof-tier ladder.

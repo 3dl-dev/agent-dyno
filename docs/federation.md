@@ -62,12 +62,27 @@ service, and every one is owner-triggered, never automatic:
   enterprise PRs that summary to a parent when it chooses; individual runs never
   leave.
 
+## Live mesh: an opt-in Nostr transport
+
+By hand is the default, and a file is always enough. For teams that want federation to be
+live instead of a pull request, there is a second, opt-in surface: the same anonymized
+aggregates published as signed Nostr events, so a team frontier is an ownerless mesh the
+viewer folds rather than a file someone hosts. This is additive and stays inside the same
+rules: the file is still the default and stays keyless, the relay is a cache and never the
+source of truth, only the `summarize` aggregates travel (never raw runs), and there is no
+wallet and no chain. A team frontier becomes an owner-rooted board (only granted keys
+contribute, and the viewer re-verifies); 3dl runs one relay for the public frontier. The
+design, the fit, and the staged roadmap are in `federation-nostr.md`; adopted 2026-08-17.
+
 ## Trust, kept simple on purpose
 
 A leaderboard of self-reported numbers invites fakery, so headline claims must
 *reproduce*. That converts "trust the claim" into "the claim is re-derivable," and
-we lean only on things a developer already has. No keys, no wallet, no chain. A
-heavy identity dependency would kill adoption, and adoption is the whole value.
+we lean only on things a developer already has. The file path stays keyless: no
+keys, no wallet, no chain. The opt-in live mesh (below) adds keys for teams that
+choose it, but still no wallet and no chain, and never on the default path, because
+a heavy identity dependency on the default would kill adoption, and adoption is the
+whole value.
 
 Every entry carries a **proof tier**, shown on its face, so nobody mistakes a
 self-report for a reproduced result:
