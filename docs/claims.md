@@ -94,3 +94,32 @@ tiny-sample lucky units; the continuous measure is blind to how work was chopped
 sessions/commits/PRs, so it survives unseen data better. `eq_continuous` (topline) and
 `eff_cont` (per config) are now carried in parallel with the count numerator so the
 frontier accumulates both and the switch can be made on evidence, not assertion.
+
+## Orchestration: scope vs efficiency (external validation, 2026-08-17)
+
+Source: Anthropic, "Multi-agent systems" research (anthropic.com/research/multiagent-systems).
+Framed as their finding to verify against YOUR data, not adopted as truth; their benchmark
+numbers are theirs and will drift, the SHAPE is what we test. Model/harness-neutral.
+
+| # | Claim | Verdict |
+|---|---|---|
+| X6 | Coordinating an orchestration MULTIPLIES token consumption with no efficiency gain: the payoff is SCOPE / throughput (breadth of work covered), not survival-per-token. So per-token efficiency alone systematically under-rates orchestration (the "bicycle problem"), and the honest comparison holds throughput fixed. | **Supported by construction.** Our own corpus: engine efficiency is roughly flat (~104-118k surviving per Mtok across solo/delegate/workflow) while cargo (total surviving work) varies 4-5x (solo 3.7M, workflow 12.7M, delegate 16M). This is exactly why `_recommend_cells` now conditions on cargo (`cargo_floor`); the external source corroborates the shape. |
+| X7 | More agents is not monotonically better: past some fanout, coordination cost outweighs added scope and merged/surviving work drops. | **Open.** We treat `fanout` as a neutral shape axis (never "more = better"), which is consistent; a fanout-vs-survival curve on federated data would test the turning point. |
+| X8 (candidate axis) | Orchestrations differ by COORDINATION, not just topology: workers that share context and build on each other vs workers that SILO (fan out, never interact). Coordination quality, not flat-vs-hierarchical scaffolding, decides whether more agents help. Candidate fingerprint axis IF a clean log signal exists (sibling-subagent file overlap). | **Feasible** (probed 2026-08-17). Signal extracts cleanly from the session tree; see below. |
+
+Coordination-signal probe (2026-08-17, live logs): parse the files each in-session subagent
+edits (Edit/Write/MultiEdit `file_path`), then measure how much sibling subagents overlap.
+Across 113 sessions with 2+ subagents, orchestrations are overwhelmingly SILOED: mean
+pairwise file-overlap (Jaccard) ~0.00, only a handful of files touched by 2+ agents out of
+hundreds (e.g. 370 agents / 2554 files / 36 shared). This is a real, extractable, NEUTRAL
+shape axis (a "coordination" or worker-sharing fraction), not a quality claim: whether
+sharing paid off is left to the field, since high overlap can mean coordination OR conflict
+and only survival disambiguates. Caveats: it reads only the IN-SESSION tree (cross-job
+siloing is the same lineage gap as the cargo work), and it would ride a schema version bump
+(new fingerprint axis) plus adapter extraction, so it is a proposal, not yet built.
+
+Deliberately NOT captured from this source, on principle:
+- **Task shape / parallelizability** ("multi-agent wins on breadth-first work"). That measures
+  the task; Vibrant stays setup-focused so it survives unseen work. Out of scope by design.
+- **Model capability by generation** (their merge-rate-by-model data). That is the capability
+  prior `docs/governance.md` forbids; survival measures capability, we never assert it.
