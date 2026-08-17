@@ -200,11 +200,32 @@ lands, a driven fleet of separate jobs still reads as many independent leaf sess
   when a worker itself orchestrated (a sub-orchestrator); and so on. Derived from the
   nesting depth of the `subagents/**` file tree. Missing -> fall back to the engine
   class: solo -> 0, delegate/workflow -> 1.
-- `tree_mix` (dict `model_base -> weight`): the output-token-weighted census of every
-  model that ran ANYWHERE in the tree, the orchestrator itself included (the
-  orchestrator's model is part of the rig, not outside it). Generalises v1 `submix`
-  (workers only, one level) to the whole tree. Missing -> synthesize from `model` (the
-  orchestrator, full weight) plus `submix` if present, so v1 dicts still embed.
+- `tree_mix` (dict `model_base -> weight`, or `model_base -> {weight, local}`): the
+  output-token-weighted census of every model that ran ANYWHERE in the tree, the
+  orchestrator itself included (the orchestrator's model is part of the rig, not outside
+  it). Generalises v1 `submix` (workers only, one level) to the whole tree. The optional
+  `local` boolean per entry is an objective endpoint fact (self-hosted vs vendor-hosted)
+  that feeds `local_share`; absent -> `local_share` is deferred, not guessed. Missing
+  `tree_mix` -> synthesize from `model` (the orchestrator, full weight) plus `submix` if
+  present, so v1 dicts still embed.
+
+### No capability priors (why there is no tier here)
+
+A rig's fingerprint encodes only OBSERVABLE STRUCTURE: how deep the orchestration
+nests, how wide it fans, how many distinct model families it draws on, and (when the
+adapter can tell) how much runs on local endpoints. It never asserts that a model or a
+mix is good. Whether a shape pays off is MEASURED by the field, the survival economics
+per cell, never predicted by a prior. A single capability tier (v1's `TIER` scalar) is
+a bias and a category error: capability is multi-dimensional and task-specific, a local
+model can be weak at general reasoning yet strong at code, so no scalar ranking holds
+across tasks. v2 therefore classifies models only by observable, vendor-given facts and
+leaves "how good" to the data.
+
+Model FAMILY is the objective grouping used below: the product-line stem of the model
+name (`opus`, `sonnet`, `haiku`, `qwen`, `llama`, ...), taken from the same base
+normalization the adapters already apply, with NO ordering among families. Grouping by
+a vendor's own family name is observation; ranking families by a firepower number was
+the bias.
 
 ### New features (fixed absolute transforms, each in [0, 1])
 
@@ -214,39 +235,54 @@ Continuous, appended after feature 18:
     0.25, a sub-orchestrator = 0.5, three deep = 0.75, four or more = 1.0. Linear (not
     log): each level up to the cap is a distinct, meaningful rig change, unlike raw
     fanout counts where 20 vs 21 agents is noise.
-20. `mix_diversity`: the normalized Shannon entropy of the tree's model-CLASS
-    distribution. Map each model in `tree_mix` to a class by its `TIER` band, sum the
-    output-token weights per class, normalize to a distribution `p` over the four
-    classes, then `H(p) / ln(4)` with `H(p) = -sum_k p_k * ln(p_k)` over classes with
-    `p_k > 0`. All one class (e.g. all opus) -> 0.0; an even spread across all four ->
-    1.0. Classes, by tier band:
-    - `frontier`: tier >= 0.85 (opus family)
-    - `mid`: 0.5 <= tier < 0.85 (sonnet family)
-    - `small`: 0.2 <= tier < 0.5 (haiku, fable)
-    - `local`: tier < 0.2 (tiny / local models)
-21. `mix_reach`: the output-token-weighted fraction of the tree handled by models
-    below the mid boundary, `p_small + p_local` (tier < 0.5). "How far down you reach."
-    All frontier/mid -> 0.0; a rig that pushes real work onto small and local models ->
-    high. Distinct from `mix_diversity`: an all-haiku rig has diversity 0 but reach
-    1.0; an even opus/sonnet split has reach 0 but positive diversity.
+20. `family_diversity`: the normalized Shannon entropy of the tree's model-FAMILY
+    distribution, output-token weighted. Sum weights per family, normalize to a
+    distribution `p`, then `H(p) / ln(FAMILY_CAP)` with `H(p) = -sum_f p_f * ln(p_f)`
+    over families present and `FAMILY_CAP = 6` (a fixed cap keeps it absolute and
+    federation-comparable, not relative to how many families this one tree happened to
+    use). One family, however many versions of it (all opus) -> 0.0; an even spread
+    across six or more families -> ~1.0. This is the "all opus all day" versus "a real
+    mix" axis, with no claim about which is better.
+21. `local_share`: the output-token-weighted fraction of the tree that ran on LOCAL /
+    self-hosted endpoints, an objective deployment fact the adapter reports (the
+    endpoint origin), NOT inferred from the model name or any tier. Requires a per-model
+    `local` boolean in the `tree_mix` metadata. If the adapter cannot yet distinguish
+    local from vendor-hosted, this feature is DEFERRED (like cross-job lineage) rather
+    than guessed, and v2 ships with features 19 to 20 until the marker exists.
 
-`mix_diversity` and `mix_reach` are absolute functions of the fixed `TIER` bands, not
-corpus-relative, so they stay federation-comparable like every other v1 component.
+`family_diversity` is an absolute function of the fixed `FAMILY_CAP`, not corpus-
+relative, so it stays federation-comparable like every other component. There is no
+capability tier in these axes.
+
+### Deprecating the tier scalar
+
+v1's `orch_fire` and `worker_fire` (features 13, 14) are the same bias in the existing
+schema: a hardcoded capability ranking of models. The principled v2 move is to RETIRE
+them from the fingerprint and let capability be measured by the field. Doing so is a
+larger change (it reshapes the learned space, not just appends to it) and is called out
+here as an explicit decision, NOT taken silently. Options, for sign-off:
+(a) retire `orch_fire`/`worker_fire`, keeping shape purely structural (recommended);
+(b) keep them for continuity and accept the acknowledged bias in v2;
+(c) replace them with an objective non-capability scalar (e.g. model COUNT in the tree)
+    that carries "how much machinery" without ranking quality.
 
 ### Federation and versioning
 
 The feature schema is the shared coordinate system of the federated map (item 5). v2
 is a version bump every federated map adopts together; a v1 map and a v2 map do not
 share coordinates and must not be merged. This is a governance-visible change, gated on
-sign-off, not a silent append. `TIER` and the four class bands are added to the
-federation-shared constants.
+sign-off, not a silent append. The only shared constants v2 adds are the objective
+family grouping (from model names) and `FAMILY_CAP`; NO capability tier is introduced.
 
 ### Acceptance (to accompany the build, not this draft)
 
-- Length 21, every element in [0, 1], pure and deterministic (byte-identical re-run).
-- Solo opus session: `depth = 0`, `mix_diversity = 0` (one class), `mix_reach = 0`.
-- Solo haiku session: `mix_reach = 1.0` (a small-model rig reaches all the way down).
-- Flat opus->haiku delegate: `depth = 0.25`, `mix_diversity > 0`, `mix_reach > 0`.
-- Deep opus->sonnet->haiku (sub-orchestrator): `depth = 0.5`, all three classes in
-  `mix_diversity`, `mix_reach` = the haiku token share.
+- Length 20 (or 21 if `local_share` ships), every element in [0, 1], pure and
+  deterministic (byte-identical re-run).
+- Solo opus session: `depth = 0`, `family_diversity = 0` (one family).
+- All-opus workflow with 20 agents: `family_diversity = 0` despite high `fanout`; the
+  mix axis is orthogonal to breadth.
+- Flat opus->qwen(local) delegate: `depth = 0.25`, `family_diversity > 0`, and
+  `local_share` = the qwen token share when the `local` marker is present.
+- Deep opus->sonnet->haiku (sub-orchestrator): `depth = 0.5`, `family_diversity`
+  reflects three families.
 - v1 dict with no `depth` / `tree_mix`: embeds via the documented fallbacks, no raise.
