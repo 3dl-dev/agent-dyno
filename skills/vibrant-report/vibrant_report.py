@@ -2371,6 +2371,45 @@ def render_som_map(som_block, title="Where you work",
         return (f'<rect class="som-cell" x="{cx - cell / 2:.1f}" y="{cy - cell / 2:.1f}" '
                 f'width="{cell}" height="{cell}" rx="4" {attrs}>{inner}</rect>')
 
+    # emergent territory labels: the learned SOM already clusters cells by ENGINE
+    # (solo / delegate / workflow sit in distinct regions). Name each region on the clean
+    # map -- a soft tint + a bold label at its session-weighted centroid -- so the
+    # positional meaning reads at a glance, WITHOUT reprojecting the grid.
+    zdefs, ztints, zlabels = "", "", ""
+    cmeta = som_block.get("cell_meaning") if hexed else None
+    if cmeta:
+        zg = defaultdict(lambda: {"sx": 0.0, "sy": 0.0, "w": 0.0, "pos": []})
+        for cmi in cmeta:
+            eng = cmi.get("engine")
+            if not eng:
+                continue
+            r, c = cmi["cell"]
+            n = (cmi.get("sessions") or 0) + 1
+            cx, cy = center(r, c)
+            z = zg[eng]
+            z["sx"] += cx * n
+            z["sy"] += cy * n
+            z["w"] += n
+            z["pos"].append((cx, cy))
+        zhue = {"solo": "#4E6E8E", "delegate": "#8A6D4B", "workflow": "#7C5E8B"}
+        drawable = {e: z for e, z in zg.items() if len(z["pos"]) >= 2 and z["w"] > 0}
+        if drawable:
+            zdefs = (f'<defs><filter id="zblur" x="-40%" y="-40%" width="180%" '
+                     f'height="180%"><feGaussianBlur stdDeviation="{cell * 0.42:.1f}"/>'
+                     f'</filter></defs>')
+            tints, labs, fs = [], [], (10 if compact else 12)
+            for eng, z in sorted(drawable.items()):
+                mx, my = z["sx"] / z["w"], z["sy"] / z["w"]
+                rad = max(math.hypot(px - mx, py - my) for px, py in z["pos"]) + cell * 0.55
+                hue = zhue.get(eng, "var(--muted)")
+                tints.append(f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{rad:.1f}" '
+                             f'fill="{hue}" opacity="0.13" filter="url(#zblur)"/>')
+                labs.append(f'<text x="{mx:.1f}" y="{my:.1f}" text-anchor="middle" '
+                            f'font-size="{fs}" font-weight="700" letter-spacing="0.06em" '
+                            f'paint-order="stroke" stroke="var(--card)" stroke-width="3" '
+                            f'stroke-linejoin="round" fill="{hue}">{esc(eng.upper())}</text>')
+            ztints, zlabels = "".join(tints), "".join(labs)
+
     idattr = f' id="{svg_id}"' if svg_id else ''
     # shape the grid as an oval by TAPERING columns per row: middle rows full width,
     # the top and bottom rows narrower, so the outline is a rounded oval built from
@@ -2386,8 +2425,8 @@ def render_som_map(som_block, title="Where you work",
         start = (cols - ncol) // 2
         return start, start + ncol
     parts = [f'<svg{idattr} viewBox="0 0 {W:.0f} {H:.0f}" role="img" aria-label="learned '
-             f'working-style map: a tapered oval of hexagons shaded by cost, with your '
-             f'position and the cheaper region">', '<g>']
+             f'working-style map: hexagons shaded by cost, in labelled engine territories '
+             f'(solo / delegate / workflow), with your position">', zdefs, '<g>', ztints]
     for r in range(rows):
         c_lo, c_hi = _row_span(r)
         for c in range(cols):
@@ -2478,6 +2517,7 @@ def render_som_map(som_block, title="Where you work",
     if js_arrow or svg_id:
         # JS owns all live markers (hex outlines) and the arrow on interactive maps.
         parts.append('<g class="som-fx"></g>')
+    parts.append(zlabels)  # territory names on top, so they read over cells and overlays
     parts.append("</svg>")
     if compact:
         sub = (f'<div class="som-compact-s">{esc(subtitle)}</div>'
