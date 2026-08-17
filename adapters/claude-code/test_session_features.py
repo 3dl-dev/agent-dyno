@@ -59,41 +59,69 @@ def test_known_answer(fails):
          "fanout": 8, "n_turns": 40, "touches": 10,
          "cache_r": 900, "in_tok": 100, "cache_w": 0}
     v = sf.features(m)
-    check(_approx(v[_idx("orch_fire")], 1.0), f"orch_fire {v[_idx('orch_fire')]}", fails)
-    check(_approx(v[_idx("worker_fire")], 0.6), f"worker_fire {v[_idx('worker_fire')]}", fails)
     check(_approx(v[_idx("fanout")], math.log1p(8) / math.log1p(32)),
           f"fanout {v[_idx('fanout')]}", fails)
     check(_approx(v[_idx("turns")], math.log1p(40) / math.log1p(200)),
           f"turns {v[_idx('turns')]}", fails)
     check(_approx(v[_idx("touch_rate")], 0.25), f"touch_rate {v[_idx('touch_rate')]}", fails)
     check(_approx(v[_idx("cache_read_pct")], 0.9), f"cache_read_pct {v[_idx('cache_read_pct')]}", fails)
+    # workflow with no recorded depth -> engine fallback = 1 level = 0.25
+    check(_approx(v[_idx("depth")], 0.25), f"depth {v[_idx('depth')]}", fails)
+    # opus orchestrator + sonnet worker -> two families, even split -> ln(2)/ln(6)
+    check(_approx(v[_idx("family_diversity")], math.log(2) / math.log(6)),
+          f"family_diversity {v[_idx('family_diversity')]}", fails)
+
+
+def test_no_capability_tier(fails):
+    # v2 removed the tier scalar from the fingerprint entirely.
+    check("orch_fire" not in sf.FEATURE_NAMES, "orch_fire not retired", fails)
+    check("worker_fire" not in sf.FEATURE_NAMES, "worker_fire not retired", fails)
+    check(not hasattr(sf, "TIER"), "TIER constant still present", fails)
+    check(sf.SCHEMA == "vibrant/session-features@2", f"schema {sf.SCHEMA}", fails)
 
 
 def test_solo_defaults(fails):
     m = {"engine": "solo", "routing": "none", "model": "opus-4-8"}
     v = sf.features(m)
     check(v[_idx("engine_solo")] == 1.0, "engine_solo not set", fails)
-    check(v[_idx("worker_fire")] == 0.0, f"solo worker_fire {v[_idx('worker_fire')]}", fails)
     check(v[_idx("effort_unknown")] == 1.0, "missing effort not unknown", fails)
-    check(_approx(v[_idx("orch_fire")], 0.9), f"opus-4-8 orch_fire {v[_idx('orch_fire')]}", fails)
     check(v[_idx("cache_read_pct")] == 0.0, "empty cache denom not 0", fails)
     check(v[_idx("fanout")] == 0.0, "no fanout not 0", fails)
+    check(v[_idx("depth")] == 0.0, f"solo depth {v[_idx('depth')]}", fails)
+    check(v[_idx("family_diversity")] == 0.0,
+          f"single-family diversity {v[_idx('family_diversity')]}", fails)
 
 
-def test_worker_solo_string(fails):
-    # worker literally "solo" or absent -> worker_fire 0.0, not 0.5
-    for wk in ("solo", None):
-        m = {"engine": "delegate", "routing": "none", "model": "opus-5", "worker": wk}
-        v = sf.features(m)
-        check(v[_idx("worker_fire")] == 0.0, f"worker={wk} worker_fire {v[_idx('worker_fire')]}", fails)
+def test_depth_axis(fails):
+    # explicit depth wins over the engine fallback and saturates at the cap.
+    for d, exp in ((0, 0.0), (1, 0.25), (2, 0.5), (3, 0.75), (4, 1.0), (9, 1.0)):
+        v = sf.features({"engine": "workflow", "model": "opus-5", "depth": d})
+        check(_approx(v[_idx("depth")], exp), f"depth {d} -> {v[_idx('depth')]} != {exp}", fails)
 
 
-def test_unknown_model_worker(fails):
-    m = {"engine": "delegate", "routing": "cross-family", "model": "quokka-9",
-         "worker": "quokka-3"}
-    v = sf.features(m)
-    check(_approx(v[_idx("orch_fire")], 0.5), f"unknown orch {v[_idx('orch_fire')]}", fails)
-    check(_approx(v[_idx("worker_fire")], 0.5), f"unknown named worker {v[_idx('worker_fire')]}", fails)
+def test_family_diversity(fails):
+    # all one family (any versions of opus) -> 0.0
+    v = sf.features({"model": "opus-5", "tree_mix": {"opus-5": 3, "opus-4-8": 2}})
+    check(v[_idx("family_diversity")] == 0.0, f"all-opus diversity {v[_idx('family_diversity')]}", fails)
+    # opus + a local family (qwen) -> positive, ln(2)/ln(6) at an even split
+    v = sf.features({"model": "opus-5", "tree_mix": {"opus-5": 1, "qwen3.8-27b": 1}})
+    check(_approx(v[_idx("family_diversity")], math.log(2) / math.log(6)),
+          f"opus+qwen diversity {v[_idx('family_diversity')]}", fails)
+    # a rich even mix across 6 families saturates near 1.0
+    tm = {"opus-5": 1, "sonnet-5": 1, "haiku-4-5": 1, "qwen3.8-27b": 1,
+          "llama-3": 1, "gpt-4o": 1}
+    v = sf.features({"model": "opus-5", "tree_mix": tm})
+    check(_approx(v[_idx("family_diversity")], 1.0), f"6-family diversity {v[_idx('family_diversity')]}", fails)
+    # weighted tree_mix with {weight,...} dict entries is read too
+    v = sf.features({"tree_mix": {"opus-5": {"weight": 3}, "haiku-4-5": {"weight": 1}}})
+    check(v[_idx("family_diversity")] > 0.0, "weighted tree_mix not read", fails)
+
+
+def test_family_of(fails):
+    for model, fam in (("opus-4-8", "opus"), ("claude-sonnet-5", "sonnet"),
+                       ("haiku-4-5-20251001", "haiku"), ("qwen3.8-27b", "qwen"),
+                       ("opus-5[1m]", "opus")):
+        check(sf.family(model) == fam, f"family({model}) = {sf.family(model)} != {fam}", fails)
 
 
 def test_saturation(fails):
@@ -150,7 +178,8 @@ def test_feature_matrix(fails):
 def main():
     fails = []
     for t in (test_length_and_range, test_onehot, test_known_answer,
-              test_solo_defaults, test_worker_solo_string, test_unknown_model_worker,
+              test_no_capability_tier, test_solo_defaults, test_depth_axis,
+              test_family_diversity, test_family_of,
               test_saturation, test_shape_not_outcome, test_purity_determinism,
               test_feature_matrix):
         t(fails)

@@ -24,9 +24,15 @@ Stdlib only.
 import argparse
 import json
 import math
+import re
 import sys
+from collections import defaultdict
 
-SCHEMA = "vibrant/session-features@1"
+# v2: the rig as an orchestration mix. No capability tier lives here; the fingerprint
+# is observable STRUCTURE only (depth, fanout, model-family spread), and how good a rig
+# is gets measured by the field, never asserted by a prior. See session_features.spec.md
+# ("No capability priors") and docs/governance.md.
+SCHEMA = "vibrant/session-features@2"
 
 FEATURE_NAMES = [
     "engine_solo",
@@ -41,22 +47,18 @@ FEATURE_NAMES = [
     "effort_xhigh",
     "effort_max",
     "effort_unknown",
-    "orch_fire",
-    "worker_fire",
     "fanout",
     "turns",
     "touch_rate",
     "cache_read_pct",
+    "depth",
+    "family_diversity",
 ]
-
-TIER = {
-    "haiku-4-5": 0.15, "haiku-4-5-20251001": 0.15, "fable-5": 0.25,
-    "sonnet-4-6": 0.55, "sonnet-5": 0.6, "opus-4-6": 0.85, "opus-4-8": 0.9,
-    "opus-5": 1.0,
-}
 
 FANOUT_CAP = 32
 TURNS_CAP = 200
+DEPTH_CAP = 4     # solo 0, one layer .25, sub-orchestrator .5, three deep .75, 4+ 1.0
+FAMILY_CAP = 6    # normalizes family entropy absolutely, not by this tree's family count
 
 _ENGINES = {"solo": "engine_solo", "delegate": "engine_delegate",
             "workflow": "engine_workflow"}
@@ -69,6 +71,65 @@ _EFFORTS = {"low": "effort_low", "medium": "effort_medium",
 
 def base(m):
     return (m or "").split("[")[0].replace("claude-", "")
+
+
+def family(model):
+    """The model's FAMILY: the leading alphabetic run of its base name (opus, sonnet,
+    haiku, qwen, llama, gpt, ...). An objective, vendor-given grouping with NO ordering:
+    grouping by family name is observation; ranking families by firepower was the bias
+    v2 removed. opus-5 and opus-4-8 are both `opus`."""
+    b = base(model).lower()
+    mt = re.match(r"[a-z]+", b)
+    return mt.group(0) if mt else (b or "unknown")
+
+
+def _depth(m):
+    """Orchestration nesting depth, normalized. Falls back to the engine class when the
+    extractor did not record a tree depth (solo -> 0, delegate/workflow -> 1)."""
+    d = m.get("depth")
+    if d is None:
+        d = 0 if m.get("engine") in (None, "solo") else 1
+    return min(max(d, 0) / DEPTH_CAP, 1.0)
+
+
+def _tree_family_weights(m):
+    """Output-token-weighted census over model FAMILIES across the whole tree, the
+    orchestrator included. Reads `tree_mix` when present (`model -> weight` or
+    `model -> {weight, local}`); otherwise synthesizes from the orchestrator `model` plus
+    the one-level `submix`/`worker`, so v1 dicts still embed."""
+    w = defaultdict(float)
+    tm = m.get("tree_mix")
+    if tm:
+        for model, val in tm.items():
+            weight = val.get("weight", 0.0) if isinstance(val, dict) else val
+            if weight and weight > 0:
+                w[family(model)] += weight
+        return w
+    if m.get("model"):
+        w[family(m["model"])] += 1.0
+    sub = m.get("submix") or {}
+    if sub:
+        for wm, n in sub.items():
+            if n and n > 0:
+                w[family(wm)] += n
+    elif m.get("worker") and m.get("worker") != "solo":
+        w[family(m["worker"])] += 1.0
+    return w
+
+
+def _family_diversity(m):
+    """Normalized Shannon entropy of the tree's model-family mix. One family (all opus,
+    any versions) -> 0.0; an even spread across FAMILY_CAP+ families -> ~1.0."""
+    w = _tree_family_weights(m)
+    total = sum(w.values())
+    if total <= 0 or len(w) <= 1:
+        return 0.0
+    h = 0.0
+    for weight in w.values():
+        p = weight / total
+        if p > 0:
+            h -= p * math.log(p)
+    return min(h / math.log(FAMILY_CAP), 1.0)
 
 
 def features(m):
@@ -90,19 +151,6 @@ def features(m):
     else:
         v[FEATURE_NAMES.index("effort_unknown")] = 1.0
 
-    model = m.get("model")
-    if model:
-        v[FEATURE_NAMES.index("orch_fire")] = TIER.get(base(model), 0.5)
-    else:
-        v[FEATURE_NAMES.index("orch_fire")] = 0.5
-
-    worker = m.get("worker")
-    if worker is None or worker == "solo":
-        worker_fire = 0.0
-    else:
-        worker_fire = TIER.get(base(worker), 0.5)
-    v[FEATURE_NAMES.index("worker_fire")] = worker_fire
-
     fanout = m.get("fanout") or 0
     v[FEATURE_NAMES.index("fanout")] = min(
         math.log1p(fanout) / math.log1p(FANOUT_CAP), 1.0)
@@ -120,6 +168,9 @@ def features(m):
     cache_w = m.get("cache_w") or 0
     denom = cache_r + in_tok + cache_w
     v[FEATURE_NAMES.index("cache_read_pct")] = (cache_r / denom) if denom else 0.0
+
+    v[FEATURE_NAMES.index("depth")] = _depth(m)
+    v[FEATURE_NAMES.index("family_diversity")] = _family_diversity(m)
 
     return v
 

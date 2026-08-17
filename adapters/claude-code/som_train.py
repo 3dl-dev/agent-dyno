@@ -6,7 +6,7 @@ som_train.py, the out-of-band Kohonen SOM trainer for the learned fingerprint
 The rig-space fingerprint is a trajectory in a low-dimensional latent space.
 The hand-written `_embed` in the driver places sessions by prior; this tool
 LEARNS the low-D organization from the data instead. It reads the per-session
-shape vectors from session_features (schema vibrant/session-features@1),
+shape vectors from session_features (schema vibrant/session-features@2),
 trains a batch Kohonen self-organizing map with a deterministic PCA-oriented
 init, and writes a som-cache.json the stdlib driver consumes deterministically.
 It never runs inside the driver: this is the out-of-band inference step in the

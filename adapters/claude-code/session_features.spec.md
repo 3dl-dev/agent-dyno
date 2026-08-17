@@ -161,9 +161,12 @@ to `--out` or stdout. `--selftest` runs the acceptance fixture, exits 0/1.
 
 ## Schema v2 (proposed): the rig as an orchestration mix
 
-Status: PROPOSED, not yet built. `SCHEMA = "vibrant/session-features@2"`. Draft for
-review; no code until the axes below are confirmed. A v2 vector is a superset of v1:
-features 1 to 18 are unchanged, three new fingerprint axes append (19 to 21).
+Status: BUILT. `SCHEMA = "vibrant/session-features@2"`, length 18. Decisions taken:
+the capability tier is retired from the fingerprint (option (a) below), so
+`orch_fire` and `worker_fire` are removed and `depth` + `family_diversity` are
+appended; the vector stays length 18. `local_share` is DEFERRED (no endpoint-origin
+signal in the adapter yet), tracked with cross-job lineage. Everything else in v1
+(engine, routing, effort, fanout, turns, touch_rate, cache_read_pct) is unchanged.
 
 ### Why
 
@@ -229,7 +232,8 @@ the bias.
 
 ### New features (fixed absolute transforms, each in [0, 1])
 
-Continuous, appended after feature 18:
+Continuous, appended after the retained v1 features (positions 17 and 18 once
+`orch_fire`/`worker_fire` are removed). Numbered here by role, not slot index:
 
 19. `depth`: `min(depth / DEPTH_CAP, 1.0)`, `DEPTH_CAP = 4`. Solo = 0.0, one layer =
     0.25, a sub-orchestrator = 0.5, three deep = 0.75, four or more = 1.0. Linear (not
@@ -256,15 +260,19 @@ capability tier in these axes.
 
 ### Deprecating the tier scalar
 
-v1's `orch_fire` and `worker_fire` (features 13, 14) are the same bias in the existing
-schema: a hardcoded capability ranking of models. The principled v2 move is to RETIRE
-them from the fingerprint and let capability be measured by the field. Doing so is a
-larger change (it reshapes the learned space, not just appends to it) and is called out
-here as an explicit decision, NOT taken silently. Options, for sign-off:
-(a) retire `orch_fire`/`worker_fire`, keeping shape purely structural (recommended);
-(b) keep them for continuity and accept the acknowledged bias in v2;
-(c) replace them with an objective non-capability scalar (e.g. model COUNT in the tree)
-    that carries "how much machinery" without ranking quality.
+v1's `orch_fire` and `worker_fire` (features 13, 14) were the same bias: a hardcoded
+capability ranking of models. DECIDED (option (a)): they are RETIRED from the
+fingerprint, and capability is measured by the field. The `TIER` constant is removed
+from this module. Shape stays purely structural. This reshapes the learned space (it is
+not an append), which is why it rides the @2 version bump and forces a retrain; a @1
+codebook no longer matches `FEATURE_NAMES` and is correctly rejected by the contribute
+guard. (Options considered and not taken: (b) keep them for continuity; (c) replace with
+a non-capability "how much machinery" scalar such as model count.)
+
+Not yet migrated: the driver's hand-written fallback `_embed` / `_FIRE` in
+`vibrant_report.py` still carries the same tier prior. It is the no-SOM fallback, a
+separate surface, and is tracked to move off tier so the fallback and the learned space
+agree with this principle.
 
 ### Federation and versioning
 
@@ -276,8 +284,8 @@ family grouping (from model names) and `FAMILY_CAP`; NO capability tier is intro
 
 ### Acceptance (to accompany the build, not this draft)
 
-- Length 20 (or 21 if `local_share` ships), every element in [0, 1], pure and
-  deterministic (byte-identical re-run).
+- Length 18 (`local_share` deferred), every element in [0, 1], pure and deterministic
+  (byte-identical re-run). No `orch_fire`/`worker_fire`; no `TIER` constant.
 - Solo opus session: `depth = 0`, `family_diversity = 0` (one family).
 - All-opus workflow with 20 agents: `family_diversity = 0` despite high `fanout`; the
   mix axis is orthogonal to breadth.

@@ -36,6 +36,27 @@ Three reasons, and they compound:
 If every engine is fuel-efficient, the unit builds its product efficiently, with
 no product-linked individual KPI required. That is the point.
 
+## No capability priors: measure, never assert
+
+The map describes a rig by its **observable structure**, how deep the orchestration
+nests, how wide it fans, which model families it draws on, where it runs. It must
+**never** bake in a prior ranking of how good a model is. A single capability tier is
+both a bias and a category error: capability is multi-dimensional and task-specific, a
+small or local model can be weak at general reasoning yet strong at code, so no scalar
+ordering of models is true across the work people actually do.
+
+Whether a rig is good is **measured**, never asserted: it is the surviving work per
+token that rig earns in the field, re-derived from data, not a number someone typed
+into a tier table. This mirrors the continuation principle the whole project runs on:
+persist what was observed, never a frozen conclusion that should be re-derived. A tier
+table is a frozen conclusion about models; the field is the live measurement. When the
+two disagree, the field wins and the table goes.
+
+Concretely: the fingerprint's model axes classify only by vendor-given, orderless facts
+(the family name, the deployment origin). Ranking those families by a "firepower"
+number is exactly the bias this section forbids, and any such prior in the schema is a
+defect to retire, not a feature to defend.
+
 ## How the tooling enforces it
 
 - Individual data is self-owned and never leaves the machine unless the person
