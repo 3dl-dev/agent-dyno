@@ -130,30 +130,46 @@ function render(data){
     ("Seed data: one operator's Claude Code logs, measured at the same-session survival floor (Aug 2026). "
     + "Bold = best on that axis. Day/week horizons and more harnesses replace this as data arrives.");
 }
-// SPIKE (docs/spikes/nostr-aggregate-spike.md): fold aggregate events from a Nostr relay
-// instead of the file, gated behind ?relay=<wss-url> so the default file path is unchanged.
-// Each event is a summarize() aggregate; the relay returns the latest per shape (addressable
-// kind 30078), so this is a plain map, no client-side dedup. Malformed events are skipped.
-function foldRelay(url){return new Promise(function(resolve,reject){
-  var ws=new WebSocket(url), sub="vb", seen={}, done=false;
-  var timer=setTimeout(finish, 5000);
+// SPIKE (docs/spikes/nostr-aggregate-spike.md, nostr-grants-spike.md): fold aggregate events
+// from a Nostr relay instead of the file, gated behind ?relay=<wss-url> so the default file
+// path is unchanged. Each event is a summarize() aggregate (addressable kind 30078, latest
+// per shape). With ?board=<30301:owner:d> this becomes a team frontier: the client derives
+// the owner-granted author set from the owner's role-grant events (kind 39301, latest per
+// grantee) and folds ONLY aggregates from granted authors, so a public relay need not be
+// trusted to gate writes. Malformed events are skipped.
+function foldRelay(url, board){return new Promise(function(resolve,reject){
+  var ws=new WebSocket(url), sub="vb", aggs={}, grants={}, owner=null, done=false;
+  if(board){ owner=board.split(":")[1]; }
+  var timer=setTimeout(finish, 6000);
+  function granted(){ var g={}; if(owner) g[owner]=true;
+    Object.keys(grants).forEach(function(p){ if(grants[p]==="contributor") g[p]=true; }); return g; }
   function finish(){ if(done)return; done=true; clearTimeout(timer);
     try{ws.close();}catch(e){}
-    var entries=Object.keys(seen).map(function(k){return seen[k];});
-    entries.length ? resolve({entries:entries,
-      context:"Folded live from a Nostr relay ("+entries.length+" aggregates, "+url+"). "
-        +"Same anonymized roll-ups as the file, delivered as addressable events."})
+    var list=Object.keys(aggs).map(function(k){return aggs[k];});
+    if(board){ var g=granted(); list=list.filter(function(a){return g[a._pub];}); }
+    var entries=list.map(function(a){return a.c;});
+    entries.length ? resolve({entries:entries, context: board
+      ? ("Folded from a Nostr team board ("+entries.length+" aggregates from owner-granted authors, "+url+"). "
+         +"The viewer re-verifies grants, so the relay need not be trusted to gate writes.")
+      : ("Folded live from a Nostr relay ("+entries.length+" aggregates, "+url+"). "
+         +"Same anonymized roll-ups as the file, delivered as addressable events.")})
       : reject(new Error("no aggregates"));
   }
-  ws.onopen=function(){ ws.send(JSON.stringify(["REQ",sub,{kinds:[30078],"#t":["vibrant-aggregate"]}])); };
+  ws.onopen=function(){ var filters=[{kinds:[30078],"#t":["vibrant-aggregate"]}];
+    if(board) filters.push({kinds:[39301],authors:[owner]});   // only the owner's grants count
+    ws.send(JSON.stringify(["REQ",sub].concat(filters))); };
   ws.onmessage=function(m){ var d; try{d=JSON.parse(m.data);}catch(e){return;}
-    if(d[0]==="EVENT"&&d[1]===sub){ var ev=d[2], c; try{c=JSON.parse(ev.content);}catch(e){return;}
-      if(c&&c.engine&&c.vector) seen[c.id||ev.id]=c; }
+    if(d[0]==="EVENT"&&d[1]===sub){ var ev=d[2];
+      if(ev.kind===30078){ var c; try{c=JSON.parse(ev.content);}catch(e){return;}
+        if(c&&c.engine&&c.vector) aggs[c.id||ev.id]={c:c,_pub:ev.pubkey}; }
+      else if(ev.kind===39301){ var p=null,role=null;
+        (ev.tags||[]).forEach(function(t){ if(t[0]==="p")p=t[1]; if(t[0]==="role")role=t[1]; });
+        if(p) grants[p]=role; } }                              // latest per grantee (addressable)
     else if(d[0]==="EOSE"&&d[1]===sub) finish(); };
   ws.onerror=function(){ reject(new Error("relay error")); };
 });}
-var _relay=new URLSearchParams(location.search).get("relay");
-if(_relay) foldRelay(_relay).then(render).catch(function(){render(SEED);});
+var _q=new URLSearchParams(location.search), _relay=_q.get("relay"), _board=_q.get("board");
+if(_relay) foldRelay(_relay, _board).then(render).catch(function(){render(SEED);});
 else fetch("../frontier/reference-frontier.json").then(r=>r.ok?r.json():Promise.reject())
   .then(render).catch(()=>render(SEED));
 </script>

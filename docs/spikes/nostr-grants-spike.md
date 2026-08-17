@@ -74,3 +74,26 @@ Run against the LAN relay used in the first spike. With owner key O and keys A, 
 
 About a day: ~25 lines on `foldRelay` for grant derivation and author filtering, plus `nak`
 one-liners to publish the board, grants, and test aggregates from three throwaway keys.
+
+## Result (executed 2026-08-17)
+
+Ran against the LAN relay `ws://192.168.2.40:7777` with three throwaway keys (owner O,
+contributor A, rogue B). `foldRelay` gained board mode (gated by `?board=<30301:owner:d>`):
+it REQs the owner's kind-39301 grants alongside the kind-30078 aggregates, derives the granted
+set (owner plus contributors, latest grant per grantee wins), and folds only aggregates whose
+author is granted. All four acceptance criteria passed:
+
+1. O published the board and a `contributor` grant for A; A published the frontier. The board
+   rendered A's three rows, with a context line naming the trust model.
+2. B (never granted) published an aggregate with a dominating fake vector. In board mode it was
+   DROPPED; in no-board mode the same event rendered as a false `pareto` leader, which is
+   exactly the poisoning the board prevents.
+3. O published a `revoked` grant for A (latest-wins). On reload the board found no granted
+   authors and fell back to seed: A's contributions were gone.
+4. Without `?board=`, every author rendered (Stage 0 behavior), unchanged.
+
+The board-mode read path is committed (guarded behind `?board=`, so default behavior is
+unchanged); the live e2e run is its verification. Derisked: owner-rooted admission enforced
+client-side over Nostr, so a public relay need not be trusted to gate writes. This clears
+Stage 1 of the adoption roadmap; Stage 2 (the stdlib signer / Nostr hoistable) is the next
+build.
