@@ -137,8 +137,10 @@ Adopted, staged so each step is provable and the file model never regresses:
   stdlib only, no network, landed source-first and validated against `nak` in both directions.
   Per the hoistable philosophy the code stops at the invariant checksum: standing up a relay,
   publishing, and folding are a skill (`hoist-nostr.skill.md`) the receiver's agent runs, not
-  a program we ship. Remaining: exercise the skill's publish-and-fold path end to end from our
-  own signer (the leaderboard fold is already proven; only the our-signer publish leg is new).
+  a program we ship. Proven end to end (2026-08-17): `nostr_event.py` signed three `summarize`
+  aggregates, they were published as-given to a clean LAN relay, the relay validated and
+  accepted our BIP-340 signatures, and the leaderboard folded them, no `nak` signing anywhere
+  in the chain. Stage 2 done.
 - **Stage 3, skill wiring.** `vibrant-contribute` publishes your `summarize` aggregate to a
   frontier board; `vibrant-report` and the leaderboard subscribe and fold. The file path
   stays the zero-setup default; the mesh is chosen with `--relay` / `--board`.
