@@ -2425,7 +2425,10 @@ def render_civ_map(som_block, svg_id=None, compact=True):
         fills.append(f'<polygon points="{poly(cx, cy)}" fill="{col}" opacity="0.28"/>')
         cost = cm[(r, c)].get("cost")
         cop = 0.0 if cost is None else min(0.55, 0.10 + 0.45 * min(cost / 6.0, 1.0))
-        cells.append(f'<polygon points="{poly(cx, cy)}" fill="rgba(18,18,20,{cop:.2f})" '
+        # the cost hex is the HOVER target for this cell (data-r/data-c so the JS can decode
+        # exactly which rig it is); the glow, borders, labels and marks are pointer-transparent.
+        cells.append(f'<polygon class="civ-cell" data-r="{r}" data-c="{c}" '
+                     f'points="{poly(cx, cy)}" fill="rgba(18,18,20,{cop:.2f})" '
                      f'stroke="rgba(160,160,170,0.10)" stroke-width="1"/>')
         for i, nb in enumerate(_civ_nbrs(r, c)):
             if eng.get(nb) != e:  # this edge is on the territory boundary: draw a border
@@ -2444,31 +2447,21 @@ def render_civ_map(som_block, svg_id=None, compact=True):
                       f'font-size="12" font-weight="800" letter-spacing="0.14em" opacity="0.4" '
                       f'paint-order="stroke" stroke="var(--card)" stroke-width="3" '
                       f'fill="{bcol}">{esc(e.upper())}</text>')
-    you_mark = ""
-    if cur and tuple(cur) in cm:
-        cx, cy = ctr(*cur)
-        star = []
-        for k in range(10):
-            ang = math.pi / 2 + k * math.pi / 5
-            rad = 6.2 if k % 2 == 0 else 2.6
-            star.append(f"{cx + rad * math.cos(ang):.1f},{cy - rad * math.sin(ang):.1f}")
-        you_mark = (f'<polygon points="{poly(cx, cy)}" fill="{_CIV_YOU}" opacity="0.22"/>'
-                    f'<polygon points="{poly(cx, cy)}" fill="none" stroke="{_CIV_YOU}" '
-                    f'stroke-width="3.4"/><polygon points="{" ".join(star)}" fill="{_CIV_YOU}"/>'
-                    f'<text x="{cx:.1f}" y="{cy + rr + 15:.1f}" text-anchor="middle" '
-                    f'font-size="12.5" font-weight="800" letter-spacing="0.1em" '
-                    f'paint-order="stroke" stroke="var(--card)" stroke-width="3.5" '
-                    f'stroke-linejoin="round" fill="{_CIV_YOU}">YOU</text>')
     idattr = f' id="{svg_id}"' if svg_id else ''
     geo = (f' data-cell="{cell}" data-hstep="{hstep}" data-vstep="{vstep:.3f}" '
            f'data-pad="{pad}" data-rr="{rr:.2f}"')
     defs = ('<defs><filter id="cvg" x="-60%" y="-60%" width="220%" height="220%">'
             '<feGaussianBlur stdDeviation="9"/></filter></defs>')
+    # YOU and BEST are NOT baked here: the JS draws them into .zciv for whatever timeline
+    # slice is selected, so they vary with the data considered (see renderCivMarks).
     return (f'<svg{idattr}{geo} viewBox="0 0 {W:.0f} {H:.0f}" role="img" '
             f'style="width:100%;height:auto;display:block" aria-label="rig fingerprint as a '
-            f'map: engine territories with borders, your capital, and the best rig to move to">'
-            f'{defs}{"".join(glow)}{"".join(fills)}{"".join(cells)}{"".join(borders)}'
-            f'{"".join(labels)}{you_mark}<g class="zciv"></g></svg>')
+            f'map: engine territories with borders; YOU and the best rig marked by the '
+            f'current timeline selection">{defs}'
+            f'<g pointer-events="none">{"".join(glow)}{"".join(fills)}</g>'
+            f'{"".join(cells)}'
+            f'<g pointer-events="none">{"".join(borders)}{"".join(labels)}</g>'
+            f'<g class="zciv" pointer-events="none"></g></svg>')
 
 
 def render_som_map(som_block, title="Where you work",
@@ -3090,57 +3083,81 @@ _WALK_JS = r"""<script>
     if(!ov){ov=document.createElementNS('http://www.w3.org/2000/svg','svg');ov.setAttribute('class','flow-ov');host.insertBefore(ov,host.firstChild);}
     var hr=host.getBoundingClientRect();if(hr.width<1)return;
     ov.setAttribute('viewBox','0 0 '+hr.width.toFixed(1)+' '+hr.height.toFixed(1));
-    ov.innerHTML=upRibbon(selB,BCOL,hr);}  // timeline slice flows up into the score
+    // the selected timeline slice flows UP into the score and DOWN into the map: the sankey
+    // shows exactly which selection is driving YOU / BEST below.
+    ov.innerHTML=upRibbon(selB,BCOL,hr)+panelRibbon(selB,document.getElementById('map-civ'),BCOL,hr);}
   // demoted in the comparison view: only a confident move shows, prefixed so it reads as
   // secondary advice about the current generation, not part of the A/B comparison.
   function setRec(e){if(!vbRec)return;var bc=best(e);
     if(bc&&recOk(e)){vbRec.innerHTML='to improve the current generation for '+objName(e)+': <span class="rec-arrow">'+REC+'</span> shift toward <b>'+setup(bc)+'</b>';return;}
     vbRec.innerHTML='';}
   function rigShort(c){if(!c)return '';var w=(c.worker&&c.worker!=='solo')?('›'+c.worker):'';return c.model+w+' · '+c.engine;}
-  // BEST + the move on the single Civ-V map, reactive to the enabled score arms: a green hex
-  // on the best cell for the target, and a dashed arrow from YOU (your capital) to it. This
-  // is what makes toggling an optimization target actually move "best".
-  function renderBestCiv(e){if(!zciv)return;var bc=best(e);if(!bc){zciv.innerHTML='';return;}
-    var b=ctr(bc.r,bc.c),y=(CUR?ctr(CUR[0],CUR[1]):null),GB='#4FB07E',AR='#7FCBA6',h='';
-    if(y){var dx=b.x-y.x,dy=b.y-y.y,d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d;
-      var sx=y.x+ux*(y.r+3),sy=y.y+uy*(y.r+3),tx=b.x-ux*(b.r+3),ty=b.y-uy*(b.r+3);
-      var hx=tx-ux*10,hy=ty-uy*10,px=-uy,py=ux;
+  // YOU = your prevailing (heaviest) cell in the SELECTED slice; BEST = the best rig in that
+  // slice for the enabled score arms, still required to carry your cargo (no bicycles). Both
+  // vary with the timeline selection.
+  function youOf(sel){var cs=selCells(sel);if(!cs.length)return CUR?{r:CUR[0],c:CUR[1]}:null;
+    var p=cs[0];cs.forEach(function(c){if((c.w||0)>(p.w||0))p=c;});return {r:p.r,c:p.c};}
+  function bestOf(sel,en){var cs=selCells(sel);if(!cs.length)return null;
+    var y=youOf(sel),yc=(y?cell(y.r,y.c):null),yl=(yc&&yc.cargo)||0,best=null,bv=-1;
+    cs.forEach(function(cc){var c=cell(cc.r,cc.c);if(!c)return;
+      if(yl>0&&(c.cargo||0)<0.5*yl)return;                 // cargo rule: carry your load
+      var g=good(c,en);if(g!=null&&g>bv){bv=g;best=c;}});
+    if(!best){cs.forEach(function(cc){var c=cell(cc.r,cc.c);if(!c)return;var g=good(c,en);if(g!=null&&g>bv){bv=g;best=c;}});}
+    return best;}
+  function civStar(cx,cy){var p=[];for(var k=0;k<10;k++){var a=Math.PI/2+k*Math.PI/5,rd=(k%2?2.6:6.2);
+    p.push((cx+rd*Math.cos(a)).toFixed(1)+','+(cy-rd*Math.sin(a)).toFixed(1));}return p.join(' ');}
+  function markTxt(x,y,col,t){return '<text x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" text-anchor="middle" font-size="12.5" font-weight="800" letter-spacing="0.1em" paint-order="stroke" stroke="var(--card)" stroke-width="3.5" stroke-linejoin="round" fill="'+col+'">'+t+'</text>';}
+  function renderCivMarks(sel,en){if(!zciv)return;var vb=svg.viewBox.baseVal,h='',YC='#C56A4C',GB='#4FB07E',AR='#7FCBA6';
+    var yy=youOf(sel),bc=bestOf(sel,en);var y=yy?ctr(yy.r,yy.c):null;
+    var diff=(bc&&(!yy||bc.r!==yy.r||bc.c!==yy.c)),b=diff?ctr(bc.r,bc.c):null;
+    if(y&&b){var dx=b.x-y.x,dy=b.y-y.y,d=Math.hypot(dx,dy)||1,ux=dx/d,uy=dy/d;
+      var sx=y.x+ux*(y.r+3),sy=y.y+uy*(y.r+3),tx=b.x-ux*(b.r+3),ty=b.y-uy*(b.r+3),hx=tx-ux*10,hy=ty-uy*10,px=-uy,py=ux;
       h+='<line x1="'+sx.toFixed(1)+'" y1="'+sy.toFixed(1)+'" x2="'+hx.toFixed(1)+'" y2="'+hy.toFixed(1)+'" stroke="'+AR+'" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="1 6" opacity="0.9"/>'
        +'<polygon points="'+tx.toFixed(1)+','+ty.toFixed(1)+' '+(hx+px*5).toFixed(1)+','+(hy+py*5).toFixed(1)+' '+(hx-px*5).toFixed(1)+','+(hy-py*5).toFixed(1)+'" fill="'+AR+'"/>';}
-    var vb=svg.viewBox.baseVal,lx=Math.min(Math.max(b.x,20),vb.width-20);
-    var ly=(b.y+b.r+18<vb.height-2)?(b.y+b.r+15):(b.y-b.r-9);
-    h+='<polygon points="'+hexAt(b.x,b.y)+'" fill="'+GB+'" opacity="0.20"/>'
-     +'<polygon points="'+hexAt(b.x,b.y)+'" fill="none" stroke="'+GB+'" stroke-width="3.4"/>'
-     +'<text x="'+lx.toFixed(1)+'" y="'+ly.toFixed(1)+'" text-anchor="middle" font-size="12.5" font-weight="800" letter-spacing="0.1em" paint-order="stroke" stroke="var(--card)" stroke-width="3.6" stroke-linejoin="round" fill="'+GB+'">BEST</text>';
+    if(b){var by=(b.y+b.r+16<vb.height-2)?(b.y+b.r+15):(b.y-b.r-9);
+      h+='<polygon points="'+hexAt(b.x,b.y)+'" fill="'+GB+'" opacity="0.20"/><polygon points="'+hexAt(b.x,b.y)+'" fill="none" stroke="'+GB+'" stroke-width="3.4"/>'
+       +markTxt(Math.min(Math.max(b.x,20),vb.width-20),by,GB,'BEST');}
+    if(y){var ly=(y.y-y.r-9>12)?(y.y-y.r-9):(y.y+y.r+16);
+      h+='<polygon points="'+hexAt(y.x,y.y)+'" fill="'+YC+'" opacity="0.22"/><polygon points="'+hexAt(y.x,y.y)+'" fill="none" stroke="'+YC+'" stroke-width="3.4"/>'
+       +'<polygon points="'+civStar(y.x,y.y)+'" fill="'+YC+'"/>'+markTxt(Math.min(Math.max(y.x,20),vb.width-20),ly,YC,'YOU');}
     zciv.innerHTML=h;}
   // the OVERALL explanation (below the pair): the canonical meaning, once and short. The
   // per-print specifics are the two captions above it; the comparison is reading them.
-  function detailHtml(e){var bc=best(e);
-    var bt=bc?(' <b style="color:#4FB07E">BEST</b> for '+objName(e)+' is <b>'+rigShort(bc)+'</b> (toggle the score arms to move it).'):'';
-    return 'Your fingerprint as a map: engine <b>territories</b> with borders, <b style="color:#C56A4C">&#9733; YOU</b> where your work concentrates.'+bt;}
+  function detailHtml(e){var yy=youOf(selB),bc=bestOf(selB,e);
+    var yc=yy?cell(yy.r,yy.c):null;var slice=(selB.day!=null?selLabel(selB):(selB.era===curEraId?'now':selLabel(selB)));
+    var s='<b style="color:#C56A4C">&#9733; YOU</b> ('+slice+') mostly '+(yc?rigShort(yc):'n/a');
+    if(bc){var same=(yy&&bc.r===yy.r&&bc.c===yy.c);
+      s+=same?(' &mdash; already the <b style="color:#4FB07E">best</b> for '+objName(e)):
+        (' &rarr; <b style="color:#4FB07E">BEST</b> for '+objName(e)+' is <b>'+rigShort(bc)+'</b>');}
+    return s+'. Hover a territory to read a cell; use the timeline to change the slice.';}
   function refresh(){var e=enSet(),v=vals();
     if(vbScore)vbScore.textContent=fmt(score(e,v));
     MK.forEach(function(m){var b=tog(m);if(!b)return;b.setAttribute('aria-pressed',e[m]?'true':'false');var bb=b.querySelector('b');if(bb)bb.textContent=fmtv(m,v[m]);});
     if(vbLabel)vbLabel.textContent=(selB.day!=null?selLabel(selB)+' ':(selB.era===curEraId?'':'that generation '))+'score';
-    dimWave(e);emphasize();renderBestCiv(e);setRec(e);
+    dimWave(e);emphasize();renderCivMarks(selB,e);setRec(e);
     if(vbDetail)vbDetail.innerHTML=detailHtml(e);}
+  // hovering a territory cell decodes exactly which rig it is; leaving restores the summary.
+  svg.querySelectorAll('.civ-cell').forEach(function(cl){
+    cl.addEventListener('mouseenter',function(){if(!vbDetail)return;var c=cell(cl.getAttribute('data-r'),cl.getAttribute('data-c'));
+      vbDetail.innerHTML=c?('<b>'+setup(c)+'</b>'+MID+(c.sessions||0)+' session'+(c.sessions==1?'':'s')+MID+money(c.cost)+' per KB'+MID+'efficiency '+(c.eff==null?'n/a':c.eff)+MID+'flow '+(c.flow==null?'n/a':c.flow)+MID+'simplicity '+(c.simp==null?'n/a':c.simp)):'an unused setup, no sessions here';});
+    cl.addEventListener('mouseleave',function(){refresh();});});
   MK.forEach(function(m){var b=tog(m);if(!b)return;
     b.addEventListener('mouseenter',function(){PV=m;refresh();});
     b.addEventListener('mouseleave',function(){PV=null;refresh();});
     b.addEventListener('click',function(){var on=MK.filter(function(k){return EN[k];});if(EN[m]&&on.length<=1)return;EN[m]=!EN[m];PV=null;refresh();});});
-  // one delegated listener uses the topmost element under the pointer, so a bar targets a
-  // DAY and the band around it targets a GENERATION, unambiguously. Hover previews into B;
-  // click holds into A (click the held target again to release).
+  // the timeline drives the map: a bar targets a DAY, the band around it a GENERATION.
+  // Hovering previews that slice into the map (YOU / BEST recompute); clicking HOLDS it so
+  // you can read it (click the held slice again to release back to now).
   var wsvg=document.getElementById('wave-svg');
-  function toggleHold(sel){var same=(sel.day!=null&&selA.day===sel.day)||(sel.era!=null&&selA.era===sel.era);
-    if(HELD&&same){selA={era:prevEraId};HELD=false;}else{selA=sel;HELD=true;}refresh();}
   function hitSel(t){if(!t||!t.classList)return null;
     if(t.classList.contains('wv-hit'))return {day:+t.parentNode.getAttribute('data-i')};
     if(t.classList.contains('wv-gen'))return {era:+t.getAttribute('data-era')};return null;}
   if(wsvg){
-    wsvg.addEventListener('mouseover',function(ev){var s=hitSel(ev.target);if(s){selB=s;refresh();}});
-    wsvg.addEventListener('click',function(ev){var s=hitSel(ev.target);if(s)toggleHold(s);});
-    wsvg.addEventListener('mouseleave',function(){selB={era:curEraId};refresh();});}
+    wsvg.addEventListener('mouseover',function(ev){if(HELD)return;var s=hitSel(ev.target);if(s){selB=s;refresh();}});
+    wsvg.addEventListener('click',function(ev){var s=hitSel(ev.target);if(!s)return;
+      var same=(s.day!=null&&selB.day===s.day)||(s.era!=null&&selB.era===s.era);
+      if(HELD&&same){HELD=false;selB={era:curEraId};}else{HELD=true;selB=s;}refresh();});
+    wsvg.addEventListener('mouseleave',function(){if(!HELD){selB={era:curEraId};refresh();}});}
   window.addEventListener('resize',function(){drawMerge();drawFlow();});
   refresh();
 })();

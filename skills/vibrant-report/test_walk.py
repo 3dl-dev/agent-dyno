@@ -91,14 +91,20 @@ def test_card_maps_interactive(fails):
           "the old dual A/B map should be gone", fails)
     check('data-cell="' in row and 'data-hstep="' in row,
           "map geometry must be exposed for the JS to place BEST", fails)
-    check('class="zciv"' in row, "no client group for the reactive BEST + move", fails)
-    check(">YOU</text>" in row, "YOU (your capital) is not marked on the map", fails)
+    check('class="zciv"' in row, "no client group for YOU / BEST / move", fails)
+    check('class="civ-cell" data-r=' in row, "cells are not hoverable (no data-r civ-cell)", fails)
     check('<line ' in row and 'stroke-linecap="round"' in row,
           "no traced territory borders", fails)
     check("civ-legend" in row, "no legend naming the territories", fails)
     check('id="vb-rec"' in row and 'id="vb-detail"' in row, "missing detail/recommendation slots", fails)
-    # BEST is drawn client-side (reactive to the score arms), never baked static.
-    check(">BEST</text>" not in row, "BEST should be client-drawn, not static", fails)
+    # YOU and BEST are drawn client-side (they vary with the timeline selection), never baked.
+    check(">YOU</text>" not in row and ">BEST</text>" not in row,
+          "YOU / BEST should be client-drawn, not static", fails)
+    # the driving script must know how to place them and read a cell.
+    js = vr.render_walk(REPORT)
+    check("renderCivMarks" in js and "youOf" in js and "bestOf" in js,
+          "script does not compute per-selection YOU / BEST", fails)
+    check("civ-cell" in js, "script does not wire cell hover", fails)
 
 
 def test_hero_toggles(fails):
