@@ -158,3 +158,95 @@ to `--out` or stdout. `--selftest` runs the acceptance fixture, exits 0/1.
 - The vector is shape only by design; a reader wanting to know if a shape *paid off*
   must join to the field (the driver's per-cell economics), which is exactly the
   separation the SOM depends on.
+
+## Schema v2 (proposed): the rig as an orchestration mix
+
+Status: PROPOSED, not yet built. `SCHEMA = "vibrant/session-features@2"`. Draft for
+review; no code until the axes below are confirmed. A v2 vector is a superset of v1:
+features 1 to 18 are unchanged, three new fingerprint axes append (19 to 21).
+
+### Why
+
+v1 describes a session's topology with a 3-way `engine` one-hot and collapses the
+whole worker population to ONE scalar (`worker_fire`, the dominant worker tier). That
+cannot express what a rig actually is. A rig is the shape of the whole orchestration:
+how DEEP it nests (one agent, a layer of workers, sub-orchestrators under those), how
+WIDE it fans, and the MIX of model classes across the entire tree, whether reached
+directly or nested, "all opus all day" versus a spread of opus / sonnet / haiku that
+even pulls in small and local models for the cheap work. Two rigs that both read
+`worker_fire = 0.6` today can be an all-sonnet flat delegate and a deep opus-over-
+haiku-over-local orchestration. v2 gives the map the axes to tell them apart. There
+are infinite permutations with regional similarities, which is precisely what the SOM
+organises: v2 just hands it coordinates that carry the distinction.
+
+Per the four-slot schema, all three new dimensions land in ONE slot, the fingerprint
+axis. No fifth slot; `fanout` (breadth) already exists, so the net-new axes are depth
+and the two mix axes.
+
+### Attribution scope
+
+Features are computed over the **in-session orchestration tree**: the main session
+plus its nested subagents as recorded under the session directory (the recursive
+`subagents/**` files the extractor already reads). CROSS-JOB trees, where the operator
+drives workers as separate top-level jobs rather than in-session subagents, are OUT OF
+SCOPE for v2: there is no parent/driver link in the session records to assemble them.
+That gap is tracked as a separate adapter task (add a lineage signal), and until it
+lands, a driven fleet of separate jobs still reads as many independent leaf sessions.
+
+### New input fields (on the per-session metric dict)
+
+- `depth` (int): the maximum orchestration nesting depth of the in-session tree. `0`
+  when the session dispatched no agents (solo); `1` for a flat layer of workers; `2`
+  when a worker itself orchestrated (a sub-orchestrator); and so on. Derived from the
+  nesting depth of the `subagents/**` file tree. Missing -> fall back to the engine
+  class: solo -> 0, delegate/workflow -> 1.
+- `tree_mix` (dict `model_base -> weight`): the output-token-weighted census of every
+  model that ran ANYWHERE in the tree, the orchestrator itself included (the
+  orchestrator's model is part of the rig, not outside it). Generalises v1 `submix`
+  (workers only, one level) to the whole tree. Missing -> synthesize from `model` (the
+  orchestrator, full weight) plus `submix` if present, so v1 dicts still embed.
+
+### New features (fixed absolute transforms, each in [0, 1])
+
+Continuous, appended after feature 18:
+
+19. `depth`: `min(depth / DEPTH_CAP, 1.0)`, `DEPTH_CAP = 4`. Solo = 0.0, one layer =
+    0.25, a sub-orchestrator = 0.5, three deep = 0.75, four or more = 1.0. Linear (not
+    log): each level up to the cap is a distinct, meaningful rig change, unlike raw
+    fanout counts where 20 vs 21 agents is noise.
+20. `mix_diversity`: the normalized Shannon entropy of the tree's model-CLASS
+    distribution. Map each model in `tree_mix` to a class by its `TIER` band, sum the
+    output-token weights per class, normalize to a distribution `p` over the four
+    classes, then `H(p) / ln(4)` with `H(p) = -sum_k p_k * ln(p_k)` over classes with
+    `p_k > 0`. All one class (e.g. all opus) -> 0.0; an even spread across all four ->
+    1.0. Classes, by tier band:
+    - `frontier`: tier >= 0.85 (opus family)
+    - `mid`: 0.5 <= tier < 0.85 (sonnet family)
+    - `small`: 0.2 <= tier < 0.5 (haiku, fable)
+    - `local`: tier < 0.2 (tiny / local models)
+21. `mix_reach`: the output-token-weighted fraction of the tree handled by models
+    below the mid boundary, `p_small + p_local` (tier < 0.5). "How far down you reach."
+    All frontier/mid -> 0.0; a rig that pushes real work onto small and local models ->
+    high. Distinct from `mix_diversity`: an all-haiku rig has diversity 0 but reach
+    1.0; an even opus/sonnet split has reach 0 but positive diversity.
+
+`mix_diversity` and `mix_reach` are absolute functions of the fixed `TIER` bands, not
+corpus-relative, so they stay federation-comparable like every other v1 component.
+
+### Federation and versioning
+
+The feature schema is the shared coordinate system of the federated map (item 5). v2
+is a version bump every federated map adopts together; a v1 map and a v2 map do not
+share coordinates and must not be merged. This is a governance-visible change, gated on
+sign-off, not a silent append. `TIER` and the four class bands are added to the
+federation-shared constants.
+
+### Acceptance (to accompany the build, not this draft)
+
+- Length 21, every element in [0, 1], pure and deterministic (byte-identical re-run).
+- Solo opus session: `depth = 0`, `mix_diversity = 0` (one class), `mix_reach = 0`.
+- Solo haiku session: `mix_reach = 1.0` (a small-model rig reaches all the way down).
+- Flat opus->haiku delegate: `depth = 0.25`, `mix_diversity > 0`, `mix_reach > 0`.
+- Deep opus->sonnet->haiku (sub-orchestrator): `depth = 0.5`, all three classes in
+  `mix_diversity`, `mix_reach` = the haiku token share.
+- v1 dict with no `depth` / `tree_mix`: embeds via the documented fallbacks, no raise.
