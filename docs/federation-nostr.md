@@ -131,10 +131,14 @@ Adopted, staged so each step is provable and the file model never regresses:
 - **Stage 1, owner-rooted grants (NEXT, scoped).** A team frontier is a board; only
   owner-granted npubs contribute; the client re-verifies. Scoped in
   `docs/spikes/nostr-grants-spike.md`.
-- **Stage 2, our own publisher (the Nostr hoistable).** Replace `nak` with a stdlib
-  BIP-340 signer plus a minimal WebSocket writer, landed source-first (spec plus acceptance
-  test, per `SOURCE.md`), routed through one write choke point. This is the one real build,
-  and the piece a hoisted skill bundles so the publish side is proven in a clean session.
+- **Stage 2, our own signer + the Nostr hoistable (core DONE).** Built separately in
+  `nostr-emit` (a reusable repo, so Vibrant's adapters carry no general Nostr program). The
+  deterministic core, `nostr_event.py`, is NIP-01 canonical id plus BIP-340 sign/verify,
+  stdlib only, no network, landed source-first and validated against `nak` in both directions.
+  Per the hoistable philosophy the code stops at the invariant checksum: standing up a relay,
+  publishing, and folding are a skill (`hoist-nostr.skill.md`) the receiver's agent runs, not
+  a program we ship. Remaining: exercise the skill's publish-and-fold path end to end from our
+  own signer (the leaderboard fold is already proven; only the our-signer publish leg is new).
 - **Stage 3, skill wiring.** `vibrant-contribute` publishes your `summarize` aggregate to a
   frontier board; `vibrant-report` and the leaderboard subscribe and fold. The file path
   stays the zero-setup default; the mesh is chosen with `--relay` / `--board`.
