@@ -46,6 +46,21 @@ What the map shows, in one picture:
    `from`/`to`/`axis`). When `target_cell` is null, draw no arrow (the field still
    renders; the arm-change text, if any, sits below as a line).
 
+6. **Regional lenses (Civ-V map modes)**: when the block carries `cell_meaning` (per-cell
+   setup, on the hex map), each fingerprint axis is a toggleable regional overlay. Each
+   cell is a specific setup, but the SOM places similar setups adjacent, so a per-cell tint
+   coloured by an axis paints "regional monotony": coherent coloured territories where the
+   axis organises the map, mottled where it does not. Three lenses: `engine`
+   (solo/delegate/workflow), `firepower` (lean/mid/heavy, binned off the orchestrator+worker
+   models), `effort` (low/medium/high). A category's session-weighted centroid carries a bold
+   label, nudged apart when two centroids collide (no overprinting). Tints ride BEHIND the
+   cells (`class="som-lens-t"`), labels ON TOP (`class="som-lens-l"`), one group per lens; the
+   grid geometry is untouched. One lens shows at a time, engine by default; the others are
+   emitted `display:none` and revealed by the card's lens toggle. The overlay is honest by
+   construction: a nearly-monotone axis (e.g. all-high effort) collapses to a single region,
+   and an axis that does not cluster reads as mottled rather than as false borders. Lenses
+   appear only on the hex style with `cell_meaning`; the classic map is unaffected.
+
 Axis hint (small, muted): label the two lattice axes with what the SOM's PCA-oriented
 init makes them roughly track, e.g. horizontal ~ firepower/rigor, vertical ~ fanout.
 Keep it a hint, not a claim; the exact mapping is emergent.

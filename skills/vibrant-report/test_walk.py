@@ -87,6 +87,23 @@ def test_card_maps_interactive(fails):
     check('id="vb-detail"' in row, "no separate description/detail slot", fails)
 
 
+def test_lens_overlays(fails):
+    # Civ-V lenses: each axis is a toggleable regional overlay on BOTH maps. One lens
+    # bar drives the pair; engine is the default (visible), firepower/effort hidden.
+    row = vr._card_maps(REPORT)
+    check('id="lens-bar"' in row, "no lens toggle bar", fails)
+    for L in ("engine", "firepower", "effort"):
+        check(f'data-lens="{L}"' in row, "missing lens " + L, fails)
+    # each map carries a tint group and a label group per lens (behind cells / on top).
+    check(row.count('class="som-lens-t"') == 6, "expected 3 tint lenses on 2 maps", fails)
+    check(row.count('class="som-lens-l"') == 6, "expected 3 label lenses on 2 maps", fails)
+    # only the engine lens shows by default; the other two are display:none.
+    check(row.count('data-lens="firepower" style="display:none"') == 4,
+          "non-default lenses must start hidden", fails)
+    # per-cell tints render even when no category reaches a labelled region.
+    check("url(#zblur)" in row, "no lens tint field", fails)
+
+
 def test_hero_toggles(fails):
     rep = dict(REPORT, misery={"flow": 60.0, "overall": 40.0})
     card = vr._hero_card(rep)
@@ -241,7 +258,8 @@ def test_determinism(fails):
 def main():
     fails = []
     for t in (test_empty, test_script, test_no_external_refs, test_no_em_dash,
-              test_card_maps_interactive, test_hero_toggles, test_recommend_ignores_noise,
+              test_card_maps_interactive, test_lens_overlays, test_hero_toggles,
+              test_recommend_ignores_noise,
               test_recommend_noise_gate, test_rank_opacity_spreads,
               test_timeline_periods_era_smoothed, test_era_occupancy_cloud,
               test_determinism):

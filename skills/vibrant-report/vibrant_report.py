@@ -2371,44 +2371,88 @@ def render_som_map(som_block, title="Where you work",
         return (f'<rect class="som-cell" x="{cx - cell / 2:.1f}" y="{cy - cell / 2:.1f}" '
                 f'width="{cell}" height="{cell}" rx="4" {attrs}>{inner}</rect>')
 
-    # emergent territory labels: the learned SOM already clusters cells by ENGINE
-    # (solo / delegate / workflow sit in distinct regions). Name each region on the clean
-    # map -- a soft tint + a bold label at its session-weighted centroid -- so the
-    # positional meaning reads at a glance, WITHOUT reprojecting the grid.
-    zdefs, ztints, zlabels = "", "", ""
+    # Civ-V-style LENSES: each fingerprint axis is a regional overlay on the clean map. Each
+    # cell is a specific setup, but the SOM lays similar setups next to each other, so a per-
+    # cell tint coloured by an axis paints "regional monotony" -- coherent territories where
+    # the axis organises the map (engine does), mottled where it does not. A named label rides
+    # each category's session-weighted centroid, nudged apart when centroids collide. One lens
+    # shows at a time (toggle in the card); default engine. The grid itself is untouched:
+    # tints ride behind the cells, labels on top.
+    zdefs, lens_tints, lens_labels = "", "", ""
     cmeta = som_block.get("cell_meaning") if hexed else None
     if cmeta:
-        zg = defaultdict(lambda: {"sx": 0.0, "sy": 0.0, "w": 0.0, "pos": []})
-        for cmi in cmeta:
-            eng = cmi.get("engine")
-            if not eng:
-                continue
-            r, c = cmi["cell"]
-            n = (cmi.get("sessions") or 0) + 1
-            cx, cy = center(r, c)
-            z = zg[eng]
-            z["sx"] += cx * n
-            z["sy"] += cy * n
-            z["w"] += n
-            z["pos"].append((cx, cy))
-        zhue = {"solo": "#4E6E8E", "delegate": "#8A6D4B", "workflow": "#7C5E8B"}
-        drawable = {e: z for e, z in zg.items() if len(z["pos"]) >= 2 and z["w"] > 0}
-        if drawable:
-            zdefs = (f'<defs><filter id="zblur" x="-40%" y="-40%" width="180%" '
-                     f'height="180%"><feGaussianBlur stdDeviation="{cell * 0.42:.1f}"/>'
-                     f'</filter></defs>')
-            tints, labs, fs = [], [], (10 if compact else 12)
-            for eng, z in sorted(drawable.items()):
-                mx, my = z["sx"] / z["w"], z["sy"] / z["w"]
-                rad = max(math.hypot(px - mx, py - my) for px, py in z["pos"]) + cell * 0.55
-                hue = zhue.get(eng, "var(--muted)")
-                tints.append(f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{rad:.1f}" '
-                             f'fill="{hue}" opacity="0.13" filter="url(#zblur)"/>')
+        def _fire(cmi):
+            m = _FIRE.get(cmi.get("model"), 0.5)
+            w = cmi.get("worker")
+            return m * 0.6 + _FIRE.get(w, 0.5) * 0.4 if (w and w != "solo") else m
+
+        def _fpbin(cmi):
+            f = _fire(cmi)
+            return "heavy" if f >= 0.72 else ("mid" if f >= 0.45 else "lean")
+
+        def _effbin(cmi):
+            o = _EFFORT_ORDER.get(cmi.get("effort"), 2)
+            return "low" if o <= 0 else ("high" if o >= 2 else "medium")
+        lenses = [
+            ("engine", (lambda c: c.get("engine")),
+             {"solo": "#4E6E8E", "delegate": "#8A6D4B", "workflow": "#7C5E8B"}),
+            ("firepower", _fpbin,
+             {"lean": "#4E7C7B", "mid": "#C99A3C", "heavy": "#A8492C"}),
+            ("effort", _effbin,
+             {"low": "#7C8B9B", "medium": "#8A7A4E", "high": "#9B5E6E"}),
+        ]
+        fs = 10 if compact else 12
+        gap = fs * 1.55  # min vertical gap between two labels that overlap in x
+        crad = cell * 0.88  # overlapping same-hue tints saturate; isolated cells stay faint
+        tint_groups, lab_groups, any_drawn = [], [], False
+        for li, (name, keyfn, hue) in enumerate(lenses):
+            zg = defaultdict(lambda: {"sx": 0.0, "sy": 0.0, "w": 0.0, "n": 0})
+            tints = []
+            for cmi in cmeta:
+                k = keyfn(cmi)
+                if not k:
+                    continue
+                r, c = cmi["cell"]
+                n = (cmi.get("sessions") or 0) + 1
+                cx, cy = center(r, c)
+                z = zg[k]
+                z["sx"] += cx * n
+                z["sy"] += cy * n
+                z["w"] += n
+                z["n"] += 1
+                any_drawn = True
+                # per-cell tint: adjacent same-value cells merge into a monotone region.
+                tints.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{crad:.1f}" '
+                             f'fill="{hue.get(k, "var(--muted)")}" opacity="0.22" '
+                             f'filter="url(#zblur)"/>')
+            # centroid labels, largest region first, pushed apart on x-overlap collisions.
+            cand = []
+            for cat, z in zg.items():
+                if z["n"] < 2 or z["w"] <= 0:
+                    continue
+                cand.append((z["w"], z["sx"] / z["w"], z["sy"] / z["w"],
+                             hue.get(cat, "var(--muted)"), cat.upper()))
+            cand.sort(key=lambda t: -t[0])
+            placed, labs = [], []
+            for _w, mx, my, col, txt in cand:
+                for pmx, pmy in placed:
+                    if abs(my - pmy) < gap and abs(mx - pmx) < 64:
+                        my = pmy + gap if my >= pmy else pmy - gap
+                placed.append((mx, my))
                 labs.append(f'<text x="{mx:.1f}" y="{my:.1f}" text-anchor="middle" '
                             f'font-size="{fs}" font-weight="700" letter-spacing="0.06em" '
                             f'paint-order="stroke" stroke="var(--card)" stroke-width="3" '
-                            f'stroke-linejoin="round" fill="{hue}">{esc(eng.upper())}</text>')
-            ztints, zlabels = "".join(tints), "".join(labs)
+                            f'stroke-linejoin="round" fill="{col}">{esc(txt)}</text>')
+            disp = "" if li == 0 else ' style="display:none"'
+            tint_groups.append(f'<g class="som-lens-t" data-lens="{name}"{disp}>'
+                               f'{"".join(tints)}</g>')
+            lab_groups.append(f'<g class="som-lens-l" data-lens="{name}"{disp}>'
+                              f'{"".join(labs)}</g>')
+        if any_drawn:
+            zdefs = (f'<defs><filter id="zblur" x="-40%" y="-40%" width="180%" '
+                     f'height="180%"><feGaussianBlur stdDeviation="{cell * 0.40:.1f}"/>'
+                     f'</filter></defs>')
+            lens_tints, lens_labels = "".join(tint_groups), "".join(lab_groups)
 
     idattr = f' id="{svg_id}"' if svg_id else ''
     # shape the grid as an oval by TAPERING columns per row: middle rows full width,
@@ -2425,8 +2469,8 @@ def render_som_map(som_block, title="Where you work",
         start = (cols - ncol) // 2
         return start, start + ncol
     parts = [f'<svg{idattr} viewBox="0 0 {W:.0f} {H:.0f}" role="img" aria-label="learned '
-             f'working-style map: hexagons shaded by cost, in labelled engine territories '
-             f'(solo / delegate / workflow), with your position">', zdefs, '<g>', ztints]
+             f'working-style map: hexagons shaded by cost, in labelled regional lenses '
+             f'(engine, firepower, effort), with your position">', zdefs, '<g>', lens_tints]
     for r in range(rows):
         c_lo, c_hi = _row_span(r)
         for c in range(cols):
@@ -2517,7 +2561,7 @@ def render_som_map(som_block, title="Where you work",
     if js_arrow or svg_id:
         # JS owns all live markers (hex outlines) and the arrow on interactive maps.
         parts.append('<g class="som-fx"></g>')
-    parts.append(zlabels)  # territory names on top, so they read over cells and overlays
+    parts.append(lens_labels)  # region names on top, so they read over cells and overlays
     parts.append("</svg>")
     if compact:
         sub = (f'<div class="som-compact-s">{esc(subtitle)}</div>'
@@ -2641,7 +2685,15 @@ def render_shared_map(merged, current_cell, gradient, style="classic"):
 
 _WALK_CSS = (
     '<style>'
-    '.som-maps-row{display:flex;flex-wrap:wrap;gap:24px;margin-top:14px}'
+    '.lens-bar{display:flex;align-items:center;gap:6px;margin-top:14px}'
+    '.lens-bar .lens-cue{font-size:10px;font-weight:700;letter-spacing:.09em;'
+    'text-transform:uppercase;color:var(--muted);margin-right:2px}'
+    '.lens-btn{font:inherit;font-size:11px;letter-spacing:.02em;cursor:pointer;'
+    'padding:3px 10px;border:1px solid var(--line);border-radius:999px;'
+    'background:transparent;color:var(--ink2);transition:all .1s}'
+    '.lens-btn:hover{border-color:var(--muted)}'
+    '.lens-btn.on{background:var(--ink);color:var(--card);border-color:var(--ink)}'
+    '.som-maps-row{display:flex;flex-wrap:wrap;gap:24px;margin-top:10px}'
     '.som-maps-row>div{flex:1 1 300px;min-width:0}'
     '.fp-panel{flex:1 1 300px;min-width:0}'
     '.fp-label{font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;'
@@ -2869,6 +2921,14 @@ _WALK_JS = r"""<script>
     wsvg.addEventListener('mouseover',function(ev){var s=hitSel(ev.target);if(s){selB=s;refresh();}});
     wsvg.addEventListener('click',function(ev){var s=hitSel(ev.target);if(s)toggleHold(s);});
     wsvg.addEventListener('mouseleave',function(){selB={era:curEraId};refresh();});}
+  // lens toggle (Civ-V map modes): show one axis-overlay at a time on BOTH maps.
+  var lensBar=document.getElementById('lens-bar');
+  if(lensBar){lensBar.querySelectorAll('.lens-btn').forEach(function(lb){
+    lb.addEventListener('click',function(){var L=lb.getAttribute('data-lens');
+      lensBar.querySelectorAll('.lens-btn').forEach(function(o){o.classList.toggle('on',o===lb);});
+      [svg,mapB].forEach(function(mp){
+        mp.querySelectorAll('.som-lens-t,.som-lens-l').forEach(function(g){
+          g.style.display=(g.getAttribute('data-lens')===L)?'':'none';});});});});}
   window.addEventListener('resize',function(){drawMerge();drawFlow();});
   refresh();
 })();
@@ -3023,7 +3083,13 @@ def _card_maps(report):
               f'<div class="fp-cap" id="fp-b-cap"></div></div>')
     foot = ('<div class="vb-detail" id="vb-detail"></div>'
             '<div class="vb-rec" id="vb-rec"></div>')
-    return f'<div class="som-maps-row">{panels}</div>{foot}'
+    # lens toggle (Civ-V map modes): one axis-overlay at a time on BOTH maps. Default engine.
+    lens = ('<div class="lens-bar" id="lens-bar">'
+            '<span class="lens-cue">lens</span>'
+            '<button class="lens-btn on" data-lens="engine">engine</button>'
+            '<button class="lens-btn" data-lens="firepower">firepower</button>'
+            '<button class="lens-btn" data-lens="effort">effort</button></div>')
+    return f'{lens}<div class="som-maps-row">{panels}</div>{foot}'
 
 
 def render_shared_map_compact(merged, current_cell, subtitle=""):
