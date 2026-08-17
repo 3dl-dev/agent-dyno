@@ -28,11 +28,12 @@ import re
 import sys
 from collections import defaultdict
 
-# v2: the rig as an orchestration mix. No capability tier lives here; the fingerprint
-# is observable STRUCTURE only (depth, fanout, model-family spread), and how good a rig
-# is gets measured by the field, never asserted by a prior. See session_features.spec.md
-# ("No capability priors") and docs/governance.md.
-SCHEMA = "vibrant/session-features@2"
+# v2: the rig as an orchestration mix. v3: whether the workers coordinate. No capability
+# tier lives here; the fingerprint is observable STRUCTURE only (depth, fanout, model-family
+# spread, worker file-sharing), and how good a rig is gets measured by the field, never
+# asserted by a prior. See session_features.spec.md ("No capability priors") and
+# docs/governance.md.
+SCHEMA = "vibrant/session-features@3"
 
 FEATURE_NAMES = [
     "engine_solo",
@@ -53,12 +54,14 @@ FEATURE_NAMES = [
     "cache_read_pct",
     "depth",
     "family_diversity",
+    "coordination",
 ]
 
 FANOUT_CAP = 32
 TURNS_CAP = 200
 DEPTH_CAP = 4     # solo 0, one layer .25, sub-orchestrator .5, three deep .75, 4+ 1.0
 FAMILY_CAP = 6    # normalizes family entropy absolutely, not by this tree's family count
+COORD_CAP = 0.20  # siloing is the norm, so expand the low range of shared-file fraction
 
 _ENGINES = {"solo": "engine_solo", "delegate": "engine_delegate",
             "workflow": "engine_workflow"}
@@ -132,6 +135,26 @@ def _family_diversity(m):
     return min(h / math.log(FAMILY_CAP), 1.0)
 
 
+def _coordination(m):
+    """How much sibling workers SHARE work vs SILO: the fraction of the tree's edited files
+    that two or more workers touched, expanded by COORD_CAP because siloing is the norm.
+    Fully siloed (disjoint files) -> 0.0; heavily shared -> ~1.0. 0.0 with fewer than two
+    workers (a lone actor cannot coordinate). NEUTRAL: high overlap can be coordination or
+    conflict; the field decides which, never this axis."""
+    wf = m.get("worker_files")
+    if not wf or len(wf) < 2:
+        return 0.0
+    seen = {}
+    for files in wf:
+        for f in set(files or []):
+            seen[f] = seen.get(f, 0) + 1
+    distinct = len(seen)
+    if distinct == 0:
+        return 0.0
+    shared = sum(1 for n in seen.values() if n >= 2)
+    return min(1.0, (shared / distinct) / COORD_CAP)
+
+
 def features(m):
     """Pure, deterministic feature vector for one session metric dict.
     Never mutates m. Length len(FEATURE_NAMES), every element in [0, 1]."""
@@ -171,6 +194,7 @@ def features(m):
 
     v[FEATURE_NAMES.index("depth")] = _depth(m)
     v[FEATURE_NAMES.index("family_diversity")] = _family_diversity(m)
+    v[FEATURE_NAMES.index("coordination")] = _coordination(m)
 
     return v
 

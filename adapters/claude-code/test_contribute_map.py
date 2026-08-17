@@ -39,7 +39,7 @@ VB = sf.features(SB)
 # 2x2 codebook: node (0,0)=VA, (1,1)=VB, off-diagonal far away -> exact BMU assignment
 CODEBOOK = {"schema": "vibrant/som-codebook@1", "version": "tv1",
             "lattice": {"rows": 2, "cols": 2}, "names": sf.FEATURE_NAMES,
-            "codebook": [[VA, [0.0] * 18], [[1.0] * 18, VB]]}
+            "codebook": [[VA, [0.0] * len(sf.FEATURE_NAMES)], [[1.0] * len(sf.FEATURE_NAMES), VB]]}
 
 
 def _sess(base, day, dollars, born):
@@ -51,7 +51,7 @@ def _sess(base, day, dollars, born):
 
 
 def test_names_mismatch_rejected(fails):
-    bad = dict(CODEBOOK, names=["x"] * 18)
+    bad = dict(CODEBOOK, names=["x"] * len(sf.FEATURE_NAMES))
     raised = False
     try:
         cm.build([_sess(SA, "2026-08-14", 10.0, 2048)], bad, "opZ")

@@ -297,8 +297,7 @@ family grouping (from model names) and `FAMILY_CAP`; NO capability tier is intro
 
 ## Schema v3 (proposed): coordination
 
-Status: PROPOSED, not yet built. `SCHEMA = "vibrant/session-features@3"`. Draft for review;
-no code until the axis is confirmed. A v3 vector is a superset of v2: the retained v2
+Status: BUILT. `SCHEMA = "vibrant/session-features@3"`, length 19. A v3 vector is a superset of v2: the retained v2
 features are unchanged, one new fingerprint axis appends. See docs/claims.md X8 and the
 coordination-signal probe (2026-08-17) that established feasibility.
 

@@ -33,7 +33,7 @@ def test_length_and_range(fails):
     m = {"engine": "solo", "routing": "none", "model": "opus-4-8"}
     v = sf.features(m)
     check(len(v) == len(sf.FEATURE_NAMES), f"length {len(v)} != names", fails)
-    check(len(sf.FEATURE_NAMES) == 18, f"expected 18 names, got {len(sf.FEATURE_NAMES)}", fails)
+    check(len(sf.FEATURE_NAMES) == 19, f"expected 19 names, got {len(sf.FEATURE_NAMES)}", fails)
     check(all(0.0 <= x <= 1.0 for x in v), f"out of [0,1]: {v}", fails)
 
 
@@ -77,7 +77,7 @@ def test_no_capability_tier(fails):
     check("orch_fire" not in sf.FEATURE_NAMES, "orch_fire not retired", fails)
     check("worker_fire" not in sf.FEATURE_NAMES, "worker_fire not retired", fails)
     check(not hasattr(sf, "TIER"), "TIER constant still present", fails)
-    check(sf.SCHEMA == "vibrant/session-features@2", f"schema {sf.SCHEMA}", fails)
+    check(sf.SCHEMA == "vibrant/session-features@3", f"schema {sf.SCHEMA}", fails)
 
 
 def test_solo_defaults(fails):
@@ -122,6 +122,28 @@ def test_family_of(fails):
                        ("haiku-4-5-20251001", "haiku"), ("qwen3.8-27b", "qwen"),
                        ("opus-5[1m]", "opus")):
         check(sf.family(model) == fam, f"family({model}) = {sf.family(model)} != {fam}", fails)
+
+
+def test_coordination(fails):
+    # how much sibling workers SHARE files vs SILO. Neutral: survival judges payoff.
+    idx = _idx("coordination")
+    # a lone actor / no worker_files cannot coordinate
+    check(sf.features({"engine": "solo", "model": "opus-5"})[idx] == 0.0, "solo coordination not 0", fails)
+    check(sf.features({"engine": "delegate", "model": "opus-5",
+                       "worker_files": [["a.py", "b.py"]]})[idx] == 0.0,
+          "single-worker coordination not 0", fails)
+    # two workers, disjoint files -> fully siloed -> 0
+    v = sf.features({"engine": "workflow", "model": "opus-5", "worker_files": [["a.py"], ["b.py"]]})
+    check(v[idx] == 0.0, f"disjoint coordination {v[idx]}", fails)
+    # two workers sharing every file -> shared/distinct = 1 >= COORD_CAP -> 1.0
+    v = sf.features({"engine": "workflow", "model": "opus-5",
+                     "worker_files": [["a.py", "b.py"], ["a.py", "b.py"]]})
+    check(v[idx] == 1.0, f"fully-shared coordination {v[idx]}", fails)
+    # 10% of files shared -> min(1, 0.10 / 0.20) = 0.5 (10 distinct, f0 shared by two)
+    v = sf.features({"engine": "workflow", "model": "opus-5",
+                     "worker_files": [["f0", "f1", "f2", "f3", "f4"],
+                                      ["f0", "f5", "f6", "f7", "f8", "f9"]]})
+    check(_approx(v[idx], 0.5), f"10%-shared coordination {v[idx]}", fails)
 
 
 def test_saturation(fails):
@@ -179,7 +201,7 @@ def main():
     fails = []
     for t in (test_length_and_range, test_onehot, test_known_answer,
               test_no_capability_tier, test_solo_defaults, test_depth_axis,
-              test_family_diversity, test_family_of,
+              test_family_diversity, test_family_of, test_coordination,
               test_saturation, test_shape_not_outcome, test_purity_determinism,
               test_feature_matrix):
         t(fails)
