@@ -29,6 +29,12 @@ SOM = {
         {"cell": [0, 0], "engine": "solo", "model": "opus-4-8", "worker": "solo",
          "effort": "high", "sessions": 3, "cost": 7.2, "eff": 4.5, "flow": 60.0,
          "simp": 40.0},
+        {"cell": [0, 1], "engine": "solo", "model": "opus-4-8", "worker": "solo",
+         "effort": "high", "sessions": 2, "cost": 6.0, "eff": 6.0, "flow": 55.0,
+         "simp": 48.0},
+        {"cell": [1, 1], "engine": "delegate", "model": "opus-5", "worker": "sonnet-5",
+         "effort": "high", "sessions": 4, "cost": 3.0, "eff": 12.0, "flow": 66.0,
+         "simp": 62.0},
         {"cell": [2, 2], "engine": "workflow", "model": "sonnet-5", "worker": "haiku-4-5",
          "effort": "low", "sessions": 2, "cost": 1.5, "eff": 8.0, "flow": 70.0,
          "simp": 55.0}],
@@ -88,20 +94,25 @@ def test_card_maps_interactive(fails):
 
 
 def test_lens_overlays(fails):
-    # Civ-V lenses: each axis is a toggleable regional overlay on BOTH maps. One lens
-    # bar drives the pair; engine is the default (visible), firepower/effort hidden.
+    # Civ-V lenses: each is a toggleable regional overlay on BOTH maps, one lens bar
+    # driving the pair. The set flashes OUTCOMES (the winning corner, the efficiency
+    # peak) plus engine territory, NOT config knobs a glance already knows. Default is
+    # the composite "best region"; efficiency and engine start hidden.
     row = vr._card_maps(REPORT)
     check('id="lens-bar"' in row, "no lens toggle bar", fails)
-    for L in ("engine", "firepower", "effort"):
+    for L in ("best region", "efficiency", "engine"):
         check(f'data-lens="{L}"' in row, "missing lens " + L, fails)
+    # config knobs and occupancy are deliberately not lenses.
+    for L in ("firepower", "effort", "where you work"):
+        check(f'data-lens="{L}"' not in row, "stale config lens present: " + L, fails)
     # each map carries a tint group and a label group per lens (behind cells / on top).
     check(row.count('class="som-lens-t"') == 6, "expected 3 tint lenses on 2 maps", fails)
     check(row.count('class="som-lens-l"') == 6, "expected 3 label lenses on 2 maps", fails)
-    # only the engine lens shows by default; the other two are display:none.
-    check(row.count('data-lens="firepower" style="display:none"') == 4,
+    # only the default lens shows; the other two are display:none on both maps.
+    check(row.count('data-lens="efficiency" style="display:none"') == 4,
           "non-default lenses must start hidden", fails)
-    # per-cell tints render even when no category reaches a labelled region.
-    check("url(#zblur)" in row, "no lens tint field", fails)
+    # outcome lenses pin their peak with a single haloed label.
+    check(">BEST</text>" in row and ">PEAK</text>" in row, "no outcome peak pins", fails)
 
 
 def test_hero_toggles(fails):

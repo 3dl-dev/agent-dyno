@@ -2285,6 +2285,14 @@ _SOM_STYLES = {
 }
 
 
+def _lens_label(x, y, fs, col, txt):
+    """A haloed, bold region label for a map lens: reads over cells and tints alike."""
+    return (f'<text x="{x:.1f}" y="{y:.1f}" text-anchor="middle" font-size="{fs}" '
+            f'font-weight="700" letter-spacing="0.06em" paint-order="stroke" '
+            f'stroke="var(--card)" stroke-width="3" stroke-linejoin="round" '
+            f'fill="{col}">{txt}</text>')
+
+
 def render_som_map(som_block, title="Where you work",
                    subtitle="each hexagon is a way you work, shaded by what it costs",
                    legend_bits=None, style="classic", compact=False, svg_id=None,
@@ -2381,68 +2389,100 @@ def render_som_map(som_block, title="Where you work",
     zdefs, lens_tints, lens_labels = "", "", ""
     cmeta = som_block.get("cell_meaning") if hexed else None
     if cmeta:
-        def _fire(cmi):
-            m = _FIRE.get(cmi.get("model"), 0.5)
-            w = cmi.get("worker")
-            return m * 0.6 + _FIRE.get(w, 0.5) * 0.4 if (w and w != "solo") else m
+        def _pct(vals):
+            # percentile rank of each value in [0,1]; handles long tails without a scale.
+            order = sorted(range(len(vals)), key=lambda i: vals[i])
+            n = len(vals)
+            pr = [0.0] * n
+            for rank, i in enumerate(order):
+                pr[i] = rank / (n - 1) if n > 1 else 1.0
+            return pr
+        # precompute per-metric percentiles across occupied cells (long-tailed, so rank).
+        idx = list(range(len(cmeta)))
+        pct = {}
+        for key in ("eff", "simp", "flow"):
+            have = [(i, cmeta[i].get(key)) for i in idx if cmeta[i].get(key) is not None]
+            if have:
+                pr = _pct([v for _, v in have])
+                pct[key] = {i: p for (i, _), p in zip(have, pr)}
 
-        def _fpbin(cmi):
-            f = _fire(cmi)
-            return "heavy" if f >= 0.72 else ("mid" if f >= 0.45 else "lean")
+        def _best(i):
+            # the "best region": mean of whatever quality percentiles this cell has.
+            ps = [pct[k][i] for k in ("eff", "simp", "flow") if i in pct.get(k, {})]
+            return sum(ps) / len(ps) if ps else None
 
-        def _effbin(cmi):
-            o = _EFFORT_ORDER.get(cmi.get("effort"), 2)
-            return "low" if o <= 0 else ("high" if o >= 2 else "medium")
+        def _engine(c):
+            return c.get("engine")
+        # Two kinds of lens. CATEGORICAL (engine): a coloured territory per class, named at
+        # its centroid. HEAT (outcomes): a per-cell green wash by percentile, so the good
+        # region glows and a single peak label pins it. Outcomes carry the signal a config
+        # knob cannot: "which corner is winning, and am I in it?"
+        # Three lenses that each pull weight: the winning corner (composite), the single
+        # biggest lever (efficiency), and what kind of setup that territory is (engine).
+        # Config knobs a viewer already sets (firepower, effort) and occupancy (shown by the
+        # A/B rings) are deliberately NOT lenses: they flash nothing a glance does not know.
         lenses = [
-            ("engine", (lambda c: c.get("engine")),
-             {"solo": "#4E6E8E", "delegate": "#8A6D4B", "workflow": "#7C5E8B"}),
-            ("firepower", _fpbin,
-             {"lean": "#4E7C7B", "mid": "#C99A3C", "heavy": "#A8492C"}),
-            ("effort", _effbin,
-             {"low": "#7C8B9B", "medium": "#8A7A4E", "high": "#9B5E6E"}),
+            {"name": "best region", "kind": "heat", "val": _best,
+             "hue": "#3F7D5A", "peak": "BEST"},
+            {"name": "efficiency", "kind": "heat", "val": (lambda i: pct.get("eff", {}).get(i)),
+             "hue": "#3F7D5A", "peak": "PEAK"},
+            {"name": "engine", "kind": "cat", "key": _engine,
+             "hue": {"solo": "#4E6E8E", "delegate": "#8A6D4B", "workflow": "#7C5E8B"}},
         ]
         fs = 10 if compact else 12
         gap = fs * 1.55  # min vertical gap between two labels that overlap in x
         crad = cell * 0.88  # overlapping same-hue tints saturate; isolated cells stay faint
         tint_groups, lab_groups, any_drawn = [], [], False
-        for li, (name, keyfn, hue) in enumerate(lenses):
-            zg = defaultdict(lambda: {"sx": 0.0, "sy": 0.0, "w": 0.0, "n": 0})
-            tints = []
-            for cmi in cmeta:
-                k = keyfn(cmi)
-                if not k:
-                    continue
-                r, c = cmi["cell"]
-                n = (cmi.get("sessions") or 0) + 1
-                cx, cy = center(r, c)
-                z = zg[k]
-                z["sx"] += cx * n
-                z["sy"] += cy * n
-                z["w"] += n
-                z["n"] += 1
-                any_drawn = True
-                # per-cell tint: adjacent same-value cells merge into a monotone region.
-                tints.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{crad:.1f}" '
-                             f'fill="{hue.get(k, "var(--muted)")}" opacity="0.22" '
-                             f'filter="url(#zblur)"/>')
-            # centroid labels, largest region first, pushed apart on x-overlap collisions.
-            cand = []
-            for cat, z in zg.items():
-                if z["n"] < 2 or z["w"] <= 0:
-                    continue
-                cand.append((z["w"], z["sx"] / z["w"], z["sy"] / z["w"],
-                             hue.get(cat, "var(--muted)"), cat.upper()))
-            cand.sort(key=lambda t: -t[0])
-            placed, labs = [], []
-            for _w, mx, my, col, txt in cand:
-                for pmx, pmy in placed:
-                    if abs(my - pmy) < gap and abs(mx - pmx) < 64:
-                        my = pmy + gap if my >= pmy else pmy - gap
-                placed.append((mx, my))
-                labs.append(f'<text x="{mx:.1f}" y="{my:.1f}" text-anchor="middle" '
-                            f'font-size="{fs}" font-weight="700" letter-spacing="0.06em" '
-                            f'paint-order="stroke" stroke="var(--card)" stroke-width="3" '
-                            f'stroke-linejoin="round" fill="{col}">{esc(txt)}</text>')
+        for li, L in enumerate(lenses):
+            name, kind, hue = L["name"], L["kind"], L["hue"]
+            tints, labs = [], []
+            if kind == "cat":
+                zg = defaultdict(lambda: {"sx": 0.0, "sy": 0.0, "w": 0.0, "n": 0})
+                for cmi in cmeta:
+                    k = L["key"](cmi)
+                    if not k:
+                        continue
+                    cx, cy = center(*cmi["cell"])
+                    n = (cmi.get("sessions") or 0) + 1
+                    z = zg[k]
+                    z["sx"] += cx * n
+                    z["sy"] += cy * n
+                    z["w"] += n
+                    z["n"] += 1
+                    any_drawn = True
+                    tints.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{crad:.1f}" '
+                                 f'fill="{hue.get(k, "var(--muted)")}" opacity="0.22" '
+                                 f'filter="url(#zblur)"/>')
+                cand = sorted(((z["w"], z["sx"] / z["w"], z["sy"] / z["w"],
+                               hue.get(cat, "var(--muted)"), cat.upper())
+                              for cat, z in zg.items() if z["n"] >= 2 and z["w"] > 0),
+                             key=lambda t: -t[0])
+                placed = []
+                for _w, mx, my, col, txt in cand:
+                    for pmx, pmy in placed:
+                        if abs(my - pmy) < gap and abs(mx - pmx) < 64:
+                            my = pmy + gap if my >= pmy else pmy - gap
+                    placed.append((mx, my))
+                    labs.append(_lens_label(mx, my, fs, col, esc(txt)))
+            else:  # heat
+                cells = []
+                for i in idx:
+                    v = L["val"](i)
+                    if v is None:
+                        continue
+                    cx, cy = center(*cmeta[i]["cell"])
+                    cells.append((cx, cy, v))
+                if len(cells) >= 3:
+                    pr = _pct([v for _, _, v in cells])
+                    for (cx, cy, _v), p in zip(cells, pr):
+                        any_drawn = True
+                        op = 0.04 + 0.34 * (p ** 1.4)  # gamma: top cells pop, low fade out
+                        tints.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{crad:.1f}" '
+                                     f'fill="{hue}" opacity="{op:.3f}" filter="url(#zblur)"/>')
+                    bx, by, _bv = max(cells, key=lambda t: t[2])
+                    bx = min(max(bx, cell * 1.6), W - cell * 1.6)  # keep the pin off the edge
+                    by = min(max(by, cell * 0.9), H - cell * 0.9)
+                    labs.append(_lens_label(bx, by, fs, hue, L["peak"]))
             disp = "" if li == 0 else ' style="display:none"'
             tint_groups.append(f'<g class="som-lens-t" data-lens="{name}"{disp}>'
                                f'{"".join(tints)}</g>')
@@ -3086,9 +3126,9 @@ def _card_maps(report):
     # lens toggle (Civ-V map modes): one axis-overlay at a time on BOTH maps. Default engine.
     lens = ('<div class="lens-bar" id="lens-bar">'
             '<span class="lens-cue">lens</span>'
-            '<button class="lens-btn on" data-lens="engine">engine</button>'
-            '<button class="lens-btn" data-lens="firepower">firepower</button>'
-            '<button class="lens-btn" data-lens="effort">effort</button></div>')
+            '<button class="lens-btn on" data-lens="best region">best region</button>'
+            '<button class="lens-btn" data-lens="efficiency">efficiency</button>'
+            '<button class="lens-btn" data-lens="engine">engine</button></div>')
     return f'{lens}<div class="som-maps-row">{panels}</div>{foot}'
 
 
