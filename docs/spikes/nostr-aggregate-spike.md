@@ -125,3 +125,26 @@ must not block on NIP-42 (`dontguess/docs/design/nostr-first-client-ed2.md`).
 
 Half a day, one person, no repo dependencies added: a ~30-line `foldRelay` in the leaderboard,
 a scratch relay, and the publish one-liner above. The producer (`summarize`) needs no change.
+
+## Result (executed 2026-08-17)
+
+Ran against the existing LAN strfry relay (`ws://192.168.2.40:7777`, from `rd.json`), not a
+new one. `summarize`'s three aggregates were published as addressable kind-30078 events with
+`nak` and a throwaway key; `leaderboard/vibrant.html?relay=<ws>` folded them. All four
+acceptance criteria passed:
+
+1. The relay rendered the same three rows (solo / delegate / workflow) as the file path, with
+   the live-relay context line.
+2. Publishing a fourth aggregate (`spike-test`) made a fourth row appear on reload.
+3. Re-publishing that shape with an edited vector (1.80 -> 0.90 `$/surv-KB`) UPDATED the row
+   to 0.90 as a single event, no duplicate: addressability latest-wins confirmed.
+4. The default page (no `?relay=`) was unchanged.
+
+The `foldRelay` read path is committed (guarded behind `?relay=`, so default behavior is
+byte-identical and needs no new test); the live e2e run is its verification. `nak`/`jq` and
+the throwaway key stayed out of the repo. Derisked: aggregate-as-event round-trip, the REQ
+tag filter, and latest-wins-per-shape as a plain map.
+
+Productionization note (from the owner): when this ships as a hoisted skill, bundle a Nostr
+hoistable so the publish side is proven end to end in a clean session too, instead of leaning
+on `nak`. The spike deliberately used the relays we already run.

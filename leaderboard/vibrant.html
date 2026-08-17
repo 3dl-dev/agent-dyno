@@ -126,11 +126,35 @@ function render(data){
       <td class="num meta">${e.samples}</td></tr>`;
   }).join("");
   document.getElementById("rows").innerHTML=rows;
-  document.getElementById("context").textContent =
-    "Seed data: one operator's Claude Code logs, measured at the same-session survival floor (Aug 2026). "
-    + "Bold = best on that axis. Day/week horizons and more harnesses replace this as data arrives.";
+  document.getElementById("context").textContent = data.context ||
+    ("Seed data: one operator's Claude Code logs, measured at the same-session survival floor (Aug 2026). "
+    + "Bold = best on that axis. Day/week horizons and more harnesses replace this as data arrives.");
 }
-fetch("../frontier/reference-frontier.json").then(r=>r.ok?r.json():Promise.reject())
+// SPIKE (docs/spikes/nostr-aggregate-spike.md): fold aggregate events from a Nostr relay
+// instead of the file, gated behind ?relay=<wss-url> so the default file path is unchanged.
+// Each event is a summarize() aggregate; the relay returns the latest per shape (addressable
+// kind 30078), so this is a plain map, no client-side dedup. Malformed events are skipped.
+function foldRelay(url){return new Promise(function(resolve,reject){
+  var ws=new WebSocket(url), sub="vb", seen={}, done=false;
+  var timer=setTimeout(finish, 5000);
+  function finish(){ if(done)return; done=true; clearTimeout(timer);
+    try{ws.close();}catch(e){}
+    var entries=Object.keys(seen).map(function(k){return seen[k];});
+    entries.length ? resolve({entries:entries,
+      context:"Folded live from a Nostr relay ("+entries.length+" aggregates, "+url+"). "
+        +"Same anonymized roll-ups as the file, delivered as addressable events."})
+      : reject(new Error("no aggregates"));
+  }
+  ws.onopen=function(){ ws.send(JSON.stringify(["REQ",sub,{kinds:[30078],"#t":["vibrant-aggregate"]}])); };
+  ws.onmessage=function(m){ var d; try{d=JSON.parse(m.data);}catch(e){return;}
+    if(d[0]==="EVENT"&&d[1]===sub){ var ev=d[2], c; try{c=JSON.parse(ev.content);}catch(e){return;}
+      if(c&&c.engine&&c.vector) seen[c.id||ev.id]=c; }
+    else if(d[0]==="EOSE"&&d[1]===sub) finish(); };
+  ws.onerror=function(){ reject(new Error("relay error")); };
+});}
+var _relay=new URLSearchParams(location.search).get("relay");
+if(_relay) foldRelay(_relay).then(render).catch(function(){render(SEED);});
+else fetch("../frontier/reference-frontier.json").then(r=>r.ok?r.json():Promise.reject())
   .then(render).catch(()=>render(SEED));
 </script>
 </body>
