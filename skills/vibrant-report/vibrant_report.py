@@ -2915,7 +2915,20 @@ _WALK_CSS = (
     'font-size:11px;color:var(--ink2)}'
     '.lens-legend span{display:inline-flex;align-items:center;gap:5px}'
     '.lens-legend i{width:10px;height:10px;border-radius:2px;display:inline-block}'
-    '.civ-wrap{margin-top:12px}'
+    '.civ-wrap{margin-top:12px;position:relative}'
+    # the per-cell reading floats AT the hovered cell (a Civ-V tile tooltip), so you never
+    # scan away from where you are pointing. Pointer-transparent so it never blocks the hover.
+    '.civ-tip{position:absolute;z-index:30;pointer-events:none;left:0;top:0;max-width:250px;'
+    'background:var(--card);border:1px solid var(--line);border-radius:9px;padding:9px 11px;'
+    'font-size:12px;line-height:1.5;color:var(--ink2);box-shadow:0 8px 24px rgba(0,0,0,.42);'
+    'opacity:0;visibility:hidden;transition:opacity .08s}'
+    '.civ-tip.on{opacity:1;visibility:visible}'
+    # the pointed cell gets a bright outline so it is obvious which hex the tip describes.
+    '.civ-cell{cursor:pointer}'
+    '.civ-cell:hover{stroke:#EDEDF2;stroke-width:2.6;stroke-opacity:.95}'
+    '.civ-tip .tt{font-weight:800;color:var(--ink);display:block;margin-bottom:3px}'
+    '.civ-tip b{color:var(--ink);font-variant-numeric:tabular-nums}'
+    '.civ-tip .tc{color:#6FD6C9}'
     '.civ-legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px;font-size:12px;'
     'color:var(--ink2);align-items:center}'
     '.civ-legend>span{display:inline-flex;align-items:center;gap:6px}'
@@ -3157,12 +3170,30 @@ _WALK_JS = r"""<script>
     if(vbLabel)vbLabel.textContent=(selB.day!=null?selLabel(selB)+' ':(selB.era===curEraId?'':'that generation '))+'score';
     dimWave(e);emphasize();renderCivMarks(selB,e);setRec(e);
     if(vbDetail)vbDetail.innerHTML=detailHtml(e);}
-  // hovering a territory cell decodes exactly which rig it is; leaving restores the summary.
+  // hovering a territory cell decodes exactly which rig it is. The reading floats AT the
+  // cell (a tile tooltip), not in a caption below, so there is no vertical scan and you
+  // always see what you are pointing at. The summary line below stays on YOU / BEST.
+  var tip=document.getElementById('civ-tip'), wrap=svg.parentNode;
+  function cellTip(c){
+    if(!c)return '<span class="tt">unused setup</span>no sessions fell here';
+    var co=(c.coord!=null)?('<div class="tc">coordination '+c.coord.toFixed(2)
+      +(c.coord<0.05?' &middot; siloed':(c.coord>=0.5?' &middot; shared core':' &middot; some sharing'))+'</div>'):'';
+    return '<span class="tt">'+setup(c)+'</span>'
+      +'<div>'+(c.sessions||0)+' session'+(c.sessions==1?'':'s')+' &middot; <b>'+money(c.cost)+'</b> per KB</div>'
+      +'<div>efficiency <b>'+(c.eff==null?'n/a':c.eff)+'</b> &middot; flow <b>'+(c.flow==null?'n/a':c.flow)
+      +'</b> &middot; simplicity <b>'+(c.simp==null?'n/a':c.simp)+'</b></div>'+co;}
+  function placeTip(cl){
+    var wr=wrap.getBoundingClientRect(), cr=cl.getBoundingClientRect();
+    var tw=tip.offsetWidth, th=tip.offsetHeight;
+    var cx=cr.left+cr.width/2-wr.left, top=cr.top-wr.top-th-9;
+    if(top<2){top=cr.bottom-wr.top+9;}
+    var left=Math.max(4,Math.min(cx-tw/2,wr.width-tw-4));
+    tip.style.left=left.toFixed(0)+'px';tip.style.top=top.toFixed(0)+'px';}
   svg.querySelectorAll('.civ-cell').forEach(function(cl){
-    cl.addEventListener('mouseenter',function(){if(!vbDetail)return;var c=cell(cl.getAttribute('data-r'),cl.getAttribute('data-c'));
-      var co=(c&&c.coord!=null)?(MID+'<span style="color:#6FD6C9">coordination '+c.coord.toFixed(2)+(c.coord<0.05?' (siloed)':(c.coord>=0.5?' (shared core)':''))+'</span>'):'';
-      vbDetail.innerHTML=c?('<b>'+setup(c)+'</b>'+MID+(c.sessions||0)+' session'+(c.sessions==1?'':'s')+MID+money(c.cost)+' per KB'+MID+'efficiency '+(c.eff==null?'n/a':c.eff)+MID+'flow '+(c.flow==null?'n/a':c.flow)+MID+'simplicity '+(c.simp==null?'n/a':c.simp)+co):'an unused setup, no sessions here';});
-    cl.addEventListener('mouseleave',function(){refresh();});});
+    cl.addEventListener('mouseenter',function(){if(!tip)return;
+      tip.innerHTML=cellTip(cell(cl.getAttribute('data-r'),cl.getAttribute('data-c')));
+      tip.classList.add('on');placeTip(cl);});
+    cl.addEventListener('mouseleave',function(){if(tip)tip.classList.remove('on');});});
   MK.forEach(function(m){var b=tog(m);if(!b)return;
     b.addEventListener('mouseenter',function(){PV=m;refresh();});
     b.addEventListener('mouseleave',function(){PV=null;refresh();});
@@ -3357,7 +3388,8 @@ def _card_maps(report):
               + 'coordination core (workers share files)</span></div>')
     foot = ('<div class="vb-detail" id="vb-detail"></div>'
             '<div class="vb-rec" id="vb-rec"></div>')
-    return f'<div class="civ-wrap">{civ}</div>{legend}{foot}'
+    return (f'<div class="civ-wrap">{civ}<div class="civ-tip" id="civ-tip"></div></div>'
+            f'{legend}{foot}')
 
 
 def render_shared_map_compact(merged, current_cell, subtitle=""):
