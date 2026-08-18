@@ -148,9 +148,23 @@ Adopted, staged so each step is provable and the file model never regresses:
   relay, a board). It covers contribute, start-board, grant/revoke, and view;
   `vibrant-contribute` hands off to it for the live push. The file path stays the zero-setup
   default. Verified end to end against a LAN relay with zero external tools.
-- **Stage 4, the public frontier as a board.** 3dl runs the public frontier as a board on
-  the relay we already operate; curation is the owner merging grants, as `CLAUDE.md`
-  describes. Proof tiers ride on the event; reproduction stays the sybil tax.
+- **Stage 4, the public frontier as a board, hosted at `vibrant.3dl.dev`.** Feasible on
+  infrastructure that already exists; the three parts:
+  1. **Relay: `wss://relay.3dl.network`** (the existing managed-cert Azure relay, reachable
+     over `wss` from the stdlib transport). A hosted `https` page can only open `wss`, never
+     the LAN `ws://` relays, so the public board must live here.
+  2. **Board:** a 3dl owner key publishes the public board (kind 30301) and its aggregates to
+     that relay with `vibrant-federate` (`start-board` then `contribute`, `--relay wss://relay.3dl.network`).
+     The relay's write policy is allowlisted, so the owner key needs write access; curation is
+     the owner granting contributors, as `CLAUDE.md` describes. Proof tiers ride on the event;
+     reproduction stays the sybil tax.
+  3. **Page:** serve `leaderboard/vibrant.html` at `vibrant.3dl.dev`, a subdomain on the same
+     static hosting as `3dl.dev` (the `website` repo; `forge.3dl.dev` is already a sibling
+     subdomain), with a CNAME in the DNS zone. In that hosted copy set `DEFAULT_RELAY =
+     "wss://relay.3dl.network"` and `DEFAULT_BOARD = "<board coord>"` so a visitor with no
+     query params folds the public board; the 15s fold cap tolerates the relay's scale-to-zero
+     cold start. Parts 2 and 3 are externally-visible ops (a public relay write, DNS, a
+     deploy), owner-run; the page code (baked defaults + cold-start tolerance) is done.
 
 Invariants held at every stage: the file is the default and stays keyless; the relay is a
 cache, never the source of truth; only anonymized aggregates travel, never raw logs; no

@@ -140,7 +140,9 @@ function render(data){
 function foldRelay(url, board){return new Promise(function(resolve,reject){
   var ws=new WebSocket(url), sub="vb", aggs={}, grants={}, owner=null, done=false;
   if(board){ owner=board.split(":")[1]; }
-  var timer=setTimeout(finish, 6000);
+  // 15s cap tolerates a scale-to-zero relay's cold start (~12s); a warm relay resolves on
+  // EOSE in well under a second, so this only matters on the first hit after the relay sleeps.
+  var timer=setTimeout(finish, 15000);
   function granted(){ var g={}; if(owner) g[owner]=true;
     Object.keys(grants).forEach(function(p){ if(grants[p]==="contributor") g[p]=true; }); return g; }
   function finish(){ if(done)return; done=true; clearTimeout(timer);
@@ -168,9 +170,17 @@ function foldRelay(url, board){return new Promise(function(resolve,reject){
     else if(d[0]==="EOSE"&&d[1]===sub) finish(); };
   ws.onerror=function(){ reject(new Error("relay error")); };
 });}
-var _q=new URLSearchParams(location.search), _relay=_q.get("relay"), _board=_q.get("board");
-if(_relay) foldRelay(_relay, _board).then(render).catch(function(){render(SEED);});
-else fetch("../frontier/reference-frontier.json").then(r=>r.ok?r.json():Promise.reject())
+// A hosted build (e.g. vibrant.3dl.dev) bakes its public board here so a visitor with no
+// query params folds it by default; ?relay=/?board= override for any other relay or team.
+// Must be a wss:// relay when the page itself is served over https (mixed content blocks ws://).
+var DEFAULT_RELAY = "", DEFAULT_BOARD = "";
+var _q=new URLSearchParams(location.search);
+var _relay=_q.get("relay")||DEFAULT_RELAY, _board=_q.get("board")||DEFAULT_BOARD;
+if(_relay){
+  var ctx=document.getElementById("context");
+  if(ctx) ctx.textContent="Connecting to the mesh relay "+_relay+" (waking it can take a moment)...";
+  foldRelay(_relay, _board).then(render).catch(function(){render(SEED);});
+} else fetch("../frontier/reference-frontier.json").then(r=>r.ok?r.json():Promise.reject())
   .then(render).catch(()=>render(SEED));
 </script>
 </body>
