@@ -66,6 +66,27 @@ projects paid for confidentiality we do not need.
   npubs are free, and that reproduction-as-cost is exactly Tier 3
   (`dontguess/docs/design/convergence-sybil-defense.md`).
 
+## The public relay is read-open, write-curated (and that is correct)
+
+The public relay (`relay.3dl.network`) admits writes by allowlist. This is not a problem to
+work around, it is the curated-public-frontier invariant enforced at the wire:
+
+- **Reads are open.** Anyone folds the public board with no key; `vibrant.3dl.dev` needs no
+  identity to render.
+- **Only the curator writes the public board.** Exactly one key is admitted: the 3dl frontier
+  owner key. The public frontier is 3dl's board, curated (`governance.md`), so curation
+  happens at write, which is also the sybil tax: a free npub cannot flood a locked relay.
+- **Contributors reach the public board through curation, unchanged.** They submit (a PR with
+  a Tier-2/3 proof, or publish to their own relay) and 3dl republishes the accepted aggregate
+  to the board with its admitted key. The only change from the file era is the publish target.
+- **Teams never touch the public relay.** A team runs its own relay (open or its own
+  allowlist), publishes and folds there; `vibrant-federate` takes any `--relay`. No dependency
+  on the 3dl relay's policy.
+
+An open public relay would be the actual bug: unbounded self-publish is the permissionless
+spam/sybil problem the sibling projects deferred. Locked write plus open read is the design
+working, and it means only the single curator key ever needs admission.
+
 ## The one real tension
 
 `federation.md` says, deliberately: "No keys, no wallet, no chain. A heavy identity
