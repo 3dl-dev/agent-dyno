@@ -44,6 +44,10 @@ parent unless told to. Nothing is shared without an explicit push.
      or PR against that frontier's file. For `public`, print the exact `git`/PR
      steps to open a pull request against `3dl-dev/vibrant`, curated by Third
      Division Labs. Show the operator the entry and get a yes before doing it.
+   - **Push live (`--push nostr`):** to publish the entry to a Nostr frontier board
+     over the live mesh instead of a file or a PR, hand off to the `vibrant-federate`
+     skill (it mints the identity, signs, and publishes with no command line for the
+     operator). Opt-in, needs a relay; the file path above stays the default.
 
 5. **Render, optionally.** Point `leaderboard/vibrant.html` at the frontier file, or
    POST the formatted standings to a Slack or Discord incoming webhook if the

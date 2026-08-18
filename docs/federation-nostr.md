@@ -141,9 +141,13 @@ Adopted, staged so each step is provable and the file model never regresses:
   aggregates, they were published as-given to a clean LAN relay, the relay validated and
   accepted our BIP-340 signatures, and the leaderboard folded them, no `nak` signing anywhere
   in the chain. Stage 2 done.
-- **Stage 3, skill wiring.** `vibrant-contribute` publishes your `summarize` aggregate to a
-  frontier board; `vibrant-report` and the leaderboard subscribe and fold. The file path
-  stays the zero-setup default; the mesh is chosen with `--relay` / `--board`.
+- **Stage 3, skill wiring (DONE).** `skills/vibrant-federate` drives the whole mesh with no
+  command line for the operator: the agent mints the identity (`keys.py`), produces the
+  aggregate (`summarize`), signs it (`nostr_event.py`), publishes it (`relay_io.py`, a stdlib
+  WebSocket, no `nak`), and folds it, asking the operator only for values it cannot derive (a
+  relay, a board). It covers contribute, start-board, grant/revoke, and view;
+  `vibrant-contribute` hands off to it for the live push. The file path stays the zero-setup
+  default. Verified end to end against a LAN relay with zero external tools.
 - **Stage 4, the public frontier as a board.** 3dl runs the public frontier as a board on
   the relay we already operate; curation is the owner merging grants, as `CLAUDE.md`
   describes. Proof tiers ride on the event; reproduction stays the sybil tax.
