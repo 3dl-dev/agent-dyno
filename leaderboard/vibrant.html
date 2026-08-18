@@ -7,90 +7,138 @@
 <meta name="description" content="Surviving work per token, by engine. A leaderboard of harness efficiency, engine craft, never people against product.">
 <style>
   :root{
-    --bg:#faf9f7; --panel:#ffffff; --ink:#1a1a1a; --muted:#6b6b6b;
-    --line:#e6e3de; --accent:#2f6f4f; --warn:#9a5b2b; --mono:'Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace;
-    --best:#2f6f4f;
+    --bg:#f4f3ee; --panel:#ffffff; --panel2:#faf9f5; --ink:#16181c; --ink2:#3c4048;
+    --muted:#797e88; --line:#e5e2d9; --hair:#efece4;
+    --accent:#1f8f7a; --best:#1f8f7a; --warn:#a75f2d; --glow:rgba(31,143,122,.16);
+    --solo:#3f6e8e; --delegate:#8a6d4b; --workflow:#6e5a8a;
+    --shadow:0 1px 2px rgba(20,22,26,.04),0 12px 32px rgba(20,22,26,.06);
+    --mono:ui-monospace,SFMono-Regular,Menlo,"JetBrains Mono",monospace;
   }
-  :root:not([data-theme="light"]){ }
+  :root:not([data-theme="light"]){}
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
-      --bg:#14150f; --panel:#1c1e17; --ink:#ececec; --muted:#9a9a92;
-      --line:#2c2e25; --accent:#7fc79c; --warn:#d99a5b; --best:#7fc79c;
+      --bg:#0e0f0d; --panel:#16181500; --panel2:#191c17; --ink:#f0f1ec; --ink2:#c7cabf;
+      --muted:#8c9184; --line:#282c24; --hair:#20241d;
+      --accent:#6fd6c9; --best:#6fd6c9; --warn:#d99a5b; --glow:rgba(111,214,201,.16);
+      --solo:#6fa0c6; --delegate:#c9a06a; --workflow:#a98bd0;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 20px 50px rgba(0,0,0,.45);
     }
   }
   :root[data-theme="dark"]{
-    --bg:#14150f; --panel:#1c1e17; --ink:#ececec; --muted:#9a9a92;
-    --line:#2c2e25; --accent:#7fc79c; --warn:#d99a5b; --best:#7fc79c;
+    --bg:#0e0f0d; --panel:#16181500; --panel2:#191c17; --ink:#f0f1ec; --ink2:#c7cabf;
+    --muted:#8c9184; --line:#282c24; --hair:#20241d;
+    --accent:#6fd6c9; --best:#6fd6c9; --warn:#d99a5b; --glow:rgba(111,214,201,.16);
+    --solo:#6fa0c6; --delegate:#c9a06a; --workflow:#a98bd0;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 20px 50px rgba(0,0,0,.45);
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);
-    font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.55}
-  .wrap{max-width:900px;margin:0 auto;padding:48px 20px 80px}
-  h1{font-size:30px;margin:0 0 4px;letter-spacing:-.02em}
-  .sub{color:var(--muted);font-size:15px;margin:0 0 28px}
-  .banner{border:1px solid var(--line);border-left:3px solid var(--accent);
-    background:var(--panel);border-radius:8px;padding:14px 16px;margin:0 0 28px;font-size:14px}
-  .banner b{color:var(--accent)}
-  h2{font-size:15px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
-    margin:34px 0 12px;font-weight:600}
-  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
-  table{border-collapse:collapse;width:100%;font-size:14px;min-width:640px}
-  th,td{padding:11px 14px;text-align:right;border-bottom:1px solid var(--line)}
-  th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--ink2);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.6;-webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(1200px 600px at 78% -8%, var(--glow), transparent 60%);
+    background-attachment:fixed}
+  .wrap{max-width:860px;margin:0 auto;padding:72px 24px 96px}
+  .eyebrow{display:flex;align-items:center;gap:9px;font-size:11px;font-weight:800;
+    letter-spacing:.24em;text-transform:uppercase;color:var(--muted);margin-bottom:20px}
+  .eyebrow .hex{display:inline-flex;gap:3px}
+  .eyebrow .hex i{width:7px;height:12px;background:var(--accent);clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);opacity:.9}
+  .eyebrow .hex i:nth-child(2){background:var(--solo);opacity:.8}
+  .eyebrow .hex i:nth-child(3){background:var(--delegate);opacity:.7}
+  h1{font-size:clamp(40px,7vw,64px);line-height:.98;letter-spacing:-.035em;margin:0 0 12px;
+    font-weight:850;color:var(--ink);text-wrap:balance}
+  .sub{color:var(--muted);font-size:clamp(15px,2vw,18px);margin:0 0 30px;max-width:56ch;line-height:1.5}
+  .banner{position:relative;border:1px solid var(--line);border-radius:14px;
+    background:linear-gradient(180deg,var(--panel2),transparent);padding:18px 20px 18px 22px;
+    margin:0 0 40px;font-size:14.5px;color:var(--ink2);box-shadow:var(--shadow);overflow:hidden}
+  .banner::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+    background:linear-gradient(var(--accent),var(--solo))}
+  .banner b{color:var(--accent);font-weight:700}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);
+    margin:0 0 14px;font-weight:800;display:flex;align-items:center;gap:10px}
+  h2::after{content:"";flex:1;height:1px;background:var(--hair)}
+  .card{border:1px solid var(--line);border-radius:16px;background:var(--panel2);
+    box-shadow:var(--shadow);padding:22px 22px 10px;margin-bottom:40px}
+  .frontier-legend{display:flex;flex-wrap:wrap;gap:16px;padding:2px 4px 14px;font-size:12.5px;color:var(--ink2)}
+  .frontier-legend span{display:inline-flex;align-items:center;gap:7px}
+  .frontier-legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
+  #viz{width:100%;height:auto;display:block}
+  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:16px;
+    background:var(--panel2);box-shadow:var(--shadow)}
+  table{border-collapse:collapse;width:100%;font-size:14px;min-width:620px}
+  thead th{position:sticky;top:0;background:var(--panel2)}
+  th,td{padding:14px 16px;text-align:right;border-bottom:1px solid var(--hair)}
+  th{color:var(--muted);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
   th:first-child,td:first-child{text-align:left}
-  td.num{font-family:var(--mono)}
+  td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ink)}
+  tbody tr{transition:background .12s}
+  tbody tr:hover{background:var(--hair)}
   tr:last-child td{border-bottom:none}
-  .engine{font-weight:600}
-  .meta{color:var(--muted);font-size:12px}
-  .badge{display:inline-block;font-size:11px;font-family:var(--mono);color:var(--best);
-    border:1px solid var(--best);border-radius:5px;padding:1px 6px;margin-left:8px}
-  .best{color:var(--best);font-weight:700}
-  .foot{color:var(--muted);font-size:13px;margin-top:26px}
-  a{color:var(--accent)}
-  code{font-family:var(--mono);font-size:.92em;background:var(--line);padding:1px 5px;border-radius:4px}
+  .engine{font-weight:750;color:var(--ink);display:flex;align-items:center;gap:9px}
+  .engine .dot{width:9px;height:9px;border-radius:50%;flex:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--ec) 22%,transparent)}
+  .engine .name{color:var(--ec)}
+  .meta{color:var(--muted);font-size:12px;font-weight:400}
+  .badge{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--best);border:1px solid color-mix(in srgb,var(--best) 55%,transparent);
+    border-radius:999px;padding:2px 8px;background:var(--glow)}
+  td.best{color:var(--best);font-weight:800}
+  td.best::after{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;
+    background:var(--best);margin-left:7px;vertical-align:middle;box-shadow:0 0 8px var(--best)}
+  .context{color:var(--muted);font-size:13px;margin:16px 4px 0;line-height:1.5}
+  .how{font-size:15px;color:var(--ink2);max-width:64ch;line-height:1.6}
+  .foot{color:var(--muted);font-size:13px;margin-top:44px;padding-top:22px;border-top:1px solid var(--hair);
+    display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  a{color:var(--accent);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--accent) 35%,transparent)}
+  a:hover{border-bottom-color:var(--accent)}
+  code{font-family:var(--mono);font-size:.88em;background:var(--hair);padding:2px 6px;border-radius:6px;color:var(--ink)}
 </style>
 </head>
 <body>
 <div class="wrap">
+  <div class="eyebrow"><span class="hex"><i></i><i></i><i></i></span>Third Division Labs &middot; public frontier</div>
   <h1>Vibrant</h1>
-  <p class="sub">Surviving work per token, by engine. A leaderboard of harness efficiency.</p>
+  <p class="sub">Surviving work per token, by engine. The efficiency frontier of AI coding setups, engine craft, never people, never against product.</p>
 
   <div class="banner">
-    This ranks <b>engine craft</b>, which harness turns tokens into code that
-    lasts, <b>never people, and never against product outcomes</b>. Product
-    success is an unpredictable bet; measuring individuals against it is the
-    regime this project exists to prevent. Your numbers are yours; contributions
-    are opt-in and anonymized.
+    This ranks <b>engine craft</b>, which harness turns tokens into code that lasts,
+    <b>never people, and never against product outcomes</b>. Product success is an
+    unpredictable bet; measuring individuals against it is the regime this project exists to
+    prevent. Your numbers are yours; contributions are opt-in and anonymized.
   </div>
 
-  <h2>Reference frontier</h2>
+  <h2>The frontier</h2>
+  <div class="card">
+    <div class="frontier-legend" id="legend"></div>
+    <svg id="viz" role="img" aria-label="efficiency frontier by axis"></svg>
+  </div>
+
+  <h2>Standings</h2>
   <div class="scroll"><table id="board">
     <thead><tr>
       <th>engine</th>
-      <th>$/surv-KB ↓</th>
-      <th>survKB/Mtok ↑</th>
-      <th>waste % ↓</th>
-      <th>cache-read % ↑</th>
+      <th>$/surv-KB &darr;</th>
+      <th>survKB/Mtok &uarr;</th>
+      <th>waste % &darr;</th>
+      <th>cache-read % &uarr;</th>
       <th>samples</th>
     </tr></thead>
     <tbody id="rows"></tbody>
   </table></div>
-  <p class="foot" id="context"></p>
+  <p class="context" id="context"></p>
 
   <h2>How it works</h2>
-  <p class="sub" style="margin-bottom:8px">
-    The numerator is a git measurement, which lines you added still live,
-    unreverted and un-bug-fixed, at a horizon, so it is the same for any agent or
-    model. The denominator is priced tokens. No single score: the winner on one
-    axis is rarely the winner on another, so read the vector, not a rank. Run it
-    on your own logs with the <code>vibrant-report</code> skill; contribute a row
-    with a pull request.
+  <p class="how">
+    The numerator is a git measurement, which lines you added still live, unreverted and
+    un-bug-fixed, at a horizon, so it is the same for any agent or model. The denominator is
+    priced tokens. No single score: the winner on one axis is rarely the winner on another,
+    so read the vector, not a rank. Run it on your own logs with the <code>vibrant-report</code>
+    skill; contribute a row with a pull request or over the live mesh.
   </p>
 
-  <p class="foot">
-    <a href="https://github.com/3dl-dev/vibrant">github.com/3dl-dev/vibrant</a>
-    · MIT · own your own numbers
-  </p>
+  <div class="foot">
+    <span><a href="https://github.com/3dl-dev/vibrant">github.com/3dl-dev/vibrant</a> &middot; MIT</span>
+    <span>own your own numbers</span>
+  </div>
 </div>
 
 <script>
@@ -102,10 +150,51 @@ const SEED = {"entries":[
   {"engine":"workflow","vector":{"dollars_per_survkb":1.59,"survkb_per_outmtok":126,"waste_pct":57.8,"cache_read_pct":97.3},"samples":59,"horizon":"session","harness":"claude-code"}
 ]};
 const AXES=[["dollars_per_survkb","lo"],["survkb_per_outmtok","hi"],["waste_pct","lo"],["cache_read_pct","hi"]];
+const ECOLORS={solo:"var(--solo)",delegate:"var(--delegate)",workflow:"var(--workflow)"};
+const ERAW={solo:"#6fa0c6",delegate:"#c9a06a",workflow:"#a98bd0"};
+function ecolor(e){return ECOLORS[e]||"var(--muted)";}
+function eraw(e){return ERAW[e]||"#8c9184";}
+
+// The frontier as a per-axis dot plot: each engine placed on each axis by its value, the
+// good direction always to the right, the leader on each axis glowing. Shows the vector.
+const VIZ_AXES=[
+  {k:"dollars_per_survkb",dir:"lo",label:"$ per surviving KB",fmt:v=>"$"+(+v).toFixed(2)},
+  {k:"survkb_per_outmtok",dir:"hi",label:"surviving KB / output-Mtok",fmt:v=>(+v).toFixed(0)},
+  {k:"waste_pct",dir:"lo",label:"waste",fmt:v=>(+v).toFixed(0)+"%"},
+  {k:"cache_read_pct",dir:"hi",label:"cache-read",fmt:v=>(+v).toFixed(1)+"%"}
+];
+function drawFrontier(es){
+  const W=720, padL=14, padR=14, top=30, rowH=64, trackW=W-padL-padR;
+  const H=top + VIZ_AXES.length*rowH + 6;
+  let s=`<svg id="viz" viewBox="0 0 ${W} ${H}" role="img" aria-label="efficiency frontier by axis" style="width:100%;height:auto;display:block">`;
+  s+=`<defs><filter id="g" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="4"/></filter></defs>`;
+  VIZ_AXES.forEach((ax,i)=>{
+    const cy=top + i*rowH + 22;
+    const vals=es.map(e=>+e.vector[ax.k]);
+    let lo=Math.min(...vals), hi=Math.max(...vals), span=(hi-lo)||1;
+    const goodX=v=>{ let n=(v-lo)/span; if(ax.dir==="lo") n=1-n; return padL + 8 + n*(trackW-16); };
+    const bestV = ax.dir==="lo"?lo:hi;
+    // axis label + direction hint
+    s+=`<text x="${padL}" y="${cy-18}" font-size="11.5" font-weight="700" fill="var(--ink2)" letter-spacing=".02em">${ax.label}</text>`;
+    s+=`<text x="${W-padR}" y="${cy-18}" text-anchor="end" font-size="10" fill="var(--muted)">better &rarr;</text>`;
+    // track
+    s+=`<line x1="${padL+8}" y1="${cy}" x2="${W-padR-8}" y2="${cy}" stroke="var(--hair)" stroke-width="6" stroke-linecap="round"/>`;
+    s+=`<line x1="${padL+8}" y1="${cy}" x2="${W-padR-8}" y2="${cy}" stroke="var(--line)" stroke-width="1"/>`;
+    // dots per engine
+    es.forEach(e=>{
+      const v=+e.vector[ax.k], x=goodX(v), col=eraw(e.engine), isBest=Math.abs(v-bestV)<1e-9;
+      if(isBest) s+=`<circle cx="${x.toFixed(1)}" cy="${cy}" r="10" fill="${col}" opacity="0.5" filter="url(#g)"/>`;
+      s+=`<circle cx="${x.toFixed(1)}" cy="${cy}" r="${isBest?6.5:5}" fill="${col}" stroke="var(--panel2)" stroke-width="2"/>`;
+      if(isBest){ var lx=Math.max(padL+22, Math.min(x, W-padR-22));
+        s+=`<text x="${lx.toFixed(1)}" y="${cy+20}" text-anchor="middle" font-size="11.5" font-weight="800" fill="${col}" font-variant-numeric="tabular-nums">${ax.fmt(v)}</text>`; }
+    });
+  });
+  s+=`</svg>`;
+  return s;
+}
 
 function render(data){
   const es=data.entries;
-  // best per axis (for highlighting) + Pareto membership
   const best={};
   for(const[k,dir]of AXES){
     const vals=es.map(e=>e.vector[k]);
@@ -119,16 +208,23 @@ function render(data){
     const pareto=!es.some(o=>o!==e&&dominates(o,e));
     const cell=(k)=>{const v=e.vector[k];const b=Math.abs(v-best[k])<1e-9;
       return `<td class="num${b?' best':''}">${v}</td>`;};
-    return `<tr>
-      <td class="engine">${e.engine}${pareto?'<span class="badge">pareto</span>':''}
-        <div class="meta">${e.harness} · ${e.horizon} horizon</div></td>
+    return `<tr style="--ec:${ecolor(e.engine)}">
+      <td><div class="engine"><span class="dot" style="background:${ecolor(e.engine)}"></span>
+        <span class="name">${e.engine}</span>${pareto?'<span class="badge">pareto</span>':''}</div>
+        <div class="meta">${e.harness} &middot; ${e.horizon} horizon</div></td>
       ${cell("dollars_per_survkb")}${cell("survkb_per_outmtok")}${cell("waste_pct")}${cell("cache_read_pct")}
       <td class="num meta">${e.samples}</td></tr>`;
   }).join("");
   document.getElementById("rows").innerHTML=rows;
+  // frontier viz + legend
+  const seen=[...new Set(es.map(e=>e.engine))];
+  document.getElementById("legend").innerHTML =
+    seen.map(e=>`<span><i style="background:${ecolor(e)}"></i>${e}</span>`).join("")
+    + `<span style="color:var(--muted)"><i style="background:var(--best);box-shadow:0 0 8px var(--best)"></i>leader on axis</span>`;
+  document.getElementById("viz").outerHTML = drawFrontier(es);
   document.getElementById("context").textContent = data.context ||
     ("Seed data: one operator's Claude Code logs, measured at the same-session survival floor (Aug 2026). "
-    + "Bold = best on that axis. Day/week horizons and more harnesses replace this as data arrives.");
+    + "A dot per engine on each axis; the glowing one leads it. Day/week horizons and more harnesses replace this as data arrives.");
 }
 // SPIKE (docs/spikes/nostr-aggregate-spike.md, nostr-grants-spike.md): fold aggregate events
 // from a Nostr relay instead of the file, gated behind ?relay=<wss-url> so the default file
