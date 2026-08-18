@@ -166,6 +166,14 @@ Adopted, staged so each step is provable and the file model never regresses:
      cold start. Parts 2 and 3 are externally-visible ops (a public relay write, DNS, a
      deploy), owner-run; the page code (baked defaults + cold-start tolerance) is done.
 
+  **Launch status (2026-08-17):** the page is LIVE at `vibrant.3dl.dev` (GitHub Pages on
+  `3dl-dev/vibrant`, `gh-pages` branch, DNS `vibrant.3dl.dev -> 3dl-dev.github.io`, HTTPS cert
+  provisioning), baked to fold the board `30301:28e74283...:public` on `wss://relay.3dl.network`.
+  It shows the seed frontier until the board is published. Remaining, owner-gated: admit the
+  frontier owner key (pubkey `28e74283793831aa1563ef0ad0f21bbc8ca51f1e7b63ff71bd14a6b6fd0a31ee`,
+  stored `~/.config/vibrant/frontier-owner.key`) to the relay's tenant write-allowlist, after
+  which one `vibrant-federate` run publishes the board and the live page lights up with no redeploy.
+
 Invariants held at every stage: the file is the default and stays keyless; the relay is a
 cache, never the source of truth; only anonymized aggregates travel, never raw logs; no
 wallet and no chain; trust stays the proof-tier ladder.
