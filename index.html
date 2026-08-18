@@ -173,7 +173,7 @@ function foldRelay(url, board){return new Promise(function(resolve,reject){
 // A hosted build (e.g. vibrant.3dl.dev) bakes its public board here so a visitor with no
 // query params folds it by default; ?relay=/?board= override for any other relay or team.
 // Must be a wss:// relay when the page itself is served over https (mixed content blocks ws://).
-var DEFAULT_RELAY = "", DEFAULT_BOARD = "";
+var DEFAULT_RELAY = "wss://relay.3dl.network", DEFAULT_BOARD = "30301:28e74283793831aa1563ef0ad0f21bbc8ca51f1e7b63ff71bd14a6b6fd0a31ee:public";
 var _q=new URLSearchParams(location.search);
 var _relay=_q.get("relay")||DEFAULT_RELAY, _board=_q.get("board")||DEFAULT_BOARD;
 if(_relay){
