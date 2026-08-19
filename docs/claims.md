@@ -64,6 +64,28 @@ Why density, not `100 - bloat` (the earlier definition):
   is to pad lines, which costs output tokens and lowers efficiency. So the two axes
   self-correct. bloat is retained as a separate change-discipline meter, not as simplicity.
 
+## Selection confound: efficiency is survival-rate x production-rate (measured 2026-08-19)
+
+Run on real data (204 real sessions, 20 repos re-blamed from git, 88% session coverage), the raw
+efficiency ordering by engine is a **task-difficulty selection artifact**, not a token-thrift
+ranking. Decomposing efficiency (surviving per output-Mtok) as `survival_rate x production_rate`:
+
+| engine | efficiency (surv/Mtok) | survival rate | production/Mtok | n |
+|--------|-----------------------:|--------------:|----------------:|--:|
+| solo | 107,945 (leads) | 92.8% | 116,362 (lowest) | 77 |
+| workflow | 93,827 | 28.5% | 329,005 (3x solo) | 31 |
+| delegate | 84,054 | 46.0% | 182,783 | 96 |
+
+Solo leads efficiency only because 93% of its work sticks (it does easy, low-churn work); it is
+the LEAST productive per token. Workflow makes ~3x more per token but eats hard, churny work
+(29% survives), so it looks worse. The extreme: `delegate fable-5`, eff 954,454 at 100% survival
+over 4 trivial sessions, a cheap model doing sticky easy work looking 10x more efficient than
+anything real. **Verdict: Confirmed.** The tool must not read the raw efficiency ordering as a
+thrift ranking, and must never recommend "go leaner/cheaper" off it. Now enforced: `confounds()`
+detects and names this from the operator's own numbers (efficiency leader wins on survival-rate,
+not production-rate). Full control needs a fixed task: the dynamometer (same task, different
+rigs), which removes the assignment bias by construction.
+
 ## External hypotheses: cost/intelligence guidance (to test on your own data)
 
 Source: Anthropic, "Optimizing for cost and intelligence" (platform.claude.com, Jul-Aug

@@ -1374,6 +1374,35 @@ def confounds(metrics, numerator, since, now, denom_empty=False):
         out.append("Review regime uncontrolled: no fingerprint labels, so the "
                    "review dimension is neither held fixed nor sliced. Run the "
                    "classifier (SKILL.md step 3b) to control for this confound.")
+    # Selection / task-difficulty confound. Efficiency (surviving per output-Mtok) factors as
+    # survival_rate x production_rate: surviving/born (how much of what you made stuck, which
+    # falls on harder work) times born/Mtok (what you produced per token, the real thrift). If
+    # the efficiency LEADER wins on survival_rate rather than production_rate, its edge is that
+    # it was handed stickier, easier work, not that it is token-thrifty, and the raw ordering is
+    # a difficulty artifact that would invert under a fixed task. Detect it and name it with the
+    # operator's own numbers, so the report never sells "go leaner/cheaper" off a selection bias.
+    by_eng = defaultdict(lambda: [0.0, 0.0, 0.0, 0])  # surviving, born, out_tok, n
+    for m in metrics:
+        born, killed, ot = m.get("born") or 0, m.get("killed") or 0, m.get("out_tok") or 0
+        if ot <= 0 or born <= 0:
+            continue
+        g = by_eng[m.get("engine") or "?"]
+        g[0] += max(0, born - killed); g[1] += born; g[2] += ot; g[3] += 1
+    rows = [(e, surv / (ot / 1e6), surv / born, born / (ot / 1e6), k)
+            for e, (surv, born, ot, k) in by_eng.items() if k >= 3 and ot > 0 and born > 0]
+    if len(rows) >= 2:
+        eff_leader = max(rows, key=lambda r: r[1])
+        prod_leader = max(rows, key=lambda r: r[3])
+        if eff_leader[0] != prod_leader[0] and eff_leader[3] > 0:
+            out.append(
+                f"Task difficulty uncontrolled (selection): efficiency = survival-rate x "
+                f"production-rate, and the efficiency leader '{eff_leader[0]}' wins on "
+                f"survival-rate ({eff_leader[2]:.0%}, stickier work), not token-thrift, it "
+                f"produces {eff_leader[3]:,.0f} per Mtok while '{prod_leader[0]}' produces "
+                f"{prod_leader[3]:,.0f} ({prod_leader[3] / eff_leader[3]:.1f}x) at "
+                f"{prod_leader[2]:.0%} survival. So the raw efficiency ordering is "
+                f"difficulty-mixed, not a thrift ranking; hold the task fixed with the "
+                f"dynamometer (same task, different rigs) before reading it as one.")
     # non-overlapping fuel (session) and git (numerator) windows: the ratio would
     # divide functionality and fuel measured over different periods
     days = sorted(m["day"] for m in metrics if m.get("day"))
