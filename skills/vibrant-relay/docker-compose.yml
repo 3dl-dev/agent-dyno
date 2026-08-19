@@ -1,0 +1,21 @@
+# Stand up a Vibrant relay locally (or on any docker host): the same recipe for local, a
+# private team box, or a public cloud host. Cloud differs only in the host and a TLS front
+# (Caddy/Front Door) for wss; the relay itself is identical.
+services:
+  vibrant-relay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vibrant-relay:local
+    ports:
+      - "7777:7777"          # ws:// for local/private; put a TLS proxy in front for wss:// public
+    volumes:
+      - vibrant-db:/app/strfry-db
+    environment:
+      VIBRANT_POW_BITS: "20"     # anti-flood gate; a few seconds of the sharer's CPU
+      VIBRANT_MAX_AGG: "8192"
+      VIBRANT_MAX_REPORT: "262144"
+    restart: unless-stopped
+
+volumes:
+  vibrant-db:

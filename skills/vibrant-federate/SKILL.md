@@ -18,13 +18,14 @@ aggregates travel, never raw logs. No wallet, no chain.
 ## 0. Locate the tools and mint the identity (once)
 
 The federation tools are `nostr_event.py` (sign), `relay_io.py` (publish/query over a
-stdlib WebSocket), and `keys.py` (identity), from the `nostr-emit` repo. Find them at
-`$NOSTR_EMIT` or `~/projects/nostr-emit` (a shipped skill bundles them alongside this
-file). Then mint or load the operator's key, which is stored `0600` and reused:
+stdlib WebSocket), and `keys.py` (identity). They are BUNDLED with this skill in the
+`nostr-tools/` folder next to this file, so set `NE` to that folder (you know where you
+loaded this skill from). A dev checkout may instead set `$NOSTR_EMIT` or use
+`~/projects/nostr-emit`. Then mint or load the operator's key, stored `0600` and reused:
 
 ```
-NE=${NOSTR_EMIT:-~/projects/nostr-emit}
-SK=$(python3 "$NE/keys.py" ensure)          # ~/.config/vibrant/nostr.key, minted if absent
+NE="<this skill's dir>/nostr-tools"          # bundled; or ${NOSTR_EMIT:-~/projects/nostr-emit}
+SK=$(python3 "$NE/keys.py" ensure)           # ~/.config/vibrant/nostr.key, minted if absent
 PUB=$(python3 "$NE/keys.py" pub "$SK")
 ```
 

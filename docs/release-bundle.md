@@ -55,6 +55,6 @@ Two channels, same content:
 - [x] Report, dynamometer, federate, relay all shipped and individually proven.
 - [x] Measurement validity closed on real data (real ground truth + the selection confound
       named from the operator's own numbers; the dyno is the fixed-task arbiter).
-- [ ] Package `skills/` as a `.claude-plugin` marketplace (one `/plugin install vibrant`).
+- [x] Package `skills/` as a `.claude-plugin` marketplace (one `/plugin install vibrant`), tools vendored.
 - [ ] A dynamometer task suite spanning sizes (map where each engine wins, not just small).
 - [ ] End-to-end wizard walkthrough graded in a clean session (the next ouroboros).

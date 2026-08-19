@@ -1,16 +1,13 @@
 {
   "name": "vibrant",
-  "description": "Vibrant: measure how efficiently your AI coding setup turns tokens into work that lasts, from your own logs and git history, on your machine.",
+  "owner": { "name": "Third Division Labs", "email": "hello@3dl.dev" },
+  "description": "Vibrant: measure the token-efficiency of your AI coding setup from your own logs and git, and share an anonymized frontier. Engines, never people.",
   "plugins": [
     {
       "name": "vibrant",
-      "source": "./plugins/vibrant",
-      "description": "Measure your AI coding setup (/vibrant:run), and if you choose, contribute an anonymized result to a frontier (/vibrant:contribute). Standard library only, nothing uploaded.",
+      "source": ".",
+      "description": "Measure your setup, settle solo-vs-orchestration on identical terrain, and share/compare on the frontier. Start by asking the vibrant-wizard.",
       "version": "0.1.0"
     }
-  ],
-  "owner": {
-    "name": "Chris Baron",
-    "email": "baron@3dl.dev"
-  }
+  ]
 }
