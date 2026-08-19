@@ -233,8 +233,9 @@ function render(data){
 // the owner-granted author set from the owner's role-grant events (kind 39301, latest per
 // grantee) and folds ONLY aggregates from granted authors, so a public relay need not be
 // trusted to gate writes. Malformed events are skipped.
-function foldRelay(url, board){return new Promise(function(resolve,reject){
+function foldRelay(url, board, follows){return new Promise(function(resolve,reject){
   var ws=new WebSocket(url), sub="vb", aggs={}, grants={}, owner=null, done=false;
+  var follow = (follows && follows.length) ? follows.reduce(function(m,p){m[p]=1;return m;},{}) : null;
   if(board){ owner=board.split(":")[1]; }
   // 15s cap tolerates a scale-to-zero relay's cold start (~12s); a warm relay resolves on
   // EOSE in well under a second, so this only matters on the first hit after the relay sleeps.
@@ -244,13 +245,15 @@ function foldRelay(url, board){return new Promise(function(resolve,reject){
   function finish(){ if(done)return; done=true; clearTimeout(timer);
     try{ws.close();}catch(e){}
     var list=Object.keys(aggs).map(function(k){return aggs[k];});
-    if(board){ var g=granted(); list=list.filter(function(a){return g[a._pub];}); }
+    // Grouping is following: a view shows the shared results of whoever it follows, so spam
+    // under an un-followed key is simply invisible. `follow` is the primary mode; `board`
+    // (owner-granted) is legacy. With neither, every shared result renders (an open relay).
+    if(follow){ list=list.filter(function(a){return follow[a._pub];}); }
+    else if(board){ var g=granted(); list=list.filter(function(a){return g[a._pub];}); }
     var entries=list.map(function(a){return a.c;});
-    entries.length ? resolve({entries:entries, context: board
-      ? ("Folded from a Nostr team board ("+entries.length+" aggregates from owner-granted authors, "+url+"). "
-         +"The viewer re-verifies grants, so the relay need not be trusted to gate writes.")
-      : ("Folded live from a Nostr relay ("+entries.length+" aggregates, "+url+"). "
-         +"Same anonymized roll-ups as the file, delivered as addressable events.")})
+    entries.length ? resolve({entries:entries,
+      context:(entries.length+" shared results"+(follow?" from setups you follow":board?"":", live")+". "
+        +"Anonymized roll-ups, each contributor's own; nothing else travels.")})
       : reject(new Error("no aggregates"));
   }
   ws.onopen=function(){ var filters=[{kinds:[30078],"#t":["vibrant-aggregate"]}];
@@ -266,16 +269,19 @@ function foldRelay(url, board){return new Promise(function(resolve,reject){
     else if(d[0]==="EOSE"&&d[1]===sub) finish(); };
   ws.onerror=function(){ reject(new Error("relay error")); };
 });}
-// A hosted build (e.g. vibrant.3dl.dev) bakes its public board here so a visitor with no
-// query params folds it by default; ?relay=/?board= override for any other relay or team.
-// Must be a wss:// relay when the page itself is served over https (mixed content blocks ws://).
-var DEFAULT_RELAY = "", DEFAULT_BOARD = "";
+// A hosted build (e.g. vibrant.3dl.dev) bakes its relay and its PUBLIC follow-set here, so a
+// visitor with no query params sees the public frontier: the shared results of the setups the
+// public view follows (a seeded, growing curated set). Groups are just a different follow-set:
+// ?follows=<pubkey,pubkey> for a team, or ?board= for the legacy owner-granted mode.
+var DEFAULT_RELAY = "", DEFAULT_FOLLOWS = [];
 var _q=new URLSearchParams(location.search);
-var _relay=_q.get("relay")||DEFAULT_RELAY, _board=_q.get("board")||DEFAULT_BOARD;
+var _relay=_q.get("relay")||DEFAULT_RELAY, _board=_q.get("board")||"";
+var _follows=(_q.get("follows")||"").split(",").filter(Boolean);
+if(!_follows.length) _follows = DEFAULT_FOLLOWS;
 if(_relay){
   var ctx=document.getElementById("context");
-  if(ctx) ctx.textContent="Connecting to the mesh relay "+_relay+" (waking it can take a moment)...";
-  foldRelay(_relay, _board).then(render).catch(function(){render(SEED);});
+  if(ctx) ctx.textContent="Loading the frontier… (the first load can take a moment)";
+  foldRelay(_relay, _board, _follows).then(render).catch(function(){render(SEED);});
 } else fetch("../frontier/reference-frontier.json").then(r=>r.ok?r.json():Promise.reject())
   .then(render).catch(()=>render(SEED));
 </script>
