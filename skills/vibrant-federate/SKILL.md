@@ -38,10 +38,18 @@ for the secret.
 - **grant <member-pubkey>**: as the owner, let a member contribute.
 - **view**: fold a board and show the standings.
 
-Resolve `--relay` (a `ws://`/`wss://` URL) and, for team actions, `--board`
-(`30301:<owner-pub>:<d>`). If either is needed and not given, ASK for it. For a solo
-publish with no relay, tell the operator the file path (`vibrant-contribute`) already
-covers them and a relay is only for the live mesh.
+Resolve `--relay` and `--board`, but DO NOT make the operator think about Nostr for the
+common case. The public frontier has known defaults, so for "share to the public frontier"
+just use them silently, never ask for a relay or a board:
+
+- default relay `wss://relay.3dl.network`
+- default board `30301:28e74283793831aa1563ef0ad0f21bbc8ca51f1e7b63ff71bd14a6b6fd0a31ee:public`
+
+Only ask about a relay or board when the operator explicitly wants their OWN team frontier
+(start-board, or a `--relay`/`--board` they supplied). Words like "npub", "relay", "kind",
+and "event" should not appear in what you say unless the operator raised them first. For a
+solo user with no interest in sharing, the file path (`vibrant-contribute`) already covers
+them; the mesh is only for those who want it.
 
 ## 2. contribute: publish the frontier
 
