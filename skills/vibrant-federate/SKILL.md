@@ -57,13 +57,17 @@ them; the mesh is only for those who want it.
    result; otherwise run `python3 core/frontier.py summarize <frontier> --min-samples 1`
    and use `entries[]`. Confirm each carries no identity (governance gate); if the
    technique text would leak anything, rewrite it generically or drop it.
-2. **Sign and publish each** (you run this, once per aggregate; `$AGG` is the compact JSON):
+2. **Sign and publish each** (you run this, once per aggregate; `$AGG` is the compact JSON).
+   The Vibrant relay is open-write but proof-of-work gated, so mine the PoW with `--pow` (a few
+   seconds, once; the operator never sees it). Content kinds (aggregate/report/board/grant) need
+   it; follow lists do not:
    ```
    python3 "$NE/nostr_event.py" --sec "$SK" --kind 30078 --content "$AGG" \
-     --tag d="$ID" --tag t=vibrant-aggregate --tag engine="$ENGINE" \
+     --tag d="$ID" --tag t=vibrant-aggregate --tag engine="$ENGINE" --pow 20 \
      | python3 "$NE/relay_io.py" publish "$RELAY"
    ```
-   A `{"ok": true}` line is success; on `false`, report the message, do not retry blindly.
+   A `{"ok": true}` line is success; on `false` report the message (e.g. "insufficient
+   proof-of-work" means raise `--pow` to the relay's floor), do not retry blindly.
 3. **Confirm** with a query and show the operator what landed:
    ```
    python3 "$NE/relay_io.py" query "$RELAY" '{"kinds":[30078],"#t":["vibrant-aggregate"]}'
