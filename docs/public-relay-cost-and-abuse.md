@@ -1,82 +1,80 @@
-# Hosting the public relay: cost, and making it un-abusable
+# Ignition first: make sharing trivial, curate the view not the write
 
-The public frontier at `vibrant.3dl.dev` folds from `wss://relay.3dl.network` (an Azure
-Container Apps + Cosmos DB relay, `nostr-relay`). This note sizes the cost and, more
-importantly, argues why the public frontier is hard to abuse, and closes the gaps that remain.
+The thing to minimize is **sharing friction**, not write-abuse. This only ignites if anyone
+can share their result in one step and immediately see themselves against a frontier. A
+locked-down relay that nobody can publish to is not "unabusable", it is dead. Adoption is the
+whole value; any control that makes sharing harder is the failure, not the win.
 
-## The one fact that makes it safe: writes are curated
+So the model is the opposite of an allowlist:
 
-The public frontier board is **write-allowlisted**: only the curator key
-(`tenant:vibrant`) may publish to it, and even an admitted key is gated by a **prepaid
-balance** (the forgemeter `BalanceMicro`, which bounces writes with "tenant prepaid balance is
-depleted" at zero). So an attacker cannot write to the public board at all: no fake entries, no
-flood, no storage blowup. Curation-at-write is the anti-abuse, and it is already in place.
+## Writes are open. Views are curated by following.
 
-That collapses the abuse surface to **reads only**. Everything below follows from that.
+- **Anyone can publish their aggregate**, in one step, no grant and no admission. The skill
+  signs and publishes it; the user just said "share my result". That is the ignition path and
+  nothing may block it.
+- **Spam never shows up because a view folds a follow-set, not the whole relay.** You see the
+  frontier of the people (or teams) you follow. A spammer publishing garbage under a fresh key
+  is simply not in anyone's follow-set, so it is invisible, no allowlist required. Curate the
+  VIEW, not the WRITE. This is how Nostr handles spam, and it is why open writes are safe.
+- **The public frontier is a growing curated follow-set**, seeded by 3dl and extended as real
+  contributors appear, not a write gate. Being "on the public board" means being followed into
+  the public set, which a curator does after a glance, while the contributor already sees their
+  own number immediately.
 
-## Cost
+## Grouping is following: individual, team, company, all the same mechanism
 
-- **Scale-to-zero** (`minReplicas=0`): idle cost is essentially the Cosmos floor, not compute.
-  Compute spins up on the first read after idle (~12s cold start, which the page tolerates).
-- **Tiny curated dataset:** the frontier is a handful of addressable events (aggregates,
-  the board, grants), each REPLACED on re-publish, not appended. Storage is kilobytes and
-  bounded; a full scan is cheap.
-- The `~$78/mo` figure in `nostr-relay/docs/bench` was a heavier multi-project workload
-  (ready + dontguess traffic). The frontier ALONE is far lighter: realistically single-digit
-  to low-double-digit dollars a month, dominated by the Cosmos minimum, with compute only on
-  actual reads. The only thing that can amplify cost is a read flood, addressed next.
+A group is just which follow-set a view folds:
 
-## The remaining surface: read DoS, and how to cap it
+- **Individual:** fold yourself. You see your own frontier the instant you share.
+- **Team:** fold the team's follow-set (you and your teammates).
+- **Company:** fold the company follow-set.
+- **Public:** fold the public curated set.
 
-Reads are open (anyone folds the board with no key, by design). With scale-to-zero, a read
-flood spins compute and burns Cosmos request units (RU), so the failure mode is a **bill**, not
-a breach. Bound it so the worst case is self-limiting:
+Public or private **relay** is an orthogonal transport choice, not the grouping. A private team
+can run its own relay (see the hoistable relay) or share a public one; either way the group is
+defined by who they follow, not by who a relay admits. One mechanism, arbitrary grouping.
 
-1. **Front the relay with Azure Front Door + WAF:** per-IP rate limit (e.g. 60 req/min),
-   connection caps, and geo/bot rules. This is the primary read-flood throttle and it lives at
-   the edge, not in the relay code.
-2. **Hard Cosmos ceiling + budget alarm:** cap autoscale RU/s and set an Azure budget with a
-   hard spend cap. Under a flood the relay then returns 429s and degrades, instead of running
-   up an open-ended bill. A read-DoS becomes a bounded, self-limiting event.
-3. **Keep the NIP-11 caps** already advertised: `max_subscriptions` 200, `max_filters` 200,
-   `max_limit` 500, `max_message_length` 512000. They bound per-connection work; the small
-   dataset bounds per-query scan.
-4. **Reject broad unfiltered REQs** (or cap their scan): the frontier only needs
-   `kinds:[30078,30301,39301]` with a `#t`/`#a` filter, so an unfiltered whole-store REQ can be
-   refused with a NOTICE rather than served.
+## None of this vocabulary reaches the user
 
-With writes curated and reads rate-limited + RU-capped, there is no un-bounded lever an
-attacker can pull: they cannot write, and reads degrade to 429 under a hard ceiling.
+Nobody cares about npubs, relays, follows, or kinds. The user says "share my result", "show my
+team", "show the public frontier". The skill does the keys, the publish, the follow-set, and
+the fold. The words npub / relay / follow / event / kind never appear unless the user raises
+them first. Leaking nostrism is itself friction, and friction is the enemy here.
 
-## The real danger zone: personal reports
+## Keeping cost bounded WITHOUT adding friction
 
-The one thing that would blow this open is letting **arbitrary users publish their personal
-report** (`vibrant.3dl.dev/me`, kind 30079, ~82 KB each) to the public tenant. That is
-un-curated, large, per-user writes, exactly the flood the allowlist prevents today. Do NOT put
-personal reports on the public tenant. Two safe homes instead:
+Open writes must not mean an open bill or a spam dump. Bound it with measures a real sharer
+never feels:
 
-- **Users run their own relay** (the hoistable `nostr-relay`): their report, their relay, their
-  cost. Zero shared-relay abuse surface. This is the preferred answer and the reason to ship a
-  self-hostable relay.
-- **A separate `personal` tenant** with strict per-key limits: one addressable report per key
-  (replaced, not appended, so storage is bounded), a small NIP-13 proof-of-work on the write to
-  price spam, and the prepaid-balance gate so writes are never free. Fund it per-user or cap it
-  hard; never let it share the frontier tenant's balance.
+- **Addressable events:** one aggregate per shape per author, REPLACED not appended. Sharing
+  ten times a day still costs one event's storage. Per-author footprint is bounded by
+  construction, however open the relay.
+- **A tiny proof-of-work on publish (NIP-13):** a couple of seconds of the sharer's own CPU,
+  once, invisible in a skill flow, but it prices a flood out of existence. This replaces the
+  allowlist as the anti-flood gate and costs the honest user nothing they notice.
+- **Reads:** open, fronted by an edge rate-limit (Front Door) and a hard Cosmos RU/budget
+  ceiling, so a read flood degrades to bounded 429s, never an open bill. The dataset a view
+  folds is tiny (a follow-set of latest-per-shape events), so normal reads are cheap.
+- **Personal reports** (the larger `/me` payload) still do not belong on a shared public tenant
+  un-gated: they go to the user's own relay (hoistable) or a per-key-limited personal tenant.
+  But that path is also one step for the user, the skill hands them the link.
 
-The principle: the public tenant only ever carries the curator's small, replaced dataset. Any
-per-user write goes to a relay the user owns, or a separately-gated tenant, never the frontier.
+## What this corrects
 
-## Checklist (make it damn hard to abuse)
+The earlier version of this note treated curator-only writes as the anti-abuse win. That was
+backwards: it minimized abuse by minimizing sharing, which minimizes the whole project. The
+right target is trivial sharing plus a curated view, with cost bounded by addressable events, a
+seconds-long proof-of-work, and edge/RU ceilings, none of which the person sharing ever feels.
 
-- [x] Public board writes: allowlisted, curator-only, balance-gated. (In place.)
-- [ ] Reads: Azure Front Door per-IP rate limit + WAF + connection caps.
-- [ ] Cosmos: hard RU/s ceiling + Azure budget hard cap + RU-spike alert (read-DoS signal).
-- [ ] Reject unfiltered whole-store REQs on the public tenant.
-- [x] Storage: addressable-only for curated kinds (replaced, bounded).
-- [ ] Personal reports: never on the public tenant, own-relay or a PoW+balance personal tenant.
-- [x] Scale-to-zero (idle cost ~0); accept the cold start.
-- [ ] Balance-depletion alert (a write-side outage signal, as just seen with vibrant).
+## Checklist
 
-The four unchecked items are Azure-layer configuration (Front Door, budget, an RU cap) plus the
-personal-report routing decision, not relay code. They turn "cheap and curated" into "cheap,
-curated, and provably bounded under attack."
+- [ ] Writes: OPEN on the public tenant (drop the participation allowlist), gated only by a
+      small NIP-13 proof-of-work and addressable-replace, so sharing is one step.
+- [ ] Views fold a follow-set (individual / team / company / public), so spam is invisible
+      without blocking writes.
+- [ ] Public frontier = a seeded, growing curated follow-set, extended by a curator glance,
+      never a precondition to publish.
+- [ ] Reads: edge rate-limit + hard Cosmos RU/budget ceiling (bounded 429s under flood).
+- [ ] The skill hides all of it: "share my result" / "my team" / "the public frontier", never
+      npub / relay / follow / kind.
+- [ ] Personal `/me` reports: own-relay or a per-key personal tenant, still one step to share.

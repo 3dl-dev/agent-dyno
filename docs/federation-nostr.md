@@ -66,26 +66,29 @@ projects paid for confidentiality we do not need.
   npubs are free, and that reproduction-as-cost is exactly Tier 3
   (`dontguess/docs/design/convergence-sybil-defense.md`).
 
-## The public relay is read-open, write-curated (and that is correct)
+## Open sharing, follow-curated views (ignition first)
 
-The public relay (`relay.3dl.network`) admits writes by allowlist. This is not a problem to
-work around, it is the curated-public-frontier invariant enforced at the wire:
+The public frontier only ignites if anyone can share in one step and see themselves against a
+frontier immediately. So the posture is OPEN writes, not an allowlist. Curation, and spam
+resistance, live at the VIEW, not the wire:
 
-- **Reads are open.** Anyone folds the public board with no key; `vibrant.3dl.dev` needs no
-  identity to render.
-- **Only the curator writes the public board.** Exactly one key is admitted: the 3dl frontier
-  owner key. The public frontier is 3dl's board, curated (`governance.md`), so curation
-  happens at write, which is also the sybil tax: a free npub cannot flood a locked relay.
-- **Contributors reach the public board through curation, unchanged.** They submit (a PR with
-  a Tier-2/3 proof, or publish to their own relay) and 3dl republishes the accepted aggregate
-  to the board with its admitted key. The only change from the file era is the publish target.
-- **Teams never touch the public relay.** A team runs its own relay (open or its own
-  allowlist), publishes and folds there; `vibrant-federate` takes any `--relay`. No dependency
-  on the 3dl relay's policy.
+- **Anyone publishes their aggregate, in one step.** No grant, no admission. The skill signs
+  and publishes; the user just said "share my result". Nothing may block this path.
+- **A view folds a follow-set, so spam is invisible.** You see the frontier of whom you (or
+  your team) follow. A garbage aggregate under a fresh key is in nobody's follow-set, so it
+  never renders, no write gate required. Curate the view, not the write.
+- **Grouping IS following.** Individual = fold yourself; team = the team follow-set; company =
+  the company follow-set; public = a seeded, growing curated public set. One mechanism,
+  arbitrary grouping. Public vs private RELAY is an orthogonal transport choice, not the group.
+- **Cost stays bounded without friction:** addressable events (one per shape per author,
+  replaced) bound per-author storage; a seconds-long NIP-13 proof-of-work on publish prices out
+  floods while a real sharer never notices it; reads sit behind an edge rate-limit and a hard
+  RU/budget ceiling. See `public-relay-cost-and-abuse.md`.
 
-An open public relay would be the actual bug: unbounded self-publish is the permissionless
-spam/sybil problem the sibling projects deferred. Locked write plus open read is the design
-working, and it means only the single curator key ever needs admission.
+The earlier draft of this note made the public relay write-curated (curator-only) and called
+that the anti-abuse win. That was backwards: it minimized abuse by minimizing sharing, which
+minimizes the project. The correction is trivial sharing plus a curated view. And none of the
+vocabulary, npub, relay, follow, kind, ever reaches a user; the skill hides all of it.
 
 ## The one real tension
 
