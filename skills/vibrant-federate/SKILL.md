@@ -1,7 +1,7 @@
 ---
 name: vibrant-federate
-description: Publish your anonymized Vibrant frontier over the live Nostr mesh, or start / view a team board, with no command line for you. You (the agent) mint the identity, produce the aggregate, sign it, publish it, and confirm it, all in this session. The operator only answers questions (which relay, which board); they never run a command or install anything. Use for "share my frontier live", "set up a team leaderboard", "publish to our Nostr board", or "view the team board".
-argument-hint: [contribute | start-board | grant <member-pubkey> | view] [--relay <ws-url>] [--board <30301:owner:d>]
+description: Share your anonymized efficiency result to a frontier and see how you compare, or set up a shared frontier for a team, with no command line and nothing to install. You (the agent) handle the identity, the publishing, and the grouping in this session; the operator only chooses what to share and with whom. Use for "share my result", "compare to others", "set up our team frontier", or "put my report on the web".
+argument-hint: [share | start-team | add-member | view] [a group or host, optional]
 ---
 
 # Vibrant federate (live mesh, zero command line)

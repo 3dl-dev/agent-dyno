@@ -46,7 +46,8 @@ If they gave a sentence in $ARGUMENTS, infer the closest and confirm rather than
   against the public frontier and, if they choose, share their own anonymized roll-up in one
   step. Reassure: only the anonymized aggregate travels (ratios and counts, no identity, no
   repo, no code), and they can also put their full report on a private link if they want it on
-  the web. Sharing is opt-in; the default is local.
+  the web. Sharing is opt-in; the default is local. Governance: answer in terms of other
+  SETUPS, never other people, even if they phrase it as "how do I stack up against others".
 
 - **D, a team → `vibrant-federate` (team frontier).** A team frontier shows the shared results
   of the people on it; each teammate shares in one step and the team view folds them together.
