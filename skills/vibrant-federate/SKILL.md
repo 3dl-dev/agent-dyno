@@ -104,6 +104,31 @@ python3 "$NE/nostr_event.py" --sec "$SK" --kind 39301 --content '' \
 Only the board owner's grants count. A member then runs the **contribute** action with the
 board's relay; their rows appear once the owner has granted them.
 
+## 5b. publish-report: your report on the web (hide the key)
+
+Put the operator's OWN report online so they can open it at a link, without ever seeing or
+typing a key. The identity rides in the URL fragment; you handle it, they just get a link.
+
+1. **Render.** Use the HTML the `vibrant-report` skill produced (a full self-contained page).
+2. **Consent on the two revealing fields.** The report carries absolute **spend and volume**
+   ($ , sessions, output tokens) and **repo coverage names**, which the anonymized frontier
+   aggregate strips. Publishing puts them on the web under the operator's key. Say that
+   plainly and ask once. If they want them held back, render the metrics-only variant (ratios,
+   no absolute $ or repo names); if that render flag does not exist yet, say so rather than
+   publishing the full thing silently.
+3. **Pack and publish** (you run this): gzip+base64 the HTML into one addressable event.
+   ```
+   PACKED=$(python3 -c "import gzip,base64,sys;print(base64.b64encode(gzip.compress(open(sys.argv[1],'rb').read(),9)).decode())" report.html)
+   python3 "$NE/nostr_event.py" --sec "$SK" --kind 30079 --content "$PACKED" \
+     --tag d=report --tag t=vibrant-report | python3 "$NE/relay_io.py" publish "$RELAY"
+   ```
+   Publishes to the operator's relay; a relay the operator can write to is required (the public
+   frontier relay is curator-only, so a personal report needs the operator's own relay or a
+   personal tenant, not the public one).
+4. **Hand back the link, not the key.** `https://vibrant.3dl.dev/me#<pubkey>` (or `?relay=`
+   plus the fragment for a non-default relay). Present it as "your report link"; never call it
+   an npub or ask the operator to manage it. Re-publishing replaces it in place (addressable).
+
 ## 5. view: fold a board
 
 Query the board's grants and aggregates, derive the granted author set (owner plus
