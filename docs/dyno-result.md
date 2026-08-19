@@ -24,11 +24,36 @@ tokens, because the fan-out spent tokens on coordination (two workers each re-re
 that a small task does not repay.
 
 So for a task this size, solo is genuinely the thriftier engine, confirmed on identical terrain,
-not because it was handed easier work. This is the opposite direction of the observational
-artifact and exactly why the dynamometer is the arbiter: it answers per difficulty. The
-inversion (a large, decomposable task where fan-out's throughput repays its overhead) is the
-next run: add a heavier task to the suite and the ordering is expected to flip. A single small
-task settles the small-task regime; a suite spanning sizes maps where each engine wins.
+not because it was handed easier work.
+
+## The suite: does fan-out ever repay its overhead? (a larger task)
+
+Added a larger, genuinely decomposable task, five independent modules (roman/unroman, RLE,
+Levenshtein, RFC-4648 base32) behind one combined test, run through both engines from the same
+spec (fixed functional cargo, both passed the identical check):
+
+| task | engine | tokens to a passing result | wall-clock | check |
+|------|--------|---------------------------:|-----------:|:-----:|
+| small (1 module) | solo | 28,214 | 18s | pass |
+| small | workflow (2 workers) | 33,512 (+19%) | 31s | pass |
+| large (5 modules) | solo | 32,086 | 51s | pass |
+| large | workflow (5 workers) | 42,727 (+33%) | 152s | pass |
+
+There is no inversion; the opposite happened. For the same passing result, the fan-out engine
+spent more tokens at BOTH sizes, and its overhead GREW with breadth (+19% at 2 workers, +33% at
+5), because each worker carries its own context cost and the orchestrator pays to integrate.
+It was also slower in wall-clock here and wrote more code for the same functional cargo.
+
+## What the suite settles
+
+On a FIXED task, orchestration does not win on per-token efficiency at any size we ran; its
+coordination cost scales with fan-out. This confirms, by controlled experiment, the cargo /
+scope-vs-efficiency finding (`claims.md`, X6): coordinating an orchestration multiplies token
+consumption without a per-token gain. The reason to orchestrate is CARGO, throughput and scope,
+work that will not fit one head or spans many independent tasks running in parallel wall-clock,
+not thrift. A fixed-cargo dynamometer measures thrift and correctly shows solo winning; it does
+not and should not reward throughput. That is exactly why the report reads efficiency and cargo
+as separate axes and the recommender conditions on cargo, never ranking on raw efficiency.
 
 ## Reproducing it
 

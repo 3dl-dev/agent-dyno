@@ -56,5 +56,5 @@ Two channels, same content:
 - [x] Measurement validity closed on real data (real ground truth + the selection confound
       named from the operator's own numbers; the dyno is the fixed-task arbiter).
 - [x] Package `skills/` as a `.claude-plugin` marketplace (one `/plugin install vibrant`), tools vendored.
-- [ ] A dynamometer task suite spanning sizes (map where each engine wins, not just small).
+- [x] Dynamometer suite spanning sizes: solo wins per-token efficiency at every size on a fixed task; orchestration's payoff is cargo/scope, not thrift (docs/dyno-result.md).
 - [ ] End-to-end wizard walkthrough graded in a clean session (the next ouroboros).
