@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your Vibrant report</title>
+<style>
+  :root{ --bg:#f4f3ee; --ink:#16181c; --muted:#797e88; --accent:#1f8f7a; }
+  @media (prefers-color-scheme: dark){ :root{ --bg:#0e0f0d; --ink:#f0f1ec; --muted:#8c9184; --accent:#6fd6c9; } }
+  *{box-sizing:border-box} html,body{margin:0;height:100%;background:var(--bg)}
+  #report{border:0;width:100%;height:100vh;display:none;background:var(--bg)}
+  #state{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    padding:32px;background:var(--bg);color:var(--muted);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  #state .box{max-width:34rem;text-align:center}
+  #state .mark{display:inline-flex;gap:4px;margin-bottom:18px}
+  #state .mark i{width:9px;height:15px;background:var(--accent);opacity:.85;
+    clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)}
+  #state h1{font-size:22px;color:var(--ink);margin:0 0 10px;letter-spacing:-.01em}
+  #state p{font-size:15px;line-height:1.6;margin:0 0 8px}
+  #state code{font-family:ui-monospace,Menlo,monospace;font-size:.9em;background:rgba(127,127,127,.14);
+    padding:2px 7px;border-radius:6px;color:var(--ink)}
+  #state a{color:var(--accent)}
+  .spin{width:26px;height:26px;border:3px solid rgba(127,127,127,.25);border-top-color:var(--accent);
+    border-radius:50%;animation:s 0.9s linear infinite;margin:0 auto 18px}
+  @keyframes s{to{transform:rotate(1turn)}}
+  @media (prefers-reduced-motion:reduce){.spin{animation:none}}
+</style>
+</head>
+<body>
+<iframe id="report" title="Your Vibrant report" sandbox="allow-scripts"></iframe>
+<div id="state"><div class="box">
+  <span class="mark"><i></i><i></i><i></i></span>
+  <div class="spin" id="spin"></div>
+  <h1 id="st-title">Loading your report&hellip;</h1>
+  <p id="st-msg">Folding it from the mesh. Waking the relay can take a moment.</p>
+</div></div>
+<script>
+// Your report on the web: the identity is in the URL fragment (your key, handled for you by
+// the vibrant-report skill, never something you type). We fold your latest report event,
+// unpack it (gzip+base64 of the HTML the report skill rendered), and show it in an isolated
+// iframe so its own styles and interactions work untouched. A hosted build bakes the relay.
+var DEFAULT_RELAY = "wss://relay.3dl.network";
+var q = new URLSearchParams(location.search);
+var relay = q.get("relay") || DEFAULT_RELAY;
+var pubkey = (location.hash || "").replace(/^#/, "").trim().toLowerCase();
+
+function setState(title, msg, spin){
+  document.getElementById("st-title").innerHTML = title;
+  document.getElementById("st-msg").innerHTML = msg;
+  document.getElementById("spin").style.display = spin ? "" : "none";
+}
+function show(html){
+  var f = document.getElementById("report");
+  f.srcdoc = html; f.style.display = "block";
+  document.getElementById("state").style.display = "none";
+}
+async function unpack(b64){
+  var bin = Uint8Array.from(atob(b64), function(c){ return c.charCodeAt(0); });
+  var ds = new DecompressionStream("gzip");
+  var stream = new Response(new Blob([bin]).stream().pipeThrough(ds));
+  return await stream.text();
+}
+function foldReport(url, pk){ return new Promise(function(resolve, reject){
+  var ws = new WebSocket(url), got = null, done = false;
+  var timer = setTimeout(finish, 15000);
+  function finish(){ if(done) return; done = true; clearTimeout(timer);
+    try{ ws.close(); }catch(e){} got ? resolve(got) : reject(new Error("no report")); }
+  ws.onopen = function(){ ws.send(JSON.stringify(["REQ","r",
+    {kinds:[30079], authors:[pk], "#t":["vibrant-report"], limit:1}])); };
+  ws.onmessage = function(m){ var d; try{ d = JSON.parse(m.data); }catch(e){ return; }
+    if(d[0]==="EVENT" && d[1]==="r" && d[2] && d[2].content) got = d[2].content;
+    else if(d[0]==="EOSE" && d[1]==="r") finish(); };
+  ws.onerror = function(){ reject(new Error("relay error")); };
+});}
+
+if(!/^[0-9a-f]{64}$/.test(pubkey)){
+  setState("No report in this link",
+    "This page shows a personal Vibrant report. Run the <code>vibrant-report</code> skill and "
+    + "ask it to publish your report; it hands you your own link. "
+    + "<a href=\"/\">See the public frontier instead &rarr;</a>", false);
+} else if(!relay){
+  setState("This build has no relay configured",
+    "Add <code>?relay=wss://&hellip;</code> to the URL, or use the link the skill gave you.", false);
+} else {
+  foldReport(relay, pubkey)
+    .then(unpack)
+    .then(show)
+    .catch(function(){
+      setState("No report found yet",
+        "Nothing has been published for this identity on the relay yet. Run "
+        + "<code>vibrant-report</code> and publish, then reopen this link. "
+        + "<a href=\"/\">Public frontier &rarr;</a>", false);
+    });
+}
+</script>
+</body>
+</html>
