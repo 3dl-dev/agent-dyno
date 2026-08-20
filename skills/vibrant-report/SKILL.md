@@ -157,6 +157,26 @@ identities, repo names, or code) that the operator can PR into
 `frontier/reference-frontier.json`. Follow `skills/vibrant-contribute/SKILL.md`.
 Never submit without explicit consent.
 
+## 6. See yourself on the public frontier (no upload)
+
+After the number, offer the operator a link that drops THEM onto the public frontier map at
+`vibrant.3dl.dev`, so they see where they sit against everyone else. Nothing is uploaded: their
+vector rides in the URL fragment and is read client-side only.
+
+Build it from `report.json`. Take the operator's dominant engine: the entry in
+`vector_by_engine` with the most `surv_kb` (their center of gravity). Read that entry's
+`engine`, `d_per_survkb`, `survkb_per_outmtok`, `waste_pct`, `cache_read_pct`, and format:
+
+```
+https://vibrant.3dl.dev/#you=<engine>,<d_per_survkb:.2f>,<survkb_per_outmtok:.0f>,<waste_pct:.0f>,<cache_read_pct:.1f>
+```
+
+For example, a delegate-heavy operator: `https://vibrant.3dl.dev/#you=delegate,2.54,82,54,97.6`.
+Hand it over plainly: "See where you land on the public frontier (nothing uploaded): <link>".
+Only the four public axes travel in the link; never put dollars, session counts, or repo names
+in it. This is opt-in curiosity, not a contribution; sharing your result to the board is the
+separate `vibrant-federate` step.
+
 ## Deferred (not yet turn-key)
 
 The git-side per-engine survival cut (which engine's *committed* lines lasted, by
