@@ -122,7 +122,7 @@ same pipe. The surface stays one number; everything else is depth you descend in
 5. The **git<->session join** is the shared unlock: it makes the topline exact
    (scope tokens to the measured repos' sessions) and lets the git-side work units
    (complexity, changes) be sliced by model/effort. `core/horizon_attribute.py`
-   already matches commits to sessions by project + time; leverage it, do not
+   already matches commits to sessions by project + time; use it, do not
    hand-roll project-name matching.
 
 ## The plan: items 1-5 (DONE)

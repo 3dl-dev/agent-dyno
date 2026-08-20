@@ -144,6 +144,6 @@ if(m){var f=decodeURIComponent(m[1]).split(',');if(f.length>=5&&LAB[f[0]]){dropY
 })();
 </script>"""
 
-page="<!doctype html><html data-theme=dark><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><meta name=color-scheme content=dark><title>Vibrant, the public frontier</title>"+CSS+extra+"</head><body>"+body+js+youjs+"</body></html>"
+page="<!doctype html><html data-theme=dark><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><meta name=color-scheme content=dark><title>Vibrant, the public frontier</title><meta property='og:title' content='Vibrant, the efficiency frontier'><meta property='og:description' content='Are you team Delegate or team Workflow? Surviving work per token, from your own logs.'><meta property='og:image' content='https://vibrant.3dl.dev/og.png'><meta property='og:url' content='https://vibrant.3dl.dev'><meta name='twitter:card' content='summary_large_image'>"+CSS+extra+"</head><body>"+body+js+youjs+"</body></html>"
 open("frontier_page4.html","w").write(page)
 print("wrote frontier_page4.html", len(page))

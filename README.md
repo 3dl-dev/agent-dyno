@@ -5,6 +5,10 @@ that lasts. It reads your own logs and your git history, on your machine, and gi
 you one number, your worst bottleneck, and the single change most likely to move
 it. Nothing leaves your machine unless you choose to share it.
 
+See the public frontier, and where your own setup would land, at
+**[vibrant.3dl.dev](https://vibrant.3dl.dev)**: pick your team, then run the report to
+drop yourself onto the map.
+
 ## Use it
 
 In Claude Code, add the marketplace and install the plugin:
@@ -14,32 +18,28 @@ In Claude Code, add the marketplace and install the plugin:
 /plugin install vibrant@vibrant
 ```
 
-Then measure your setup:
+Then just ask. "How efficient is my coding setup?" or "am I wasting tokens?" The wizard
+works out what you need, measures your own Claude Code logs and git history, and writes
+three files: `report.md`, `report.html`, and `report.json`. The first run fetches Vibrant
+onto your machine and checks the install; after that it just measures. It runs on the Python
+standard library, no other install and no keys. Nothing is uploaded.
 
-```
-/vibrant:run
-```
+Not sure where to start? Ask the wizard. It can measure you, settle solo-versus-orchestration
+on one real task, share your result to a frontier, or set up a shared frontier for your team.
 
-It reads your local Claude Code logs and your git history for the repos you code in,
-and writes three files: `report.md`, `report.html`, and `report.json`. On first use
-it fetches Vibrant onto your machine and checks the install; after that it just
-measures. It runs on the Python standard library, with no other install and no keys.
-Nothing is uploaded.
-
-When you want to share a result, `/vibrant:contribute` drafts an anonymized entry
-(engine fingerprint and numbers only, no code or identities) and adds it to a
-frontier you choose, or prints the pull request for you to open. Publishing is
-always a separate, deliberate step.
+To share a result, ask to contribute: it drafts an anonymized entry (engine fingerprint and
+numbers only, no code or identities) and adds it to a frontier you choose, or prints the pull
+request for you to open. Publishing is always a separate, deliberate step.
 
 ## What you get
 
 `report.md` is the whole surface. It opens with one number:
 
 ```
-# Your setup: 382.35 functionality per Mtok output
+# Your setup: 257 durable shipped changes per Mtok output
 
-Larger is better. Surviving decision-logic (a complexity proxy) per million tokens
-the model generated, over 4 sessions. Change failure rate 50.0% (DORA).
+Larger is better. Units of work (non-reverted commits) that landed and still survive at
+HEAD, per million tokens the model generated, over 204 sessions. Change failure rate 13% (DORA).
 ```
 
 Under the number sits your biggest lever: the single change most likely to raise
