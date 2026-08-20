@@ -3,25 +3,24 @@ sys.path.insert(0, "/home/baron/projects/agent-dyno/skills/vibrant-report")
 import vibrant_report as vr
 
 # Two pages, one design language (vibrant_report._CSS):
-#   index.html  = the LIVE public frontier. It folds the board from nostr in the browser
-#                 (kind-30078 aggregates, board-gated by the owner's 39301 grants) and renders
-#                 the frontier map + a live standings table + a frontier-best hero. Falls back
-#                 to the seed if the relay is unreachable. #you=... personalizes the header.
-#                 #board=/#follows= override what is folded (team/individual views).
-#   sample.html = the full report (render_html), so a visitor can see what their OWN report
-#                 looks like, one click from the frontier. Clearly labeled a sample.
-# Theme follows the viewer's system on both.
+#   index.html  = the LIVE public frontier, TWO COLUMN (one column on mobile). Left: the live
+#                 board folded from nostr (map + standings + frontier-best hero). Right: the
+#                 rigor, how the measure works, what was tested, the sources and analyses
+#                 integrated, and how to run it yourself (plugin OR a bare git clone). So the
+#                 picture is never opaque: the method sits beside it.
+#   sample.html = the full report (render_html), one click away, labeled a sample.
+# Both theme-aware (system); html+body themed so no white band.
 
 REPORT_SRC = "report_land_b.json"
 rep = json.load(open(REPORT_SRC))
 
 DEFAULT_RELAY = "wss://relay.3dl.network"
 DEFAULT_BOARD = "30301:28e74283793831aa1563ef0ad0f21bbc8ca51f1e7b63ff71bd14a6b6fd0a31ee:public"
+BLOB = "https://github.com/3dl-dev/vibrant/blob/main/"
 
 TERR = {"solo": "#6fa0c6", "delegate": "#c9a06a", "workflow": "#a98bd0"}
 LABEL = {"solo": "Solo", "delegate": "Delegate", "workflow": "Workflow"}
 
-# seed fallback (mirrors frontier/reference-frontier.json), used only if the relay is down
 SEED = {"entries": [
     {"engine": "solo", "vector": {"dollars_per_survkb": 1.31, "survkb_per_outmtok": 115, "waste_pct": 9.0, "cache_read_pct": 98.6}, "samples": 74, "harness": "claude-code", "horizon": "session"},
     {"engine": "delegate", "vector": {"dollars_per_survkb": 1.36, "survkb_per_outmtok": 145, "waste_pct": 29.5, "cache_read_pct": 97.7}, "samples": 78, "harness": "claude-code", "horizon": "session"},
@@ -32,9 +31,7 @@ som = rep["rig_space"]["som"]
 map_svg = vr.render_civ_map(som, svg_id="map-civ", compact=True)
 legend = "".join(f'<span><i style="background:{TERR[e]};border-color:{TERR[e]}"></i>{LABEL[e]}</span>' for e in TERR)
 
-# ---------------------------------------------------------------------------------
-# sample.html: the full report, labeled a sample, with a link back to the frontier.
-# ---------------------------------------------------------------------------------
+# ---- sample.html: the full report, labeled a sample, link back to the frontier ----
 sample = vr.render_html(rep)
 SAMPLE_HEAD = (
     "<meta property='og:title' content='Vibrant, a sample report'>"
@@ -55,57 +52,58 @@ sample = sample.replace("<title>Vibrant: your efficiency over time</title>",
                         "<title>Vibrant, a sample report</title>", 1)
 open("sample.html", "w").write(sample)
 
-# ---------------------------------------------------------------------------------
-# index.html: the live public frontier.
-# ---------------------------------------------------------------------------------
+# ---- index.html: the live frontier, two column ----
 CSS = "<style>" + vr._CSS + "</style>" + vr._WALK_CSS
 EXTRA = (
     "<style>"
     "html,body{margin:0;min-height:100%;background:#f4f3ef;}"
     "@media (prefers-color-scheme:dark){html:not([data-theme=light]),html:not([data-theme=light]) body{background:#141412;}}"
-    ".vibrant .frontier-intro{text-align:left;padding:2px 2px 22px;margin:0 0 22px;border-bottom:1px solid var(--line);}"
-    ".vibrant .frontier-intro .fe{font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:var(--rust);}"
-    ".vibrant .frontier-intro h1{font-size:clamp(22px,3.4vw,32px);font-weight:800;letter-spacing:-.02em;line-height:1.14;margin:10px 0 12px;max-width:24ch;color:var(--ink);text-wrap:balance;}"
-    ".vibrant .frontier-intro p{font-size:14.5px;color:var(--ink2);max-width:62ch;margin:0 0 16px;line-height:1.55;}"
-    ".vibrant .run{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;max-width:62ch;}"
-    ".vibrant .run-h{font-size:10.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0 0 9px;}"
-    ".vibrant .run-steps{list-style:decimal;margin:0;padding:0 0 0 20px;display:flex;flex-direction:column;gap:7px;font-size:13.5px;color:var(--ink2);}"
-    ".vibrant .run code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:2px 7px;color:var(--ink);}"
-    ".vibrant .run b{color:var(--ink);font-weight:650;}"
+    # widen the page for two columns and left-align it (not the centered 760 report column)
+    ".vibrant{max-width:1140px;}"
+    ".vibrant .frontier-head{text-align:left;padding:2px 2px 22px;margin:0 0 22px;border-bottom:1px solid var(--line);}"
+    ".vibrant .frontier-head .fe{font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:var(--rust);}"
+    ".vibrant .frontier-head h1{font-size:clamp(24px,3.6vw,36px);font-weight:800;letter-spacing:-.02em;line-height:1.12;margin:10px 0 12px;max-width:26ch;color:var(--ink);text-wrap:balance;}"
+    ".vibrant .frontier-head p{font-size:15px;color:var(--ink2);max-width:70ch;margin:0;line-height:1.55;}"
+    ".vibrant .fgrid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:40px;align-items:start;}"
+    "@media (max-width:860px){.vibrant .fgrid{grid-template-columns:1fr;gap:30px;}}"
     ".vibrant .civ-wrap{position:relative;margin:8px 0 4px;}"
     ".vibrant .civ-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:12.5px;font-weight:650;color:var(--ink2);}"
     ".vibrant .civ-legend span{display:inline-flex;align-items:center;gap:6px;}"
     ".vibrant .civ-legend i{width:9px;height:9px;border-radius:2px;display:inline-block;flex:none;border:1px solid;}"
-    ".vibrant h2.sec{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:30px 0 12px;font-weight:800;}"
+    ".vibrant h2.sec{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:26px 0 12px;font-weight:800;}"
+    ".vibrant h2.sec:first-child{margin-top:0;}"
     ".vibrant .edot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:8px;vertical-align:middle;}"
     ".vibrant td.best{color:var(--good);font-weight:750;}"
     ".vibrant td.best::after{content:'';display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--good);margin-left:6px;box-shadow:0 0 7px var(--good);vertical-align:middle;}"
     ".vibrant .pareto{font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--good);border:1px solid var(--good);border-radius:999px;padding:1px 6px;margin-left:7px;}"
-    ".vibrant tr.you-row td{background:color-mix(in srgb,var(--rust) 12%,transparent);}"
-    ".vibrant .youtag{font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--rust);border:1px solid var(--rust);border-radius:999px;padding:1px 6px;margin-left:7px;}"
     ".vibrant .ctxline{font-size:12.5px;color:var(--muted);margin:12px 2px 0;line-height:1.5;}"
-    ".vibrant .seelink{font-size:13.5px;margin:22px 2px 0;}"
+    # the method / rigor column
+    ".vibrant .mblock{margin:0 0 20px;}"
+    ".vibrant .mblock .mh{font-size:14px;font-weight:750;color:var(--ink);margin:0 0 5px;letter-spacing:-.01em;}"
+    ".vibrant .mblock p{font-size:13.5px;color:var(--ink2);line-height:1.55;margin:0 0 8px;}"
+    ".vibrant .mblock ul{margin:6px 0 8px;padding-left:18px;font-size:13px;color:var(--ink2);line-height:1.5;}"
+    ".vibrant .mblock ul li{margin:0 0 5px;}"
+    ".vibrant .mblock b{color:var(--ink);font-weight:650;}"
+    ".vibrant .verdict{font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:0 5px;border-radius:4px;margin-left:3px;}"
+    ".vibrant .verdict.ok{color:var(--good);border:1px solid color-mix(in srgb,var(--good) 55%,transparent);}"
+    ".vibrant .verdict.no{color:var(--down);border:1px solid color-mix(in srgb,var(--down) 55%,transparent);}"
+    ".vibrant .refs a,.vibrant .mblock a{color:var(--accent);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--accent) 30%,transparent);}"
+    ".vibrant .mblock pre{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 13px;font-size:12px;line-height:1.5;color:var(--ink2);overflow-x:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:8px 0;}"
+    ".vibrant .mblock code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;background:var(--surface);border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:var(--ink);}"
+    ".vibrant .seelink{font-size:13.5px;margin:8px 2px 0;}"
     ".vibrant .seelink a{color:var(--accent);font-weight:650;text-decoration:none;}"
     "</style>")
 
-INTRO = (
-    '<div class="frontier-intro"><div class="fe" id="fe">Public frontier &middot; live</div>'
+HEAD = (
+    '<div class="frontier-head"><div class="fe" id="fe">Public frontier &middot; live</div>'
     '<h1 id="h1">Where each rig style lands on surviving work per token.</h1>'
     '<p id="lede">Folded live from the shared board: surviving work per token, by engine, '
-    'contributor-owned and anonymized. No single rank, read the vector. Run it on your own logs '
-    'to add yours.</p>'
-    '<div class="run"><div class="run-h">Run it in Claude Code</div>'
-    '<ol class="run-steps">'
-    '<li><code>/plugin marketplace add 3dl-dev/vibrant</code></li>'
-    '<li><code>/plugin install vibrant@vibrant</code></li>'
-    '<li>Then just ask: <b>"How efficient is my coding setup?"</b></li>'
-    '</ol></div></div>')
+    'contributor-owned and anonymized. No single rank, read the vector. The method is on the '
+    'right, so the picture is not a black box.</p></div>')
 
-BODY = (
-    '<div class="vibrant"><div class="card">'
-    '<div class="top"><div class="brand">' + vr._som_mark() + 'VIBRANT</div>'
-    '<div class="meta" id="board-meta">public frontier</div></div>'
-    + INTRO +
+# LEFT column: the live frontier (hero + map + standings)
+LEFT = (
+    '<div class="fcol-left">'
     '<div class="combined" id="focal"></div>'
     '<div class="civ-wrap">' + map_svg + '<div class="civ-tip" id="civ-tip"></div>'
     '<div class="civ-legend">' + legend + '</div></div>'
@@ -115,17 +113,71 @@ BODY = (
     '<div class="ctxline" id="context">Loading the frontier...</div>'
     '<div class="seelink"><a href="sample.html">See a full sample report &rarr;</a>'
     '  what you get when you run it on your own setup.</div>'
+    '</div>')
+
+# RIGHT column: the rigor
+RIGHT = (
+    '<div class="fcol-right">'
+    '<h2 class="sec">How this is measured</h2>'
+    '<div class="mblock"><div class="mh">Surviving work per token</div>'
+    '<p>The numerator is a git measurement: lines you shipped that still live at HEAD, not '
+    'reverted, rebuilt, or later bug-fixed, read at a horizon. It is the same for a human, '
+    'Claude Code, or any agent. The denominator is priced tokens: input, output, and cache '
+    'differ in price by about 20x, so they are counted and costed separately.</p></div>'
+    '<div class="mblock"><div class="mh">The rig fingerprint</div>'
+    '<p>Every setup is placed in a rig-space by a self-organizing map: topology, model routing, '
+    'reasoning effort, review regime. The map on the left is that space; the territories are '
+    'engine styles. Efficiency is a vector, never one grade, because the winner on one axis '
+    'rarely wins another.</p></div>'
+    '<div class="mblock"><div class="mh">What we tested</div>'
+    '<p>Vibrant keeps a claims register: standing hypotheses re-checked every measurement '
+    'window. A sample of the verdicts, from one operator\'s real logs:</p>'
+    '<ul>'
+    '<li><b>Cost is O(reads)</b><span class="verdict ok">confirmed</span> reads about 85% of spend.</li>'
+    '<li><b>Solo is cheapest per surviving-KB</b><span class="verdict ok">supported</span></li>'
+    '<li><b>Orchestrator to cheap-worker is N x cheaper</b><span class="verdict no">refuted</span> same cost, more waste.</li>'
+    '<li><b>A cross-family model switch repays full prefill</b><span class="verdict ok">confirmed</span></li>'
+    '<li><b>The raw efficiency ranking is real thrift</b><span class="verdict no">refuted</span> it is a task-difficulty selection artifact: efficiency = survival-rate x production-rate.</li>'
+    '</ul>'
+    '<p>To remove that confound, the <b>dynamometer</b> runs one fixed task across engines: '
+    'orchestration multiplies token consumption for the same passing result. Its payoff is '
+    'scope, not thrift.</p></div>'
+    '<div class="mblock"><div class="mh">Engines, never people</div>'
+    '<p>It ranks engine craft, never individuals, and never against product outcomes. Product '
+    'success is an unpredictable bet; measuring people against it is the regime this project '
+    'exists to prevent. Your numbers are yours; contributions are opt-in and anonymized.</p></div>'
+    '<div class="mblock"><div class="mh">Sources and analyses</div>'
+    '<ul class="refs">'
+    f'<li><a href="{BLOB}docs/protocol.md">Protocol</a> and <a href="{BLOB}docs/governance.md">governance</a>: the measure, and the constitution behind it.</li>'
+    f'<li><a href="{BLOB}docs/claims.md">Claims register</a>: every hypothesis, its metric, and its verdict (C1 to C14, review claims R1 to R6, external X1 to X8).</li>'
+    f'<li><a href="{BLOB}docs/dyno-result.md">Dynamometer result</a>: the fixed-task solo versus orchestration experiment.</li>'
+    f'<li><a href="{BLOB}docs/federation-nostr.md">Federation</a>: how anonymized aggregates travel (Nostr NIP-01 events, NIP-13 proof-of-work, BIP-340 signatures).</li>'
+    '<li>Anthropic, <a href="https://www.anthropic.com/research">Optimizing for cost and intelligence</a> and <a href="https://www.anthropic.com/research">Multi-agent systems</a>: their findings, re-tested against our own git-survival data (claims X1 to X8), never adopted on faith.</li>'
+    '<li><a href="https://dora.dev">DORA</a>: the change-failure-rate definition used in the report.</li>'
+    '</ul></div>'
+    '<div class="mblock"><div class="mh">Run it yourself</div>'
+    '<p>In Claude Code, install the plugin and just ask:</p>'
+    '<pre>/plugin marketplace add 3dl-dev/vibrant\n/plugin install vibrant@vibrant\n"How efficient is my coding setup?"</pre>'
+    '<p>Or clone the repo and run it directly, no plugin:</p>'
+    '<pre>git clone https://github.com/3dl-dev/vibrant\ncd vibrant\npython3 adapters/claude-code/snapshot.py --out snapshots\npython3 skills/vibrant-report/vibrant_report.py \\\n  --snapshot snapshots/&lt;dated-dir&gt; --repos auto --out out\n# then open out/report.html</pre>'
+    '<p>Python 3 standard library only, nothing to install, nothing uploaded. The first '
+    'snapshot reads all your logs and can take a few minutes; later runs reuse it.</p></div>'
+    '</div>')
+
+BODY = (
+    '<div class="vibrant"><div class="card">'
+    '<div class="top"><div class="brand">' + vr._som_mark() + 'VIBRANT</div>'
+    '<div class="meta" id="board-meta">public frontier</div></div>'
+    + HEAD +
+    '<div class="fgrid">' + LEFT + RIGHT + '</div>'
     '<div class="foot"><span>vibe-coding rig efficiency</span><span>3dl-dev/vibrant</span></div>'
     '</div></div>')
 
-# JS: fold the board (kind 30078 + owner grants 39301), render standings + frontier-best hero,
-# seed fallback, and #you personalization. Adapted from leaderboard/vibrant.html (proven fold).
 JS = (
     "<script>"
     "var DEFAULT_RELAY=" + json.dumps(DEFAULT_RELAY) + ",DEFAULT_BOARD=" + json.dumps(DEFAULT_BOARD) + ";"
     "var SEED=" + json.dumps(SEED, separators=(",", ":")) + ";"
     "var TERR=" + json.dumps(TERR, separators=(",", ":")) + ",LAB=" + json.dumps(LABEL, separators=(",", ":")) + ";"
-    "var CELLS_YOU=" + json.dumps({f"{c['cell'][0]},{c['cell'][1]}": c.get("engine") for c in som["cell_meaning"] if c.get("engine") in TERR}, separators=(",", ":")) + ";"
     "var AXES=[['dollars_per_survkb','lo'],['survkb_per_outmtok','hi'],['waste_pct','lo'],['cache_read_pct','hi']];"
     "function ecol(e){return TERR[e]||'var(--muted)';}"
     "function fold(url,board){return new Promise(function(res,rej){"
@@ -155,18 +207,16 @@ JS = (
     "function dom(a,b){var ge=true,gt=false;AXES.forEach(function(ax){var k=ax[0],dir=ax[1],av=+a.vector[k],bv=+b.vector[k];"
     "if(dir==='lo'){if(av>bv)ge=false;if(av<bv)gt=true;}else{if(av<bv)ge=false;if(av>bv)gt=true;}});return ge&&gt;}"
     "es=es.slice().sort(function(a,b){return (+b.vector.survkb_per_outmtok)-(+a.vector.survkb_per_outmtok);});"
-    "var youeng=(window._youEngine||null);"
     "var rows=es.map(function(e){var pareto=!es.some(function(o){return o!==e&&dom(o,e);});"
     "function cell(k){var v=+e.vector[k],b=Math.abs(v-best[k])<1e-9;return '<td class=\"num'+(b?' best':'')+'\">'+fmt(k,v)+'</td>';}"
-    "var isyou=youeng&&e.engine===youeng&&e._you;"
-    "return '<tr class=\"'+(isyou?'you-row':'')+'\" style=\"--ec:'+ecol(e.engine)+'\">'"
+    "return '<tr style=\"--ec:'+ecol(e.engine)+'\">'"
     "+'<td><span class=\"edot\" style=\"background:'+ecol(e.engine)+'\"></span><b style=\"color:'+ecol(e.engine)+'\">'+(LAB[e.engine]||e.engine)+'</b>'"
-    "+(pareto?'<span class=\"pareto\">frontier</span>':'')+(isyou?'<span class=\"youtag\">you</span>':'')+'</td>'"
+    "+(pareto?'<span class=\"pareto\">frontier</span>':'')+'</td>'"
     "+cell('dollars_per_survkb')+cell('survkb_per_outmtok')+cell('waste_pct')+cell('cache_read_pct')"
     "+'<td class=\"num meta\">'+(e.samples||'')+'</td></tr>';}).join('');"
     "document.getElementById('rows').innerHTML=rows;"
     "var top=es[0];if(top)heroFor(top.engine,top.vector,'frontier best');"
-    "document.getElementById('context').textContent=(data.n||es.length)+' shared results on the frontier, contributor-owned and anonymized. A row per rig; the glowing cell leads that axis, the frontier badge means nothing beats it on every axis. Read the vector, not a rank.';"
+    "document.getElementById('context').textContent=(data.n||es.length)+' shared results, contributor-owned and anonymized. The glowing cell leads that axis; the frontier badge means nothing beats it on every axis.';"
     "if(window._applyYou)window._applyYou();}"
     "function heroFor(en,v,note){var f=document.getElementById('focal');"
     "f.innerHTML='<div class=\"topgroup\"><div class=\"cparts\">'"
@@ -176,16 +226,14 @@ JS = (
     "+'</div><div class=\"score-col\"><div class=\"cv\" style=\"color:'+ecol(en)+'\">'+Math.round(v.survkb_per_outmtok)+'</div>'"
     "+'<div class=\"cn\">surviving KB per Mtok, team '+(LAB[en]||en)+' ('+note+')</div>'"
     "+'<div class=\"chint\">the cross-engine comparable; higher is more surviving work per token</div></div></div>';}"
-    # #you: mark the visitor's row + reframe the header (their four axes ride in the link)
     "(function(){var m=/(?:^|#|&)you=([^&]+)/.exec(location.hash||'');if(!m)return;"
     "var f=decodeURIComponent(m[1]).split(',');if(f.length<5||!LAB[f[0]])return;"
-    "var en=f[0],cost=+f[1],eff=f[2],waste=f[3],cache=f[4];window._youEngine=en;"
+    "var en=f[0],cost=+f[1],eff=f[2],waste=f[3],cache=f[4];"
     "window._applyYou=function(){"
     "document.getElementById('fe').textContent='Your result';"
     "document.getElementById('h1').textContent='You are team '+LAB[en]+'.';"
     "document.getElementById('lede').innerHTML='Your rig, from the link: <b>$'+cost.toFixed(2)+'</b> per surviving KB, <b>'+eff+'</b> KB per Mtok, <b>'+waste+'%</b> waste, <b>'+cache+'%</b> cache. Nothing was uploaded, your four numbers ride in the link. Below is the live frontier for context.';"
     "heroFor(en,{dollars_per_survkb:cost,survkb_per_outmtok:eff,waste_pct:waste,cache_read_pct:cache},'you');};})();"
-    # boot: fold the baked board (or #board/#follows override), else seed
     "(function(){var h=new URLSearchParams((location.hash||'').replace(/^#/,''));"
     "var relay=h.get('relay')||DEFAULT_RELAY,board=h.get('board')||DEFAULT_BOARD;"
     "var meta=document.getElementById('board-meta');"
@@ -197,7 +245,7 @@ PAGE = ("<!doctype html><html><head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
         "<title>Vibrant, the public frontier</title>"
         "<meta property='og:title' content='Vibrant, the efficiency frontier'>"
-        "<meta property='og:description' content='Surviving work per token, by engine, folded live from the shared board. Run vibrant-report to add yours.'>"
+        "<meta property='og:description' content='Surviving work per token, by engine, folded live from the shared board. The method and references sit beside the numbers.'>"
         "<meta property='og:image' content='https://vibrant.3dl.dev/og.png'>"
         "<meta property='og:url' content='https://vibrant.3dl.dev'>"
         "<meta name='twitter:card' content='summary_large_image'>"

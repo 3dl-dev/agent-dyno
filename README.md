@@ -24,6 +24,23 @@ three files: `report.md`, `report.html`, and `report.json`. The first run fetche
 onto your machine and checks the install; after that it just measures. It runs on the Python
 standard library, no other install and no keys. Nothing is uploaded.
 
+### Or run it from a clone
+
+No plugin, no wizard, no keys. It is Python 3 standard library, so a clone runs it directly:
+
+```
+git clone https://github.com/3dl-dev/vibrant
+cd vibrant
+python3 adapters/claude-code/snapshot.py --out snapshots
+python3 skills/vibrant-report/vibrant_report.py \
+    --snapshot snapshots/<dated-dir> --repos auto --out out
+# then open out/report.html
+```
+
+The first snapshot reads all your Claude Code logs and can take a few minutes; later runs
+reuse it. `--repos auto` discovers the repos from your sessions, or pass `--repos <path,path>`.
+Nothing is uploaded. The wizard and the plugin just wrap these same two commands.
+
 Not sure where to start? Ask the wizard. It can measure you, settle solo-versus-orchestration
 on one real task, share your result to a frontier, or set up a shared frontier for your team.
 
