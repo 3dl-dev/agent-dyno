@@ -107,7 +107,7 @@ LEFT = (
     '<div class="top"><div class="brand">' + vr._som_mark() + 'VIBRANT</div>'
     '<div class="meta" id="board-meta">public frontier</div></div>'
     '<div class="fe" id="fe">Tokenmaxxing 2.0</div>'
-    '<h1 id="h1">Progress above activity.</h1>'
+    '<h1 id="h1">Progress over activity.</h1>'
     '<p class="csub" id="csub">The most surviving work per token, not the biggest bill. If you '
     'are rolling coal, you had better be hauling three trainloads.</p>'
     '<div class="combined" id="focal"></div>'
@@ -255,7 +255,7 @@ PAGE = ("<!doctype html><html><head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
         "<title>Vibrant, the public frontier</title>"
         "<meta property='og:title' content='Vibrant, Tokenmaxxing 2.0'>"
-        "<meta property='og:description' content='Progress above activity. The most surviving work per token. Roll coal if you want, but haul three trainloads.'>"
+        "<meta property='og:description' content='Progress over activity. The most surviving work per token. Roll coal if you want, but haul three trainloads.'>"
         "<meta property='og:image' content='https://vibrant.3dl.dev/og.png'>"
         "<meta property='og:url' content='https://vibrant.3dl.dev'>"
         "<meta name='twitter:card' content='summary_large_image'>"

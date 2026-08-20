@@ -45,7 +45,7 @@ html,body{{margin:0}}
  <div class="ogtext">
   <div class="brand">{vr._som_mark()}<span class="w">VIBRANT</span></div>
   <div class="hook">TOKENMAXXING <span class="two">2.0</span></div>
-  <div class="tag">Progress above activity.</div>
+  <div class="tag">Progress over activity.</div>
   <div class="sub">The most surviving work per token. Roll coal if you want, but haul three trainloads.</div>
   <span class="url">vibrant.3dl.dev</span>
  </div>
