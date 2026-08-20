@@ -34,10 +34,10 @@ html,body{{margin:0}}
 </style></head><body><div class="vibrant"><div class="og">
  <div class="ogmap"><div class="box">{map_svg}</div></div>
  <div class="ogtext">
-  <div class="eye">Third Division Labs</div>
+  <div class="eye">Tokenmaxxing 2.0</div>
   <div class="wm">{vr._som_mark()}<span class="w">VIBRANT</span></div>
-  <div class="h1">Are you team Delegate or team Workflow?</div>
-  <div class="sub">The efficiency frontier of AI coding setups. Surviving work per token, from your own logs.</div>
+  <div class="h1">Progress above activity.</div>
+  <div class="sub">The most surviving work per token. Roll coal if you want, but haul three trainloads.</div>
   <span class="url">vibrant.3dl.dev</span>
  </div>
 </div></div></body></html>'''

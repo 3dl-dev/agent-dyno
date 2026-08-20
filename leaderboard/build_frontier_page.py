@@ -107,7 +107,7 @@ LEFT = (
     '<div class="top"><div class="brand">' + vr._som_mark() + 'VIBRANT</div>'
     '<div class="meta" id="board-meta">public frontier</div></div>'
     '<div class="fe" id="fe">Tokenmaxxing 2.0</div>'
-    '<h1 id="h1">Results, not spend.</h1>'
+    '<h1 id="h1">Progress above activity.</h1>'
     '<p class="csub" id="csub">The most surviving work per token, not the biggest bill. If you '
     'are rolling coal, you had better be hauling three trainloads.</p>'
     '<div class="combined" id="focal"></div>'
@@ -126,7 +126,7 @@ LEFT = (
 RIGHT = (
     '<div class="method">'
     '<p class="lead">Tokenmaxxing 1.0 was burning as many tokens as possible, rolling coal to '
-    'look busy. 2.0 flips it: the win is surviving work per token, results over spend. Spend big '
+    'look busy. 2.0 flips it: the win is surviving work per token, progress above activity. Spend big '
     'if the job needs it, then haul the cargo to match. The board above is the bragging rights, '
     'folded live from the shared frontier and anonymized; the method beside it is how to find '
     'the setup that hauls the most for your needs, and the one change most likely to move your '
@@ -255,7 +255,7 @@ PAGE = ("<!doctype html><html><head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
         "<title>Vibrant, the public frontier</title>"
         "<meta property='og:title' content='Vibrant, Tokenmaxxing 2.0'>"
-        "<meta property='og:description' content='Results, not spend. The most surviving work per token. Roll coal if you want, but haul three trainloads.'>"
+        "<meta property='og:description' content='Progress above activity. The most surviving work per token. Roll coal if you want, but haul three trainloads.'>"
         "<meta property='og:image' content='https://vibrant.3dl.dev/og.png'>"
         "<meta property='og:url' content='https://vibrant.3dl.dev'>"
         "<meta name='twitter:card' content='summary_large_image'>"
