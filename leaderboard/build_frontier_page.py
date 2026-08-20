@@ -66,7 +66,7 @@ EXTRA = (
     "@media (max-width:880px){.vibrant .fgrid{grid-template-columns:1fr;gap:34px;}}"
     # the shareable card: a discrete, screenshot-ready marketing unit with its own headline
     ".vibrant .share .fe{font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:var(--rust);}"
-    ".vibrant .share h1{font-size:clamp(24px,2.7vw,32px);font-weight:850;letter-spacing:-.025em;line-height:1.08;margin:8px 0 10px;max-width:16ch;color:var(--ink);text-wrap:balance;}"
+    ".vibrant .share h1{font-size:clamp(23px,2.5vw,31px);font-weight:850;letter-spacing:-.025em;line-height:1.1;margin:8px 0 10px;max-width:22ch;min-height:1.1em;color:var(--ink);text-wrap:balance;}"
     ".vibrant .share .csub{font-size:14px;color:var(--ink2);line-height:1.5;margin:0 0 18px;max-width:46ch;}"
     ".vibrant .share .csub b{color:var(--ink);font-weight:650;}"
     # the explanatory column: on the page ground, no card frame, reads as context beside the share
@@ -244,6 +244,11 @@ JS = (
     "var h1=document.getElementById('h1');if(h1)h1.textContent='You are team '+LAB[en]+'.';"
     "var cs=document.getElementById('csub');if(cs)cs.innerHTML='Your rig, from the link: <b>$'+cost.toFixed(2)+'</b> per surviving KB, <b>'+eff+'</b> KB per Mtok, <b>'+waste+'%</b> waste, <b>'+cache+'%</b> cache. Nothing uploaded, your numbers ride in the link.';"
     "heroFor(en,{dollars_per_survkb:cost,survkb_per_outmtok:eff,waste_pct:waste,cache_read_pct:cache},'you');};})();"
+    # rotate the headline among the taglines we like (random each load), unless the visitor
+    # arrived on their own #you link (then the headline is personalized).
+    "(function(){if(/you=/.test(location.hash||''))return;"
+    "var H=['Progress over activity.','Are you team Delegate or team Workflow?','Results, not spend.'];"
+    "var h1=document.getElementById('h1');if(h1)h1.textContent=H[Math.floor(Math.random()*H.length)];})();"
     "(function(){var h=new URLSearchParams((location.hash||'').replace(/^#/,''));"
     "var relay=h.get('relay')||DEFAULT_RELAY,board=h.get('board')||DEFAULT_BOARD;"
     "var meta=document.getElementById('board-meta');"
