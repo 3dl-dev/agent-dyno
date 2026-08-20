@@ -58,14 +58,18 @@ EXTRA = (
     "<style>"
     "html,body{margin:0;min-height:100%;background:#f4f3ef;}"
     "@media (prefers-color-scheme:dark){html:not([data-theme=light]),html:not([data-theme=light]) body{background:#141412;}}"
-    # widen the page for two columns and left-align it (not the centered 760 report column)
-    ".vibrant{max-width:1140px;}"
-    ".vibrant .frontier-head{text-align:left;padding:2px 2px 22px;margin:0 0 22px;border-bottom:1px solid var(--line);}"
-    ".vibrant .frontier-head .fe{font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:var(--rust);}"
-    ".vibrant .frontier-head h1{font-size:clamp(24px,3.6vw,36px);font-weight:800;letter-spacing:-.02em;line-height:1.12;margin:10px 0 12px;max-width:26ch;color:var(--ink);text-wrap:balance;}"
-    ".vibrant .frontier-head p{font-size:15px;color:var(--ink2);max-width:70ch;margin:0;line-height:1.55;}"
-    ".vibrant .fgrid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:40px;align-items:start;}"
-    "@media (max-width:860px){.vibrant .fgrid{grid-template-columns:1fr;gap:30px;}}"
+    # widen the page for two columns and left-align it (not the centered 760 report column).
+    # The .vibrant is now just the page frame; the shareable is its own .card (left) and the
+    # explanatory copy sits OUTSIDE that card, on the page background (right).
+    ".vibrant{max-width:1160px;padding-top:34px;}"
+    ".vibrant .fgrid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:44px;align-items:start;}"
+    "@media (max-width:880px){.vibrant .fgrid{grid-template-columns:1fr;gap:34px;}}"
+    # the shareable card: a discrete, screenshot-ready marketing unit with its own headline
+    ".vibrant .share .fe{font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:var(--rust);}"
+    ".vibrant .share h1{font-size:clamp(21px,2.4vw,27px);font-weight:800;letter-spacing:-.02em;line-height:1.14;margin:8px 0 16px;max-width:20ch;color:var(--ink);text-wrap:balance;}"
+    # the explanatory column: on the page ground, no card frame, reads as context beside the share
+    ".vibrant .method{padding-top:2px;}"
+    ".vibrant .method .lead{font-size:15px;color:var(--ink2);line-height:1.55;margin:0 0 4px;max-width:52ch;}"
     ".vibrant .civ-wrap{position:relative;margin:8px 0 4px;}"
     ".vibrant .civ-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:12.5px;font-weight:650;color:var(--ink2);}"
     ".vibrant .civ-legend span{display:inline-flex;align-items:center;gap:6px;}"
@@ -94,16 +98,14 @@ EXTRA = (
     ".vibrant .seelink a{color:var(--accent);font-weight:650;text-decoration:none;}"
     "</style>")
 
-HEAD = (
-    '<div class="frontier-head"><div class="fe" id="fe">Public frontier &middot; live</div>'
-    '<h1 id="h1">Where each rig style lands on surviving work per token.</h1>'
-    '<p id="lede">Folded live from the shared board: surviving work per token, by engine, '
-    'contributor-owned and anonymized. No single rank, read the vector. The method is on the '
-    'right, so the picture is not a black box.</p></div>')
-
-# LEFT column: the live frontier (hero + map + standings)
+# LEFT: the shareable card, a discrete screenshot-ready marketing unit (brand, headline,
+# hero, map, standings). This is the thing you clip to social.
 LEFT = (
-    '<div class="fcol-left">'
+    '<div class="card share">'
+    '<div class="top"><div class="brand">' + vr._som_mark() + 'VIBRANT</div>'
+    '<div class="meta" id="board-meta">public frontier</div></div>'
+    '<div class="fe" id="fe">Public frontier &middot; live</div>'
+    '<h1 id="h1">Where each rig style lands on surviving work per token.</h1>'
     '<div class="combined" id="focal"></div>'
     '<div class="civ-wrap">' + map_svg + '<div class="civ-tip" id="civ-tip"></div>'
     '<div class="civ-legend">' + legend + '</div></div>'
@@ -113,11 +115,15 @@ LEFT = (
     '<div class="ctxline" id="context">Loading the frontier...</div>'
     '<div class="seelink"><a href="sample.html">See a full sample report &rarr;</a>'
     '  what you get when you run it on your own setup.</div>'
+    '<div class="foot"><span>vibe-coding rig efficiency</span><span>3dl-dev/vibrant</span></div>'
     '</div>')
 
-# RIGHT column: the rigor
+# RIGHT: the rigor, OUTSIDE the shareable card, on the page ground.
 RIGHT = (
-    '<div class="fcol-right">'
+    '<div class="method">'
+    '<p class="lead">The board above is folded live from the shared frontier, contributor-owned '
+    'and anonymized. Here is how it is measured, what has been tested, and every analysis behind '
+    'it, so the picture is not a black box.</p>'
     '<h2 class="sec">How this is measured</h2>'
     '<div class="mblock"><div class="mh">Surviving work per token</div>'
     '<p>The numerator is a git measurement: lines you shipped that still live at HEAD, not '
@@ -164,14 +170,7 @@ RIGHT = (
     'snapshot reads all your logs and can take a few minutes; later runs reuse it.</p></div>'
     '</div>')
 
-BODY = (
-    '<div class="vibrant"><div class="card">'
-    '<div class="top"><div class="brand">' + vr._som_mark() + 'VIBRANT</div>'
-    '<div class="meta" id="board-meta">public frontier</div></div>'
-    + HEAD +
-    '<div class="fgrid">' + LEFT + RIGHT + '</div>'
-    '<div class="foot"><span>vibe-coding rig efficiency</span><span>3dl-dev/vibrant</span></div>'
-    '</div></div>')
+BODY = ('<div class="vibrant"><div class="fgrid">' + LEFT + RIGHT + '</div></div>')
 
 JS = (
     "<script>"
@@ -230,9 +229,8 @@ JS = (
     "var f=decodeURIComponent(m[1]).split(',');if(f.length<5||!LAB[f[0]])return;"
     "var en=f[0],cost=+f[1],eff=f[2],waste=f[3],cache=f[4];"
     "window._applyYou=function(){"
-    "document.getElementById('fe').textContent='Your result';"
-    "document.getElementById('h1').textContent='You are team '+LAB[en]+'.';"
-    "document.getElementById('lede').innerHTML='Your rig, from the link: <b>$'+cost.toFixed(2)+'</b> per surviving KB, <b>'+eff+'</b> KB per Mtok, <b>'+waste+'%</b> waste, <b>'+cache+'%</b> cache. Nothing was uploaded, your four numbers ride in the link. Below is the live frontier for context.';"
+    "var fe=document.getElementById('fe');if(fe)fe.textContent='Your result';"
+    "var h1=document.getElementById('h1');if(h1)h1.textContent='You are team '+LAB[en]+'.';"
     "heroFor(en,{dollars_per_survkb:cost,survkb_per_outmtok:eff,waste_pct:waste,cache_read_pct:cache},'you');};})();"
     "(function(){var h=new URLSearchParams((location.hash||'').replace(/^#/,''));"
     "var relay=h.get('relay')||DEFAULT_RELAY,board=h.get('board')||DEFAULT_BOARD;"
