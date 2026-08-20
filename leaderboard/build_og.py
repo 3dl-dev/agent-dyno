@@ -1,7 +1,10 @@
-import json, sys
+import json, sys, os
 sys.path.insert(0, "/home/baron/projects/agent-dyno/skills/vibrant-report")
 import vibrant_report as vr
 rep = json.load(open("report_land_b.json"))
+# TAG is the rotating tagline under the constant TOKENMAXXING 2.0 hook; OUT is the html file.
+TAG = os.environ.get("OG_TAG", "Progress over activity.")
+OUT = os.environ.get("OG_OUT", "og.html")
 FR = {"solo": (1.31, 115, 9, 98.6), "delegate": (1.36, 145, 29.5, 97.7), "workflow": (1.59, 126, 57.8, 97.3)}
 som = rep["rig_space"]["som"]
 for c in som["cell_meaning"]:
@@ -45,10 +48,10 @@ html,body{{margin:0}}
  <div class="ogtext">
   <div class="brand">{vr._som_mark()}<span class="w">VIBRANT</span></div>
   <div class="hook">TOKENMAXXING <span class="two">2.0</span></div>
-  <div class="tag">Progress over activity.</div>
+  <div class="tag">{TAG}</div>
   <div class="sub">The most surviving work per token. Roll coal if you want, but haul three trainloads.</div>
   <span class="url">vibrant.3dl.dev</span>
  </div>
 </div></div></body></html>'''
-open("og.html", "w").write(og)
-print("wrote")
+open(OUT, "w").write(og)
+print("wrote", OUT, "tag:", TAG)

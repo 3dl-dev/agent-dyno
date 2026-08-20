@@ -1,6 +1,18 @@
-import json, sys
+import json, sys, os
 sys.path.insert(0, "/home/baron/projects/agent-dyno/skills/vibrant-report")
 import vibrant_report as vr
+
+# The unfurl rotates: a daily job sets ROTATE, which picks the tagline shown to crawlers (the
+# og: tags) and the pre-rendered og image for it. The on-page headline still randomizes per
+# visit (client-side) among the same set; ROTATE only fixes what a shared-link preview shows.
+ROTATE_TAGS = [
+    ("Progress over activity.", "og-0.png"),
+    ("Are you team Delegate or team Workflow?", "og-1.png"),
+    ("Results, not spend.", "og-2.png"),
+]
+_ri = int(os.environ.get("ROTATE", "0")) % len(ROTATE_TAGS)
+OG_TAG, OG_IMG = ROTATE_TAGS[_ri]
+OG_DESC = OG_TAG + " The most surviving work per token. Roll coal if you want, but haul three trainloads."
 
 # Two pages, one design language (vibrant_report._CSS):
 #   index.html  = the LIVE public frontier, TWO COLUMN (one column on mobile). Left: the live
@@ -107,7 +119,7 @@ LEFT = (
     '<div class="top"><div class="brand">' + vr._som_mark() + 'VIBRANT</div>'
     '<div class="meta" id="board-meta">public frontier</div></div>'
     '<div class="fe" id="fe">Tokenmaxxing 2.0</div>'
-    '<h1 id="h1">Progress over activity.</h1>'
+    '<h1 id="h1">' + OG_TAG + '</h1>'
     '<p class="csub" id="csub">The most surviving work per token, not the biggest bill. If you '
     'are rolling coal, you had better be hauling three trainloads.</p>'
     '<div class="combined" id="focal"></div>'
@@ -260,8 +272,8 @@ PAGE = ("<!doctype html><html><head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
         "<title>Vibrant, the public frontier</title>"
         "<meta property='og:title' content='Vibrant, Tokenmaxxing 2.0'>"
-        "<meta property='og:description' content='Progress over activity. The most surviving work per token. Roll coal if you want, but haul three trainloads.'>"
-        "<meta property='og:image' content='https://vibrant.3dl.dev/og.png'>"
+        f"<meta property='og:description' content='{OG_DESC}'>"
+        f"<meta property='og:image' content='https://vibrant.3dl.dev/{OG_IMG}'>"
         "<meta property='og:url' content='https://vibrant.3dl.dev'>"
         "<meta name='twitter:card' content='summary_large_image'>"
         + CSS + EXTRA + "</head><body>" + BODY + JS + "</body></html>")

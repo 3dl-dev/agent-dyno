@@ -1,0 +1,48 @@
+name: rotate-unfurl
+
+# Rotate the social unfurl daily. Static hosting cannot randomize per view, so this rebuilds
+# index.html once a day with the day's tagline (og: title/description + which pre-rendered
+# og image) and pushes it to gh-pages. The og-0/1/2.png images are committed once and never
+# rendered here, so this job needs only the Python standard library and git (no playwright).
+
+on:
+  schedule:
+    - cron: '17 13 * * *'   # once a day, 13:17 UTC
+  workflow_dispatch: {}       # allow a manual run to test
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rotate-unfurl
+  cancel-in-progress: false
+
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Build index.html with today's tagline
+        run: |
+          cd leaderboard
+          ROTATE=$(( $(date -u +%j) % 3 )) python3 build_frontier_page.py
+          cp index.html /tmp/index.html
+
+      - name: Publish to gh-pages
+        run: |
+          git config user.name "vibrant-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git clean -fd leaderboard || true
+          git checkout -- . 2>/dev/null || true
+          git fetch origin gh-pages
+          git switch gh-pages
+          cp /tmp/index.html index.html
+          if git diff --quiet index.html; then
+            echo "no change today"
+          else
+            git add index.html
+            git commit -m "rotate unfurl: $(date -u +%F)"
+            git push origin gh-pages
+          fi
