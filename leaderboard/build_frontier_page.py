@@ -74,9 +74,31 @@ HEAD_EXTRA = (
     "margin-top:12px;}"
     "</style>")
 
-# inject: OG + theme CSS before </head>, and the header as the first child of .vibrant
+# #you: when the visitor arrives on their own share link, reframe the HEADER to state their
+# four public axes (carried in the link, nothing uploaded). It deliberately does NOT touch
+# the report body: the sample's map, score, and timeline stay as frontier context, because a
+# four-number link cannot fabricate a personal report. The full personal report, and the
+# per-URL team/individual fold from nostr, are the next build.
+YOUJS = (
+    "<script>(function(){var m=/(?:^|#|&)you=([^&]+)/.exec(location.hash||'');if(!m)return;"
+    "var f=decodeURIComponent(m[1]).split(',');"
+    "var LAB={solo:'Solo',delegate:'Delegate',workflow:'Workflow'};"
+    "var en=f[0];if(!LAB[en]||f.length<5)return;"
+    "var cost=+f[1],eff=f[2],waste=f[3],cache=f[4];"
+    "var intro=document.querySelector('.frontier-intro');if(!intro)return;"
+    "var fe=intro.querySelector('.fe');if(fe)fe.textContent='Your result';"
+    "var h1=intro.querySelector('h1');if(h1)h1.textContent='You are team '+LAB[en]+'.';"
+    "var p=intro.querySelector('p');if(p)p.innerHTML='Your rig, from the link: <b>$'+cost.toFixed(2)+"
+    "'</b> per surviving KB, <b>'+eff+'</b> KB per Mtok, <b>'+waste+'%</b> waste, <b>'+cache+"
+    "'%</b> cache. Nothing was uploaded, your four numbers ride in the link itself. The report "
+    "below is the public frontier for context; run vibrant-report for your own full report.';"
+    "})();</script>")
+
+# inject: OG + theme CSS before </head>, header as the first child of .vibrant, #you wiring
+# before </body>, and a real public title.
 html = html.replace("</head>", HEAD_EXTRA + "</head>", 1)
 html = html.replace('<div class="vibrant">', '<div class="vibrant">' + INTRO, 1)
+html = html.replace("</body>", YOUJS + "</body>", 1)
 html = html.replace("<title>Vibrant: your efficiency over time</title>",
                     "<title>Vibrant, the public frontier</title>", 1)
 
