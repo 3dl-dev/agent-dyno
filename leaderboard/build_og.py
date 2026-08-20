@@ -11,30 +11,34 @@ map_svg=vr.render_civ_map(som,svg_id="og-map",compact=True)
 CSS="<style>"+vr._CSS+"</style>"+vr._WALK_CSS
 og=f'''<!doctype html><html data-theme=dark><head><meta charset=utf-8>{CSS}<style>
 *{{box-sizing:border-box}}
-.vibrant{{max-width:none !important;width:1200px !important;margin:0 !important;padding:0 !important;background:transparent !important}}
-html,body{{margin:0;background:#141412}}
-.og{{width:1200px;height:630px;overflow:hidden;position:relative;
- background:radial-gradient(880px 480px at 82% -10%, rgba(111,214,201,.13), transparent 58%),#141412;
+.vibrant{{max-width:none !important;width:1280px !important;margin:0 !important;padding:0 !important;background:transparent !important}}
+html,body{{margin:0}}
+.og{{width:1280px;height:640px;overflow:hidden;position:relative;color:#f6f5f0;
+ background:
+  radial-gradient(900px 560px at 78% 30%, rgba(111,214,201,.20), transparent 55%),
+  radial-gradient(700px 500px at 12% 88%, rgba(197,106,76,.12), transparent 55%),
+  linear-gradient(135deg,#20241f 0%, #191c17 45%, #14150f 100%);
  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}}
-.ogtext{{position:absolute;left:64px;top:126px;width:600px}}
-.eye{{font-size:15px;font-weight:800;letter-spacing:.24em;text-transform:uppercase;color:var(--muted)}}
-.wm{{display:flex;align-items:center;gap:13px;margin:12px 0 24px}}
-.wm .w{{font-size:38px;font-weight:850;letter-spacing:.12em;color:var(--ink)}}
-.wm svg{{width:42px;height:42px}}
-.h1{{font-size:52px;font-weight:850;letter-spacing:-.02em;line-height:1.03;color:var(--ink);margin:0 0 18px}}
-.sub{{font-size:20px;color:var(--ink2);line-height:1.4;max-width:26ch;margin:0 0 22px}}
-.url{{font-size:20px;font-weight:700;color:var(--accent)}}
-.ogmap{{position:absolute;right:40px;top:0;bottom:0;width:520px;display:flex;align-items:center;justify-content:center}}
-.ogmap .box{{width:480px}}
-.ogmap svg{{width:100% !important;height:auto !important;display:block;filter:drop-shadow(0 18px 55px rgba(0,0,0,.55))}}
+.og::before{{content:"";position:absolute;inset:0;box-shadow:inset 0 0 160px 40px rgba(0,0,0,.5);pointer-events:none}}
+.ogtext{{position:absolute;left:72px;top:96px;width:620px;z-index:2}}
+.eye{{font-size:16px;font-weight:800;letter-spacing:.24em;text-transform:uppercase;color:#9fb0a8}}
+.wm{{display:flex;align-items:center;gap:14px;margin:14px 0 30px}}
+.wm .w{{font-size:44px;font-weight:850;letter-spacing:.12em}}
+.wm svg{{width:48px;height:48px}}
+.h1{{font-size:58px;font-weight:850;letter-spacing:-.02em;line-height:1.02;margin:0 0 22px;color:#fff}}
+.sub{{font-size:22px;color:#c7cabf;line-height:1.4;max-width:26ch;margin:0 0 26px}}
+.url{{display:inline-block;font-size:21px;font-weight:800;color:#0b0d0a;background:#6fd6c9;padding:9px 18px;border-radius:10px}}
+.ogmap{{position:absolute;right:-10px;top:0;bottom:0;width:560px;display:flex;align-items:center;justify-content:center;z-index:1;opacity:.98}}
+.ogmap .box{{width:540px}}
+.ogmap svg{{width:100% !important;height:auto !important;display:block;filter:drop-shadow(0 20px 60px rgba(0,0,0,.6))}}
 </style></head><body><div class="vibrant"><div class="og">
+ <div class="ogmap"><div class="box">{map_svg}</div></div>
  <div class="ogtext">
   <div class="eye">Third Division Labs</div>
   <div class="wm">{vr._som_mark()}<span class="w">VIBRANT</span></div>
   <div class="h1">Are you team Delegate or team Workflow?</div>
   <div class="sub">The efficiency frontier of AI coding setups. Surviving work per token, from your own logs.</div>
-  <div class="url">vibrant.3dl.dev</div>
+  <span class="url">vibrant.3dl.dev</span>
  </div>
- <div class="ogmap"><div class="box">{map_svg}</div></div>
 </div></div></body></html>'''
 open("og.html","w").write(og); print("wrote")
