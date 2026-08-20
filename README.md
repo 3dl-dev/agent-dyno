@@ -26,20 +26,20 @@ standard library, no other install and no keys. Nothing is uploaded.
 
 ### Or run it from a clone
 
-No plugin, no wizard, no keys. It is Python 3 standard library, so a clone runs it directly:
+Prefer not to install the plugin? Clone the repo and start Claude Code inside it. The skills
+are right there, so you just ask, same as with the plugin:
 
 ```
 git clone https://github.com/3dl-dev/vibrant
 cd vibrant
-python3 adapters/claude-code/snapshot.py --out snapshots
-python3 skills/vibrant-report/vibrant_report.py \
-    --snapshot snapshots/<dated-dir> --repos auto --out out
-# then open out/report.html
+claude
+# then ask: "How efficient is my coding setup?"
 ```
 
-The first snapshot reads all your Claude Code logs and can take a few minutes; later runs
-reuse it. `--repos auto` discovers the repos from your sessions, or pass `--repos <path,path>`.
-Nothing is uploaded. The wizard and the plugin just wrap these same two commands.
+Claude Code runs the repo's own `vibrant-report` skill on your machine: it snapshots your
+logs, reads your git survival, and writes `report.md`, `report.html`, and `report.json`. It is
+Python 3 standard library under the hood, nothing to install beyond the clone, nothing
+uploaded. The first run reads all your logs and can take a few minutes.
 
 Not sure where to start? Ask the wizard. It can measure you, settle solo-versus-orchestration
 on one real task, share your result to a frontier, or set up a shared frontier for your team.

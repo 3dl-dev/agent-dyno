@@ -158,12 +158,13 @@ RIGHT = (
     '<li><a href="https://dora.dev">DORA</a>: the change-failure-rate definition used in the report.</li>'
     '</ul></div>'
     '<div class="mblock"><div class="mh">Run it yourself</div>'
-    '<p>In Claude Code, install the plugin and just ask:</p>'
+    '<p>Both ways are just Claude Code and a plain question. Install the plugin anywhere:</p>'
     '<pre>/plugin marketplace add 3dl-dev/vibrant\n/plugin install vibrant@vibrant\n"How efficient is my coding setup?"</pre>'
-    '<p>Or clone the repo and run it directly, no plugin:</p>'
-    '<pre>git clone https://github.com/3dl-dev/vibrant\ncd vibrant\npython3 adapters/claude-code/snapshot.py --out snapshots\npython3 skills/vibrant-report/vibrant_report.py \\\n  --snapshot snapshots/&lt;dated-dir&gt; --repos auto --out out\n# then open out/report.html</pre>'
-    '<p>Python 3 standard library only, nothing to install, nothing uploaded. The first '
-    'snapshot reads all your logs and can take a few minutes; later runs reuse it.</p></div>'
+    '<p>Or clone the repo and start Claude Code inside it, nothing to install:</p>'
+    '<pre>git clone https://github.com/3dl-dev/vibrant\ncd vibrant\nclaude\n# then ask: "How efficient is my coding setup?"</pre>'
+    '<p>Claude Code runs the repo\'s own vibrant-report skill on your machine: it reads your '
+    'logs and your git survival and writes the report. Python 3 standard library, nothing '
+    'uploaded. The first run reads all your logs and can take a few minutes.</p></div>'
     '</div>')
 
 BODY = ('<div class="vibrant"><div class="fgrid">' + LEFT + RIGHT + '</div></div>')
