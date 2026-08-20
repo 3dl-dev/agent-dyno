@@ -262,4 +262,4 @@ PAGE = ("<!doctype html><html><head><meta charset=utf-8>"
         + CSS + EXTRA + "</head><body>" + BODY + JS + "</body></html>")
 open("index.html", "w").write(PAGE)
 print("wrote index.html", len(PAGE), "| sample.html", len(sample),
-      "| em-dashes:", (PAGE + sample).count("—"))
+      "| em-dashes:", (PAGE + sample).count("\u2014"))
