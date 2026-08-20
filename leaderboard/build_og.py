@@ -26,17 +26,19 @@ html,body{{margin:0}}
   linear-gradient(135deg,#20241f 0%, #191c17 45%, #14150f 100%);
  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}}
 .og::before{{content:"";position:absolute;inset:0;box-shadow:inset 0 0 160px 40px rgba(0,0,0,.5);pointer-events:none}}
-.ogtext{{position:absolute;left:60px;top:64px;width:560px;z-index:2}}
+.ogtext{{position:absolute;left:60px;top:66px;width:560px;z-index:2}}
 .brand{{display:flex;align-items:center;gap:11px;margin:0 0 22px}}
 .brand svg{{width:29px;height:29px}}
 .brand .w{{font-size:22px;font-weight:800;letter-spacing:.17em;color:#b3b6ac}}
-.hook{{font-size:80px;font-weight:850;letter-spacing:-.02em;line-height:.9;color:#fff;margin:0 0 18px}}
+.hook{{font-size:78px;font-weight:850;letter-spacing:-.02em;line-height:.9;color:#fff;margin:0 0 18px}}
 .hook .two{{color:#6fd6c9}}
 .tag{{font-size:34px;font-weight:800;letter-spacing:-.01em;color:#eef0ea;margin:0 0 20px}}
 .sub{{font-size:19px;color:#c3c6bc;line-height:1.4;max-width:30ch;margin:0 0 24px}}
 .url{{display:inline-block;font-size:20px;font-weight:800;color:#0b0d0a;background:#6fd6c9;padding:10px 19px;border-radius:11px}}
-.ogmap{{position:absolute;right:-16px;top:0;bottom:0;width:660px;display:flex;align-items:center;z-index:1;opacity:.97}}
-.ogmap .box{{width:660px;transform:translateX(-10px)}}
+.ogmap{{position:absolute;right:-20px;top:0;bottom:0;width:760px;display:flex;align-items:center;z-index:1;opacity:.97;
+ -webkit-mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,1) 27%,rgba(0,0,0,1) 100%);
+ mask-image:linear-gradient(90deg,transparent 0,rgba(0,0,0,1) 27%,rgba(0,0,0,1) 100%)}}
+.ogmap .box{{width:760px;flex:none}}
 .ogmap svg{{width:100% !important;height:auto !important;display:block;filter:drop-shadow(0 20px 60px rgba(0,0,0,.6))}}
 </style></head><body><div class="vibrant"><div class="og">
  <div class="ogmap"><div class="box">{map_svg}</div></div>
