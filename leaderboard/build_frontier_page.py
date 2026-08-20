@@ -43,6 +43,19 @@ som = rep["rig_space"]["som"]
 map_svg = vr.render_civ_map(som, svg_id="map-civ", compact=True)
 legend = "".join(f'<span><i style="background:{TERR[e]};border-color:{TERR[e]}"></i>{LABEL[e]}</span>' for e in TERR)
 
+# per-cell meaning for the map tooltip: every hex is a real rig (engine, orchestrator ->
+# worker models, effort) with its vector and sessions.
+CELLS_META = {}
+for c in som["cell_meaning"]:
+    e = c.get("engine")
+    if e in TERR:
+        CELLS_META[f"{c['cell'][0]},{c['cell'][1]}"] = {
+            "e": e, "model": c.get("model"), "worker": c.get("worker"),
+            "effort": c.get("effort"), "sessions": c.get("sessions"),
+            "cost": round(float(c.get("cost") or 0), 2), "eff": round(float(c.get("eff") or 0)),
+            "flow": round(float(c.get("flow") or 0)), "simp": round(float(c.get("simp") or 0)),
+        }
+
 # ---- sample.html: the full report, labeled a sample, link back to the frontier ----
 sample = vr.render_html(rep)
 SAMPLE_HEAD = (
@@ -124,7 +137,9 @@ LEFT = (
     'are rolling coal, you had better be hauling three trainloads.</p>'
     '<div class="combined" id="focal"></div>'
     '<div class="civ-wrap">' + map_svg + '<div class="civ-tip" id="civ-tip"></div>'
-    '<div class="civ-legend">' + legend + '</div></div>'
+    '<div class="civ-legend">' + legend + '</div>'
+    '<div class="civ-note">Each hex is a rig setup: hover or tap one to read its models, '
+    'effort, and numbers. Color is the engine style; neighbours are similar rigs.</div></div>'
     '<h2 class="sec">Standings</h2>'
     '<table><thead><tr><th>engine</th><th>$/surv-KB</th><th>KB/Mtok</th><th>waste</th>'
     '<th>cache</th><th>n</th></tr></thead><tbody id="rows"></tbody></table>'
@@ -193,6 +208,7 @@ JS = (
     "var DEFAULT_RELAY=" + json.dumps(DEFAULT_RELAY) + ",DEFAULT_BOARD=" + json.dumps(DEFAULT_BOARD) + ";"
     "var SEED=" + json.dumps(SEED, separators=(",", ":")) + ";"
     "var TERR=" + json.dumps(TERR, separators=(",", ":")) + ",LAB=" + json.dumps(LABEL, separators=(",", ":")) + ";"
+    "var CELLS_META=" + json.dumps(CELLS_META, separators=(",", ":")) + ";"
     "var AXES=[['dollars_per_survkb','lo'],['survkb_per_outmtok','hi'],['waste_pct','lo'],['cache_read_pct','hi']];"
     "function ecol(e){return TERR[e]||'var(--muted)';}"
     "function fold(url,board){return new Promise(function(res,rej){"
@@ -266,6 +282,25 @@ JS = (
     "var meta=document.getElementById('board-meta');"
     "fold(relay,board).then(function(d){if(meta)meta.textContent='live frontier';render(d);})"
     ".catch(function(){if(meta)meta.textContent='seed frontier (offline)';render(SEED);});})();"
+    # explain each cell: hover to preview, click/tap to pin. Every hex is a real rig.
+    "(function(){var CTIP=document.getElementById('civ-tip'),CWRAP=document.querySelector('.civ-wrap'),CSVG=document.getElementById('map-civ');"
+    "if(!CTIP||!CSVG)return;var _pin=null;"
+    "function cellHTML(m){var rig=m.worker?(m.model+' \\u2192 '+m.worker):((m.model||'one model')+', solo');"
+    "return '<span class=\"tt\">team '+(LAB[m.e]||m.e)+'</span>'"
+    "+'<div>'+rig+(m.effort?' &middot; '+m.effort+' effort':'')+'</div>'"
+    "+'<div>$'+(+m.cost).toFixed(2)+' per surv-KB &middot; '+m.eff+' KB/Mtok</div>'"
+    "+'<div>flow '+m.flow+' &middot; simplicity '+m.simp+' &middot; '+m.sessions+' sessions</div>';}"
+    "function showTip(cl){var m=CELLS_META[cl.getAttribute('data-r')+','+cl.getAttribute('data-c')];"
+    "if(!m){CTIP.classList.remove('on');return;}CTIP.innerHTML=cellHTML(m);CTIP.classList.add('on');"
+    "var wr=CWRAP.getBoundingClientRect(),cr=cl.getBoundingClientRect(),tw=CTIP.offsetWidth,th=CTIP.offsetHeight;"
+    "var cx=cr.left+cr.width/2-wr.left,top=cr.top-wr.top-th-10;if(top<2)top=cr.bottom-wr.top+10;"
+    "CTIP.style.left=Math.max(4,Math.min(cx-tw/2,wr.width-tw-4)).toFixed(0)+'px';CTIP.style.top=top.toFixed(0)+'px';}"
+    "CSVG.querySelectorAll('.civ-cell').forEach(function(cl){"
+    "if(!CELLS_META[cl.getAttribute('data-r')+','+cl.getAttribute('data-c')])return;cl.style.cursor='pointer';"
+    "cl.addEventListener('mouseenter',function(){if(!_pin)showTip(cl);});"
+    "cl.addEventListener('mouseleave',function(){if(!_pin)CTIP.classList.remove('on');});"
+    "cl.addEventListener('click',function(ev){ev.stopPropagation();if(_pin===cl){_pin=null;CTIP.classList.remove('on');}else{_pin=cl;showTip(cl);}});});"
+    "document.addEventListener('click',function(){if(_pin){_pin=null;CTIP.classList.remove('on');}});})();"
     "</script>")
 
 PAGE = ("<!doctype html><html><head><meta charset=utf-8>"
