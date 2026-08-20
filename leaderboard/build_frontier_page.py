@@ -280,8 +280,11 @@ JS = (
     "(function(){var h=new URLSearchParams((location.hash||'').replace(/^#/,''));"
     "var relay=h.get('relay')||DEFAULT_RELAY,board=h.get('board')||DEFAULT_BOARD;"
     "var meta=document.getElementById('board-meta');"
+    # render the seed immediately so the score/standings are there on load, then upgrade to the
+    # live board when the fold resolves (the relay cold-start can take up to 15s).
+    "render(SEED);"
     "fold(relay,board).then(function(d){if(meta)meta.textContent='live frontier';render(d);})"
-    ".catch(function(){if(meta)meta.textContent='seed frontier (offline)';render(SEED);});})();"
+    ".catch(function(){if(meta)meta.textContent='seed frontier (offline)';});})();"
     # explain each cell: hover to preview, click/tap to pin. Every hex is a real rig.
     "(function(){var CTIP=document.getElementById('civ-tip'),CWRAP=document.querySelector('.civ-wrap'),CSVG=document.getElementById('map-civ');"
     "if(!CTIP||!CSVG)return;var _pin=null;"
