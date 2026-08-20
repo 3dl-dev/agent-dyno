@@ -66,7 +66,9 @@ EXTRA = (
     "@media (max-width:880px){.vibrant .fgrid{grid-template-columns:1fr;gap:34px;}}"
     # the shareable card: a discrete, screenshot-ready marketing unit with its own headline
     ".vibrant .share .fe{font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:var(--rust);}"
-    ".vibrant .share h1{font-size:clamp(21px,2.4vw,27px);font-weight:800;letter-spacing:-.02em;line-height:1.14;margin:8px 0 16px;max-width:20ch;color:var(--ink);text-wrap:balance;}"
+    ".vibrant .share h1{font-size:clamp(24px,2.7vw,32px);font-weight:850;letter-spacing:-.025em;line-height:1.08;margin:8px 0 10px;max-width:16ch;color:var(--ink);text-wrap:balance;}"
+    ".vibrant .share .csub{font-size:14px;color:var(--ink2);line-height:1.5;margin:0 0 18px;max-width:46ch;}"
+    ".vibrant .share .csub b{color:var(--ink);font-weight:650;}"
     # the explanatory column: on the page ground, no card frame, reads as context beside the share
     ".vibrant .method{padding-top:2px;}"
     ".vibrant .method .lead{font-size:15px;color:var(--ink2);line-height:1.55;margin:0 0 4px;max-width:52ch;}"
@@ -104,8 +106,10 @@ LEFT = (
     '<div class="card share">'
     '<div class="top"><div class="brand">' + vr._som_mark() + 'VIBRANT</div>'
     '<div class="meta" id="board-meta">public frontier</div></div>'
-    '<div class="fe" id="fe">Public frontier &middot; live</div>'
-    '<h1 id="h1">Where each rig style lands on surviving work per token.</h1>'
+    '<div class="fe" id="fe">Tokenmaxxing 2.0</div>'
+    '<h1 id="h1">Results, not spend.</h1>'
+    '<p class="csub" id="csub">The most surviving work per token, not the biggest bill. If you '
+    'are rolling coal, you had better be hauling three trainloads.</p>'
     '<div class="combined" id="focal"></div>'
     '<div class="civ-wrap">' + map_svg + '<div class="civ-tip" id="civ-tip"></div>'
     '<div class="civ-legend">' + legend + '</div></div>'
@@ -121,9 +125,12 @@ LEFT = (
 # RIGHT: the rigor, OUTSIDE the shareable card, on the page ground.
 RIGHT = (
     '<div class="method">'
-    '<p class="lead">The board above is folded live from the shared frontier, contributor-owned '
-    'and anonymized. Here is how it is measured, what has been tested, and every analysis behind '
-    'it, so the picture is not a black box.</p>'
+    '<p class="lead">Tokenmaxxing 1.0 was burning as many tokens as possible, rolling coal to '
+    'look busy. 2.0 flips it: the win is surviving work per token, results over spend. Spend big '
+    'if the job needs it, then haul the cargo to match. The board above is the bragging rights, '
+    'folded live from the shared frontier and anonymized; the method beside it is how to find '
+    'the setup that hauls the most for your needs, and the one change most likely to move your '
+    'number.</p>'
     '<h2 class="sec">How this is measured</h2>'
     '<div class="mblock"><div class="mh">Surviving work per token</div>'
     '<p>The numerator is a git measurement: lines you shipped that still live at HEAD, not '
@@ -234,8 +241,8 @@ JS = (
     "var f=decodeURIComponent(m[1]).split(',');if(f.length<5||!LAB[f[0]])return;"
     "var en=f[0],cost=+f[1],eff=f[2],waste=f[3],cache=f[4];"
     "window._applyYou=function(){"
-    "var fe=document.getElementById('fe');if(fe)fe.textContent='Your result';"
     "var h1=document.getElementById('h1');if(h1)h1.textContent='You are team '+LAB[en]+'.';"
+    "var cs=document.getElementById('csub');if(cs)cs.innerHTML='Your rig, from the link: <b>$'+cost.toFixed(2)+'</b> per surviving KB, <b>'+eff+'</b> KB per Mtok, <b>'+waste+'%</b> waste, <b>'+cache+'%</b> cache. Nothing uploaded, your numbers ride in the link.';"
     "heroFor(en,{dollars_per_survkb:cost,survkb_per_outmtok:eff,waste_pct:waste,cache_read_pct:cache},'you');};})();"
     "(function(){var h=new URLSearchParams((location.hash||'').replace(/^#/,''));"
     "var relay=h.get('relay')||DEFAULT_RELAY,board=h.get('board')||DEFAULT_BOARD;"
@@ -247,8 +254,8 @@ JS = (
 PAGE = ("<!doctype html><html><head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
         "<title>Vibrant, the public frontier</title>"
-        "<meta property='og:title' content='Vibrant, the efficiency frontier'>"
-        "<meta property='og:description' content='Surviving work per token, by engine, folded live from the shared board. The method and references sit beside the numbers.'>"
+        "<meta property='og:title' content='Vibrant, Tokenmaxxing 2.0'>"
+        "<meta property='og:description' content='Results, not spend. The most surviving work per token. Roll coal if you want, but haul three trainloads.'>"
         "<meta property='og:image' content='https://vibrant.3dl.dev/og.png'>"
         "<meta property='og:url' content='https://vibrant.3dl.dev'>"
         "<meta name='twitter:card' content='summary_large_image'>"
