@@ -290,7 +290,7 @@ JS = (
     "if(!CTIP||!CSVG)return;var _pin=null;"
     "function cellHTML(m){var rig=m.worker?(m.model+' \\u2192 '+m.worker):((m.model||'one model')+', solo');"
     "return '<span class=\"tt\">team '+(LAB[m.e]||m.e)+'</span>'"
-    "+'<div>'+rig+(m.effort?' &middot; '+m.effort+' effort':'')+'</div>'"
+    "+'<div>'+rig+(m.effort&&m.effort!=='unknown'?' &middot; '+m.effort+' effort':'')+'</div>'"
     "+'<div>$'+(+m.cost).toFixed(2)+' per surv-KB &middot; '+m.eff+' KB/Mtok</div>'"
     "+'<div>flow '+m.flow+' &middot; simplicity '+m.simp+' &middot; '+m.sessions+' sessions</div>';}"
     "function showTip(cl){var m=CELLS_META[cl.getAttribute('data-r')+','+cl.getAttribute('data-c')];"
