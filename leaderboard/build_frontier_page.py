@@ -56,6 +56,18 @@ for c in som["cell_meaning"]:
             "flow": round(float(c.get("flow") or 0)), "simp": round(float(c.get("simp") or 0)),
         }
 
+# per-engine simplicity (the canonical third work-quality dimension, not cache): mean of the
+# engine's cell simplicities. The driver only emits a topline simplicity, so we derive per
+# engine here and seed it; the hero uses it (cache stays a fuel column in the standings).
+_simp = {}
+for c in som["cell_meaning"]:
+    e = c.get("engine")
+    if e in TERR and c.get("simp") is not None:
+        _simp.setdefault(e, []).append(c["simp"])
+SIMP_BY_ENGINE = {e: round(sum(v) / len(v)) for e, v in _simp.items()}
+for _en in SEED["entries"]:
+    _en["vector"]["simplicity"] = SIMP_BY_ENGINE.get(_en["engine"])
+
 # ---- sample.html: the full report, labeled a sample, link back to the frontier ----
 sample = vr.render_html(rep)
 SAMPLE_HEAD = (
@@ -209,6 +221,7 @@ JS = (
     "var SEED=" + json.dumps(SEED, separators=(",", ":")) + ";"
     "var TERR=" + json.dumps(TERR, separators=(",", ":")) + ",LAB=" + json.dumps(LABEL, separators=(",", ":")) + ";"
     "var CELLS_META=" + json.dumps(CELLS_META, separators=(",", ":")) + ";"
+    "var SIMP_BE=" + json.dumps(SIMP_BY_ENGINE, separators=(",", ":")) + ";"
     "var AXES=[['dollars_per_survkb','lo'],['survkb_per_outmtok','hi'],['waste_pct','lo'],['cache_read_pct','hi']];"
     "function ecol(e){return TERR[e]||'var(--muted)';}"
     "function fold(url,board){return new Promise(function(res,rej){"
@@ -254,8 +267,8 @@ JS = (
     "function heroFor(en,v,note){var f=document.getElementById('focal');"
     "var meters=[{k:'eff',label:'efficiency',oc:'var(--accent)',val:Math.round(+v.survkb_per_outmtok)},"
     "{k:'flow',label:'flow',oc:'var(--teal)',val:Math.round(100-(+v.waste_pct))},"
-    "{k:'cache',label:'cache',oc:'var(--good)',val:Math.round(+v.cache_read_pct)}];"
-    "window._meters=meters;window._on={eff:1,flow:1,cache:1};"
+    "{k:'simp',label:'simplicity',oc:'var(--good)',val:Math.round(v.simplicity!=null?+v.simplicity:(SIMP_BE[en]||0))}];"
+    "window._meters=meters;window._on={eff:1,flow:1,simp:1};"
     "var chips=meters.map(function(m){return '<button type=\"button\" class=\"mtog\" data-m=\"'+m.k+'\" aria-pressed=\"true\" style=\"--oc:'+m.oc+'\"><b>'+m.val+'</b> '+m.label+'</button>';}).join('');"
     "var col=(note==='you')?'var(--rust)':ecol(en);"
     "f.innerHTML='<div class=\"topgroup\"><div class=\"cparts\">'+chips+'</div>'"
