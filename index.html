@@ -221,7 +221,7 @@ html,body{background:#141412;margin:0}
     <table><thead><tr><th>team</th><th>$/surv-KB</th><th>KB/Mtok</th><th>waste</th><th>cache</th><th>n</th></tr></thead><tbody id="rows"><tr data-engine="solo" style="--ec:#6fa0c6"><td><span class="edot" style="background:#6fa0c6"></span><b style="color:#6fa0c6">Solo</b> <span class=pareto>frontier</span></td><td class="num best">$1.31</td><td class="num">115</td><td class="num best">9%</td><td class="num best">98.6%</td><td class="num meta">74</td></tr><tr data-engine="delegate" style="--ec:#c9a06a"><td><span class="edot" style="background:#c9a06a"></span><b style="color:#c9a06a">Delegate</b> <span class=pareto>frontier</span></td><td class="num">$1.36</td><td class="num best">145</td><td class="num">30%</td><td class="num">97.7%</td><td class="num meta">78</td></tr><tr data-engine="workflow" style="--ec:#a98bd0"><td><span class="edot" style="background:#a98bd0"></span><b style="color:#a98bd0">Workflow</b></td><td class="num">$1.59</td><td class="num">126</td><td class="num">58%</td><td class="num">97.3%</td><td class="num meta">59</td></tr></tbody></table>
     <div class="note">No single rank: the leader on one axis rarely leads another (dot = axis leader). <b style="color:var(--good)">frontier</b> = nothing beats it on every axis. Read the vector, not a rank.</div></div>
   </div>
-  <div class="runline">This is the frontier. Run <b>vibrant-report</b> on your own logs and YOU drop onto the map, next to your team.</div>
+  <div class="runline">This is the frontier. Run <b>vibrant-report</b> in Claude Code and it hands you a link that drops YOU onto this map, right next to your team. Nothing is uploaded.</div>
  </div>
  <div class="foot"><span>vibe-coding rig efficiency</span><span>3dl-dev/vibrant</span></div>
 </div></div></div><script>
@@ -247,4 +247,25 @@ svg.querySelectorAll('.civ-cell').forEach(function(cl){
     tip.style.left=Math.max(4,Math.min(cx-tw/2,wr.width-tw-4)).toFixed(0)+'px';tip.style.top=top.toFixed(0)+'px';});
   cl.addEventListener('mouseleave',function(){tip.classList.remove('on');});});
 pick('delegate');
+</script><script>
+(function(){
+var svg=document.getElementById('map-civ'),focal=document.getElementById('focal');
+function ctr(r,c){var cell=+svg.getAttribute('data-cell'),hs=+svg.getAttribute('data-hstep'),vs=+svg.getAttribute('data-vstep'),pad=+svg.getAttribute('data-pad');return {x:pad+cell/2+c*hs+((r%2)?hs/2:0),y:pad+cell/2+r*vs};}
+function centroid(en){var xs=0,ys=0,n=0;for(var k in CELLS){if(CELLS[k].engine===en){var rc=k.split(',');var p=ctr(+rc[0],+rc[1]);xs+=p.x;ys+=p.y;n++;}}return n?{x:xs/n,y:ys/n}:null;}
+function starPts(cx,cy,R){var p=[];for(var i=0;i<10;i++){var a=Math.PI/2+i*Math.PI/5,rd=(i%2==0)?R:R*0.42;p.push((cx+rd*Math.cos(a)).toFixed(1)+','+(cy-rd*Math.sin(a)).toFixed(1));}return p.join(' ');}
+function dropYou(en,cost,eff,waste,cache){var p=centroid(en);if(!p)return;var CLAY='#C56A4C',rr=+svg.getAttribute('data-rr')||15;
+ var g=document.createElementNS('http://www.w3.org/2000/svg','g');g.setAttribute('pointer-events','none');
+ g.innerHTML='<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(rr*1.5)+'" fill="'+CLAY+'" opacity="0.30" filter="url(#cvg)"></circle><polygon points="'+starPts(p.x,p.y,rr*0.72)+'" fill="'+CLAY+'"></polygon><circle cx="'+p.x+'" cy="'+p.y+'" r="'+(rr*1.05)+'" fill="none" stroke="'+CLAY+'" stroke-width="3"></circle><text x="'+p.x+'" y="'+(p.y-rr*1.55)+'" text-anchor="middle" font-size="13" font-weight="800" fill="'+CLAY+'" paint-order="stroke" stroke="#141412" stroke-width="3.5">YOU</text>';
+ svg.appendChild(g);
+ focal.style.setProperty('--fc',CLAY);
+ focal.innerHTML='<div class="big">'+eff+'</div><div class="flab">your surviving KB per output-Mtok, team '+LAB[en]+'</div><div class="vec">$<b>'+(+cost).toFixed(2)+'</b>/KB &middot; <b>'+waste+'%</b> waste &middot; <b>'+cache+'%</b> cache</div>';
+ var tb=document.getElementById('rows');tb.querySelectorAll('tr').forEach(function(r){r.classList.remove('on');});
+ var tr=document.createElement('tr');tr.className='on';tr.style.setProperty('--ec',CLAY);
+ tr.innerHTML='<td><span class="edot" style="background:'+CLAY+'"></span><b style="color:'+CLAY+'">YOU</b> <span class="pareto" style="color:'+CLAY+';border-color:'+CLAY+'">team '+LAB[en]+'</span></td><td class="num">$'+(+cost).toFixed(2)+'</td><td class="num">'+eff+'</td><td class="num">'+waste+'%</td><td class="num">'+cache+'%</td><td class="num meta">you</td>';
+ tb.insertBefore(tr,tb.firstChild);
+ document.querySelectorAll('.team').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-engine')===en);});
+ svg.querySelectorAll('text').forEach(function(t){var tx=t.textContent.trim().toLowerCase();if(['solo','delegate','workflow'].indexOf(tx)>=0)t.style.opacity=(tx===en)?'0.9':'0.18';});}
+var m=/(?:^|#|&)you=([^&]+)/.exec(location.hash||'');
+if(m){var f=decodeURIComponent(m[1]).split(',');if(f.length>=5&&LAB[f[0]]){dropYou(f[0],f[1],f[2],f[3],f[4]);var rl=document.querySelector('.runline');if(rl)rl.innerHTML='That is you on the frontier, team '+LAB[f[0]]+'. Re-run <b>vibrant-report</b> anytime to refresh your dot.';}}
+})();
 </script></body></html>
