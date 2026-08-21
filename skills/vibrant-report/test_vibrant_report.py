@@ -318,6 +318,17 @@ def main():
             if not approx(v["cache_read_pct"], crd):
                 fails.append(f"{e} cacheRd {v['cache_read_pct']} != {crd}")
 
+        # ---- (1b) per-engine simplicity present + matches the git-density formula ----
+        att_be = rep["numerator"]["attribution"]["by_engine"]
+        for e, v in veng.items():
+            if "simplicity" not in v:
+                fails.append(f"{e} missing per-engine simplicity"); continue
+            b = att_be.get(e, {})
+            exp_simp = vibrant_report._density_simplicity(
+                vibrant_report._surviving_lines(b.get("net_complexity"), b.get("surviving", 0)))
+            if v["simplicity"] != exp_simp:
+                fails.append(f"{e} simplicity {v['simplicity']} != {exp_simp} (density formula)")
+
         # dollars axis: driver must equal session_cost/survKB (wired, not invented)
         exp_solo_d = costs[0]
         if not approx(veng["solo"]["d_per_survkb"], round(exp_solo_d / 9.0, 4), tol=0.01):

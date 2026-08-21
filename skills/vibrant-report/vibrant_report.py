@@ -1823,6 +1823,17 @@ def build_report(snapshot_dir, repos, since, frontier_path, harness, now,
     # per-model / per-effort surviving work, via the git<->session join
     numerator["attribution"] = attribute_work(bundles, since, snapshot_dir)
 
+    # per-engine simplicity: the density of that engine's surviving code (git-attributed),
+    # the SAME formula as topline and per-rig simplicity (_density_simplicity of decision
+    # points per 1000 surviving lines). Surfaced on vector_by_engine so simplicity federates
+    # as a real work-quality axis, not something a downstream surface has to proxy. None when
+    # the engine has no git-attributed surviving code.
+    _att_be = (numerator.get("attribution") or {}).get("by_engine") or {}
+    for _row in vector_by_engine:
+        _b = _att_be.get(_row["engine"]) or {}
+        _row["simplicity"] = _density_simplicity(
+            _surviving_lines(_b.get("net_complexity"), _b.get("surviving", 0)))
+
     # topline denominator: scope output tokens to the sessions that worked the
     # measured repos (proj names a repo). Fall back to the whole window when no
     # session carries proj, so older snapshots still produce a (window-approx)

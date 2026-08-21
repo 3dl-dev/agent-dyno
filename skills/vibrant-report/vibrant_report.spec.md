@@ -279,7 +279,10 @@ throwaway git repo whose commits map to those sessions, and a fixture frontier
 with one same-shape and one different-shape entry. It runs `vibrant_report` and
 asserts:
 
-1. the per-engine vector equals hand-computed values;
+1. the per-engine vector equals hand-computed values, and each per-engine row carries a
+   `simplicity` (0..100, the git-attributed complexity DENSITY of that engine's surviving
+   code mapped through `_density_simplicity`), consistent with
+   `numerator.attribution.by_engine`;
 2. the same-shape comparison matches only the same-shape frontier entry, and
    states "no same-shape entry" for a cell that has none;
 3. `report.json` carries full provenance and the governance-clean stamp;
