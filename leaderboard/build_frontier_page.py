@@ -49,11 +49,13 @@ CELLS_META = {}
 for c in som["cell_meaning"]:
     e = c.get("engine")
     if e in TERR:
+        def _num(x, dp=0):
+            return (round(float(x), dp) if dp else round(float(x))) if x is not None else None
         CELLS_META[f"{c['cell'][0]},{c['cell'][1]}"] = {
             "e": e, "model": c.get("model"), "worker": c.get("worker"),
             "effort": c.get("effort"), "sessions": c.get("sessions"),
-            "cost": round(float(c.get("cost") or 0), 2), "eff": round(float(c.get("eff") or 0)),
-            "flow": round(float(c.get("flow") or 0)), "simp": round(float(c.get("simp") or 0)),
+            "cost": _num(c.get("cost"), 2), "eff": _num(c.get("eff")),
+            "flow": _num(c.get("flow")), "simp": _num(c.get("simp")),
         }
 
 # per-engine simplicity (the canonical third work-quality dimension, not cache): mean of the
@@ -302,10 +304,12 @@ JS = (
     "(function(){var CTIP=document.getElementById('civ-tip'),CWRAP=document.querySelector('.civ-wrap'),CSVG=document.getElementById('map-civ');"
     "if(!CTIP||!CSVG)return;var _pin=null;"
     "function cellHTML(m){var rig=m.worker?(m.model+' \\u2192 '+m.worker):((m.model||'one model')+', solo');"
+    "var l2=[];if(m.cost!=null&&m.cost>0)l2.push('$'+(+m.cost).toFixed(2)+' per surv-KB');if(m.eff!=null)l2.push(m.eff+' KB/Mtok');"
+    "var l3=[];if(m.flow!=null)l3.push('flow '+m.flow);if(m.simp!=null)l3.push('simplicity '+m.simp);if(m.sessions!=null)l3.push(m.sessions+' sessions');"
     "return '<span class=\"tt\">team '+(LAB[m.e]||m.e)+'</span>'"
     "+'<div>'+rig+(m.effort&&m.effort!=='unknown'?' &middot; '+m.effort+' effort':'')+'</div>'"
-    "+'<div>$'+(+m.cost).toFixed(2)+' per surv-KB &middot; '+m.eff+' KB/Mtok</div>'"
-    "+'<div>flow '+m.flow+' &middot; simplicity '+m.simp+' &middot; '+m.sessions+' sessions</div>';}"
+    "+(l2.length?'<div>'+l2.join(' &middot; ')+'</div>':'')"
+    "+(l3.length?'<div>'+l3.join(' &middot; ')+'</div>':'');}"
     "function showTip(cl){var m=CELLS_META[cl.getAttribute('data-r')+','+cl.getAttribute('data-c')];"
     "if(!m){CTIP.classList.remove('on');return;}CTIP.innerHTML=cellHTML(m);CTIP.classList.add('on');"
     "var wr=CWRAP.getBoundingClientRect(),cr=cl.getBoundingClientRect(),tw=CTIP.offsetWidth,th=CTIP.offsetHeight;"
